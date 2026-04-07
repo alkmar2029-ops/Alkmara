@@ -99,22 +99,37 @@ export class DeviceService {
     }
   }
 
-  async pushUser(deviceUid: number, userId: string, name: string): Promise<void> {
+  async pushUser(deviceUid: number, userId: string, name: string, password: string = '', role: number = 0, cardno: number = 0): Promise<void> {
     this.ensureConnected();
     try {
-      await this.zk.setUser(deviceUid, userId, name, '', 0, 0);
+      await this.zk.setUser(deviceUid, userId, name, password, role, cardno);
     } catch (err) {
       this.connected = false;
       throw err;
     }
   }
 
-  async pushUsers(users: Array<{ device_uid: number; student_id: string; first_name: string; last_name: string }>): Promise<PushUsersResult> {
+  async pushUsers(users: Array<{
+    device_uid: number;
+    student_id: string;
+    first_name: string;
+    last_name: string;
+    phone?: string;
+    grade_name?: string;
+    section_name?: string;
+  }>): Promise<PushUsersResult> {
     let success = 0, failed = 0;
     const errors: PushUsersResult['errors'] = [];
     for (const u of users) {
       try {
-        await this.pushUser(u.device_uid, u.student_id, `${u.first_name} ${u.last_name}`);
+        // الاسم: الاسم الأول + العائلة (حد الجهاز ~24 حرف)
+        const name = `${u.first_name} ${u.last_name}`.substring(0, 24);
+        // كلمة المرور: آخر 6 أرقام من الجوال (إن وُجد)
+        const password = u.phone ? u.phone.replace(/\D/g, '').slice(-6) : '';
+        // رقم البطاقة: غير مستخدم حالياً، يمكن استغلاله لاحقاً
+        const cardno = 0;
+
+        await this.pushUser(u.device_uid, u.student_id, name, password, 0, cardno);
         success++;
       } catch (err) {
         failed++;

@@ -91,16 +91,19 @@ export const importStudentsSchema = z.object({
   students: z.array(z.object({
     student_id: z.string().min(1),
     first_name: z.string().min(1),
-    last_name: z.string().min(1),
+    last_name: z.string().optional().default(''),
     father_name: z.string().optional().default(''),
     phone: z.string().optional().default(''),
     notes: z.string().optional().default(''),
     grade_id: z.number().int().positive().optional(),
     section_id: z.number().int().positive().optional(),
+    grade_name: z.string().optional().default(''),
+    section_name: z.string().optional().default(''),
   })).min(1, 'يجب إضافة طالب واحد على الأقل'),
   grade_id: z.number().int().positive().optional(),
   section_id: z.number().int().positive().optional(),
   skip_duplicates: z.boolean().default(false),
+  auto_create_grades: z.boolean().optional().default(false),
 });
 
 // Promote schema

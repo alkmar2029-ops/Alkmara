@@ -351,6 +351,30 @@ function ImportModal({ grades, settings, onClose, onDone }: any) {
     enabled: !!gradeId,
   });
 
+  // تقسيم الاسم الكامل إلى أجزاء: الأول + الأب + العائلة
+  const splitFullName = (fullName: string) => {
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length === 1) return { first_name: parts[0], father_name: '', last_name: '' };
+    if (parts.length === 2) return { first_name: parts[0], father_name: '', last_name: parts[1] };
+    return {
+      first_name: parts[0],
+      father_name: parts.slice(1, -1).join(' '),
+      last_name: parts[parts.length - 1],
+    };
+  };
+
+  // تحويل رقم الصف (مثل 0725) إلى اسم مقروء
+  const gradeCodeToName = (code: string): string => {
+    const num = parseInt(code.substring(0, 2));
+    const gradeNames: Record<number, string> = {
+      1: 'الأول ابتدائي', 2: 'الثاني ابتدائي', 3: 'الثالث ابتدائي',
+      4: 'الرابع ابتدائي', 5: 'الخامس ابتدائي', 6: 'السادس ابتدائي',
+      7: 'الأول متوسط', 8: 'الثاني متوسط', 9: 'الثالث متوسط',
+      10: 'الأول ثانوي', 11: 'الثاني ثانوي', 12: 'الثالث ثانوي',
+    };
+    return gradeNames[num] || `الصف ${num}`;
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -359,36 +383,94 @@ function ImportModal({ grades, settings, onClose, onDone }: any) {
       const XLSX = await import('xlsx');
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet);
 
-      if (rows.length === 0) { toast.error('الملف فارغ'); return; }
+      // === كشف نوع الملف تلقائياً ===
+      // دعم ملفات نظام نور (StudentGuidance): البيانات في Sheet2 بتنسيق خاص
+      let rows: any[] = [];
+      let isNoorFormat = false;
 
-      // Map column names (support Arabic and English)
-      const mapped = rows.map((row: any) => ({
-        student_id: String(row['رقم_الهوية'] || row['رقم الهوية'] || row['student_id'] || row['id'] || '').trim(),
-        first_name: String(row['الاسم_الاول'] || row['الاسم الأول'] || row['first_name'] || '').trim(),
-        father_name: String(row['اسم_الاب'] || row['اسم الأب'] || row['father_name'] || '').trim(),
-        last_name: String(row['اسم_العائلة'] || row['اسم العائلة'] || row['last_name'] || '').trim(),
-        phone: String(row['رقم_الجوال'] || row['رقم الجوال'] || row['phone'] || '').trim(),
-        grade: String(row['الصف'] || row['grade'] || '').trim(),
-        section: String(row['الشعبة'] || row['section'] || '').trim(),
-      }));
+      if (workbook.SheetNames.length >= 2) {
+        const sheet2 = workbook.Sheets[workbook.SheetNames[1]];
+        const rawRows: any[] = XLSX.utils.sheet_to_json(sheet2, { header: 1 });
+        // كشف صيغة نور: الصف 3 (index 3) فيه "اسم الطالب" و "رقم الطالب"
+        const headerRow = rawRows[3];
+        if (headerRow && (
+          headerRow.includes('اسم الطالب') || headerRow.includes('رقم الطالب')
+        )) {
+          isNoorFormat = true;
+          // البيانات تبدأ من الصف 4
+          for (let i = 4; i < rawRows.length; i++) {
+            const r = rawRows[i];
+            if (!r || !r[5]) continue; // تخطي الصفوف الفارغة
+            rows.push({
+              'رقم الطالب': r[5],
+              'اسم الطالب': r[4],
+              'رقم الصف': r[3],
+              'الفصل': r[2],
+              'الجوال': r[1],
+            });
+          }
+        }
+      }
+
+      // إذا ليس صيغة نور، اقرأ الشيت الأول بالطريقة العادية
+      if (!isNoorFormat) {
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(sheet);
+      }
+
+      if (rows.length === 0) { toast.error('الملف فارغ أو لا يحتوي بيانات طلاب'); return; }
+
+      // === تحويل الأعمدة ===
+      const mapped = rows.map((row: any) => {
+        // دعم حقل الاسم الكامل (نظام نور) أو الأسماء المقسمة
+        const fullName = String(row['اسم الطالب'] || row['اسم_الطالب'] || '').trim();
+        let first_name = String(row['الاسم_الاول'] || row['الاسم الأول'] || row['first_name'] || '').trim();
+        let father_name = String(row['اسم_الاب'] || row['اسم الأب'] || row['father_name'] || '').trim();
+        let last_name = String(row['اسم_العائلة'] || row['اسم العائلة'] || row['last_name'] || '').trim();
+
+        // إذا الاسم حقل واحد، قسّمه
+        if (fullName && !first_name) {
+          const split = splitFullName(fullName);
+          first_name = split.first_name;
+          father_name = split.father_name;
+          last_name = split.last_name;
+        }
+
+        // رقم الهوية
+        const student_id = String(row['رقم الطالب'] || row['رقم_الطالب'] || row['رقم_الهوية'] || row['رقم الهوية'] || row['student_id'] || row['id'] || '').trim();
+
+        // رقم الصف: دعم أكواد نور (0725 → الأول متوسط)
+        const gradeCode = String(row['رقم الصف'] || row['رقم_الصف'] || '').trim();
+        const grade = gradeCode ? gradeCodeToName(gradeCode) : String(row['الصف'] || row['grade'] || '').trim();
+
+        // الفصل (الشعبة)
+        const section = String(row['الفصل'] || row['الشعبة'] || row['section'] || '').trim();
+
+        // الجوال
+        const phone = String(row['الجوال'] || row['رقم_الجوال'] || row['رقم الجوال'] || row['phone'] || '').trim();
+
+        return { student_id, first_name, father_name, last_name, phone, grade, section };
+      });
 
       setParsedData(mapped);
 
-      // Validate
+      // إذا الملف يحتوي صفوف وشعب، حوّل لـ "استيراد شامل" تلقائياً
+      if (isNoorFormat || mapped.some(r => r.grade || r.section)) {
+        setImportType('full');
+      }
+
+      // === التحقق ===
       const validated = mapped.map((row, i) => {
         const errors: string[] = [];
-        if (!row.student_id || row.student_id.length !== 10 || !/^\d+$/.test(row.student_id)) {
+        if (!row.student_id || !/^\d{7,10}$/.test(row.student_id)) {
           errors.push('رقم الهوية غير صحيح');
         }
-        if (!row.first_name) errors.push('الاسم الأول مطلوب');
-        if (!row.last_name) errors.push('اسم العائلة مطلوب');
+        if (!row.first_name) errors.push('الاسم مطلوب');
         return { ...row, rowNum: i + 1, errors, status: errors.length === 0 ? 'valid' : 'error' };
       });
 
-      // Check duplicates within file
+      // كشف المكرر
       const seenIds = new Set<string>();
       validated.forEach(row => {
         if (row.status === 'valid') {
@@ -402,7 +484,8 @@ function ImportModal({ grades, settings, onClose, onDone }: any) {
       });
 
       setValidationResults(validated);
-      setStep(4); // Go to preview
+      toast.success(`تم قراءة ${mapped.length} طالب من الملف`);
+      setStep(4); // المعاينة
     } catch (err) {
       toast.error('خطأ في قراءة الملف');
     }
@@ -416,7 +499,9 @@ function ImportModal({ grades, settings, onClose, onDone }: any) {
       first_name: r.first_name,
       father_name: r.father_name,
       last_name: r.last_name,
-      phone: r.phone || null,
+      phone: r.phone || '',
+      grade_name: r.grade || '',
+      section_name: r.section || '',
     }));
 
     try {
@@ -427,6 +512,7 @@ function ImportModal({ grades, settings, onClose, onDone }: any) {
           students,
           grade_id: importType === 'specific' ? parseInt(gradeId) : undefined,
           section_id: importType === 'specific' ? parseInt(sectionId) : undefined,
+          auto_create_grades: importType === 'full',
         }),
       });
       if (!res.ok) throw new Error('Import failed');

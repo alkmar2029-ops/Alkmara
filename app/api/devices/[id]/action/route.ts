@@ -89,10 +89,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         const { data: device } = await supabase.from('devices').select('section_id').eq('id', deviceId).single();
         if (!device?.section_id) return NextResponse.json({ error: 'لا توجد شُعبة مرتبطة بالجهاز' }, { status: 400 });
 
-        // Get students in this section
+        // Get students in this section with grade and section names
         const { data: students } = await supabase
           .from('students')
-          .select('device_uid, student_id, first_name, father_name, last_name')
+          .select('device_uid, student_id, first_name, father_name, last_name, phone, grade_id, section_id, grades(name), sections(name)')
           .eq('section_id', device.section_id)
           .eq('is_active', true);
 
@@ -100,11 +100,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           return NextResponse.json({ error: 'لا يوجد طلاب في هذه الشُعبة' }, { status: 400 });
         }
 
-        const mapped = students.map(s => ({
+        const mapped = students.map((s: any) => ({
           device_uid: s.device_uid,
           student_id: s.student_id,
           first_name: s.first_name,
           last_name: `${s.father_name || ''} ${s.last_name}`.trim(),
+          phone: s.phone || '',
+          grade_name: s.grades?.name || '',
+          section_name: s.sections?.name || '',
         }));
 
         const result = await service.pushUsers(mapped);
