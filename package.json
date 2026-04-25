@@ -6,16 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "lint:fix": "next lint --fix"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.4.0",
+    "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.45.0",
     "@tanstack/react-query": "^5.45.0",
     "@tanstack/react-table": "^8.17.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.395.0",
-    "next": "^14.2.4",
+    "next": "^14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.4.1",
@@ -30,7 +31,9 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
-    "postcss": "^8.4.38",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.35",
+    "postcss": "^8.5.10",
     "tailwindcss": "^3.4.4",
     "typescript": "^5.4.0"
   }

@@ -1,11 +1,12 @@
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateBody, createScheduleSchema } from '@/lib/validations/schemas';
+import { requireRole } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(_: NextRequest, { params }: { params: { classId: string } }) {
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const classId = parseInt(params.classId);
 
   if (isNaN(classId)) {
@@ -23,7 +24,10 @@ export async function GET(_: NextRequest, { params }: { params: { classId: strin
 }
 
 export async function POST(request: NextRequest, { params }: { params: { classId: string } }) {
-  const supabase = createAdminSupabaseClient();
+  const auth = await requireRole(['admin']);
+  if (!auth.ok) return auth.res;
+
+  const supabase = await createServerSupabaseClient();
   const classId = parseInt(params.classId);
 
   if (isNaN(classId)) {

@@ -9,7 +9,7 @@ import { SkeletonPage } from '@/components/ui/Skeleton';
 const STAGES = [
   { value: 'elementary', label: 'ابتدائي', desc: 'الصف الأول إلى السادس' },
   { value: 'middle', label: 'متوسط', desc: 'الصف الأول إلى الثالث' },
-  { value: 'high', label: 'ثانوي', desc: 'الصف الأول إلى الثالث' },
+  { value: 'secondary', label: 'ثانوي', desc: 'الصف الأول إلى الثالث' },
 ];
 
 export default function SettingsPage() {

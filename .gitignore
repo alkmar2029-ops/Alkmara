@@ -1,5 +1,15 @@
 node_modules/
 .next/
 .env.local
+.env*.local
 *.log
 .DS_Store
+
+# Local Claude Code settings & memory
+.claude/
+
+# Build cache
+tsconfig.tsbuildinfo
+
+# Real student/device dumps — never commit (PII)
+device-data/

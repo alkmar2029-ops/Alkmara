@@ -1,14 +1,20 @@
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { DeviceService, getDeviceFromPool, addDeviceToPool, removeDeviceFromPool } from '@/lib/zkteco/device-service';
 import { classifyAttendance, findMatchingSchedule } from '@/lib/utils/attendance-rules';
 import { validateBody, deviceActionSchema } from '@/lib/validations/schemas';
 import { getLocalToday } from '@/lib/utils/helpers';
+import { requireRole, writeAuditLog, type UserRole } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
+// Admin-only: destructive or data-mutating device operations.
+const ADMIN_ACTIONS = new Set(['clear-logs', 'push-users', 'pull-logs']);
+// Staff or admin: connection / read-only operations.
+const STAFF_ACTIONS = new Set(['connect', 'disconnect', 'sync-time', 'info', 'users', 'compare']);
+
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const deviceId = parseInt(params.id);
   if (isNaN(deviceId)) {
     return NextResponse.json({ error: 'معرف الجهاز غير صالح' }, { status: 400 });
@@ -26,7 +32,23 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
 
-  const { action, date } = validation.data;
+  const { action, date, confirm } = validation.data;
+
+  // Authorize: admin-only actions need an extra confirmation flag too.
+  const allowed: UserRole[] = ADMIN_ACTIONS.has(action)
+    ? ['admin']
+    : STAFF_ACTIONS.has(action)
+      ? ['admin', 'staff']
+      : ['admin', 'staff', 'viewer'];
+  const auth = await requireRole(allowed);
+  if (!auth.ok) return auth.res;
+
+  if (ADMIN_ACTIONS.has(action) && confirm !== true) {
+    return NextResponse.json(
+      { error: 'هذه عملية حساسة وتتطلب تأكيداً صريحاً (confirm: true)' },
+      { status: 400 },
+    );
+  }
 
   try {
     switch (action) {
@@ -38,7 +60,19 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         await service.connect();
         await addDeviceToPool(deviceId, service);
 
-        await supabase.from('devices').update({ status: 'connected', last_seen_at: new Date().toISOString() }).eq('id', deviceId);
+        // Use SECURITY DEFINER RPC so staff can update runtime fields without
+        // RLS write access on the devices table.
+        const { error: rpcError } = await supabase.rpc('set_device_runtime_status', {
+          p_device_id: deviceId,
+          p_status: 'connected',
+          p_touch_last_seen: true,
+        });
+        if (rpcError) {
+          return NextResponse.json(
+            { error: 'تم الاتصال بالجهاز لكن فشل تحديث الحالة في قاعدة البيانات' },
+            { status: 500 },
+          );
+        }
         return NextResponse.json({ message: 'تم الاتصال بالجهاز' });
       }
 
@@ -48,7 +82,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           await service.disconnect();
           removeDeviceFromPool(deviceId);
         }
-        await supabase.from('devices').update({ status: 'disconnected' }).eq('id', deviceId);
+        const { error: rpcError } = await supabase.rpc('set_device_runtime_status', {
+          p_device_id: deviceId,
+          p_status: 'disconnected',
+          p_touch_last_seen: false,
+        });
+        if (rpcError) {
+          return NextResponse.json(
+            { error: 'تم قطع الاتصال لكن فشل تحديث الحالة في قاعدة البيانات' },
+            { status: 500 },
+          );
+        }
         return NextResponse.json({ message: 'تم قطع الاتصال' });
       }
 
@@ -77,6 +121,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         const service = getDeviceFromPool(deviceId);
         if (!service?.isConnected()) return NextResponse.json({ error: 'الجهاز غير متصل' }, { status: 400 });
         await service.clearDeviceLogs();
+        await writeAuditLog({
+          ctx: auth.ctx, action: 'device.clear-logs',
+          targetType: 'device', targetId: deviceId, request,
+        });
         return NextResponse.json({ message: 'تم مسح السجلات' });
       }
 
@@ -122,6 +170,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           sync_type: 'push_users',
           status: 'completed',
           records_synced: result.success,
+        });
+
+        await writeAuditLog({
+          ctx: auth.ctx, action: 'device.push-users',
+          targetType: 'device', targetId: deviceId,
+          details: { total: students.length, success: result.success, failed: result.failed },
+          request,
         });
 
         return NextResponse.json({ data: { ...result, total: students.length } });
@@ -231,6 +286,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           sync_type: 'pull_attendance',
           status: 'completed',
           records_synced: synced,
+        });
+
+        await writeAuditLog({
+          ctx: auth.ctx, action: 'device.pull-logs',
+          targetType: 'device', targetId: deviceId,
+          details: { total: logs.length, synced, errors },
+          request,
         });
 
         return NextResponse.json({ data: { synced, errors, total: logs.length } });

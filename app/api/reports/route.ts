@@ -1,11 +1,11 @@
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { getLocalToday } from '@/lib/utils/helpers';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type') || 'daily';
   const date = searchParams.get('date') || getLocalToday();

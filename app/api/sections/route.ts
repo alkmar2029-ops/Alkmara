@@ -1,11 +1,12 @@
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateBody, updateSectionsSchema } from '@/lib/validations/schemas';
+import { requireRole } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { searchParams } = new URL(request.url);
   const gradeId = searchParams.get('grade_id');
 
@@ -18,7 +19,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const auth = await requireRole(['admin']);
+  if (!auth.ok) return auth.res;
+
+  const supabase = await createServerSupabaseClient();
   let body;
   try {
     body = await request.json();
@@ -33,46 +37,23 @@ export async function POST(request: NextRequest) {
 
   const { grade_id, sections } = validation.data;
 
-  // Delete existing sections for this grade that are not in use
-  // First check which sections have students or attendance records
-  const { data: existingSections } = await supabase
-    .from('sections')
-    .select('id, name')
-    .eq('grade_id', grade_id);
+  // Atomic via RPC: deletes unused absent sections, upserts the new list,
+  // and returns names of sections it had to keep because they are in use.
+  const { data: result, error } = await supabase.rpc('update_grade_sections', {
+    p_grade_id: grade_id,
+    p_sections: sections,
+  });
 
-  const sectionNames = sections.map((s: any) => s.name);
-
-  // Delete sections not in the new list (only if no students AND no attendance records)
-  for (const existing of (existingSections || [])) {
-    if (!sectionNames.includes(existing.name)) {
-      const { count: studentCount } = await supabase
-        .from('students')
-        .select('id', { count: 'exact', head: true })
-        .eq('section_id', existing.id);
-
-      const { count: attendanceCount } = await supabase
-        .from('attendance_records')
-        .select('id', { count: 'exact', head: true })
-        .eq('section_id', existing.id);
-
-      if ((studentCount || 0) === 0 && (attendanceCount || 0) === 0) {
-        await supabase.from('sections').delete().eq('id', existing.id);
-      }
-    }
+  if (error) {
+    return NextResponse.json({ error: `حدث خطأ في حفظ الشُعب: ${error.message}` }, { status: 400 });
   }
 
-  // Upsert new sections
-  const records = sections.map((s: any, i: number) => ({
-    grade_id,
-    name: s.name,
-    sort_order: i + 1,
-  }));
-
-  const { data, error } = await supabase
+  // Return the up-to-date sections for this grade so the client can refresh.
+  const { data: updated } = await supabase
     .from('sections')
-    .upsert(records, { onConflict: 'grade_id,name' })
-    .select();
+    .select('*')
+    .eq('grade_id', grade_id)
+    .order('sort_order');
 
-  if (error) return NextResponse.json({ error: 'حدث خطأ في حفظ الشُعب' }, { status: 400 });
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: updated || [], summary: result });
 }

@@ -86,8 +86,11 @@ export interface AttendanceRecord {
 export interface SchoolSettings {
   id: number;
   school_name: string;
+  principal_name: string | null;
+  phone: string | null;
   stage: SchoolStage;
   academic_year: string;
+  section_type: 'letters' | 'numbers';
   late_threshold: number;
   absent_threshold: number;
   updated_at: string;

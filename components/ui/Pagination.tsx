@@ -4,7 +4,7 @@ import { ChevronRight, ChevronLeft } from 'lucide-react';
 interface PaginationProps {
   page: number;
   totalPages: number;
-  onPageChange: (page: number) => void;
+  onPageChange: (_page: number) => void;
 }
 
 export default function Pagination({ page, totalPages, onPageChange }: PaginationProps) {

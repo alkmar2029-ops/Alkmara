@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateBody, importStudentsSchema } from '@/lib/validations/schemas';
+import { requireRole } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
 const BATCH_SIZE = 100;
 
 export async function POST(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const auth = await requireRole(['admin', 'staff']);
+  if (!auth.ok) return auth.res;
+
+  const supabase = await createServerSupabaseClient();
 
   let body: unknown;
   try {
@@ -21,8 +25,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
 
-  const { students, grade_id, section_id, skip_duplicates } = validation.data;
+  const { students, grade_id, section_id } = validation.data;
   const autoCreateGrades = (body as any)?.auto_create_grades === true;
+
+  // Creating grades/sections is admin-only (RLS), so staff cannot use
+  // auto_create_grades — refuse upfront instead of letting silent insert
+  // failures leave students orphaned without grade/section.
+  if (autoCreateGrades && auth.ctx.role !== 'admin') {
+    return NextResponse.json(
+      { error: 'إنشاء الصفوف والشعب تلقائياً يتطلب صلاحية المدير' },
+      { status: 403 },
+    );
+  }
 
   // =============== إنشاء الصفوف والشعب تلقائياً ===============
   // خريطة: اسم الصف → grade_id
@@ -51,7 +65,8 @@ export async function POST(request: NextRequest) {
     const { data: existingGrades } = await supabase.from('grades').select('id, name');
     for (const g of existingGrades || []) gradeMap.set(g.name, g.id);
 
-    // إنشاء الصفوف الجديدة
+    // إنشاء الصفوف الجديدة — لا نتجاهل أخطاء الإدراج حتى لا يبقى الطلاب
+    // بدون صف/شعبة بسبب فشل صامت في RLS.
     for (const gName of uniqueGrades) {
       if (!gradeMap.has(gName)) {
         // تحديد المرحلة من الاسم
@@ -59,12 +74,18 @@ export async function POST(request: NextRequest) {
         if (gName.includes('ابتدائي')) stage = 'elementary';
         else if (gName.includes('ثانوي')) stage = 'secondary';
 
-        const { data: newGrade } = await supabase
+        const { data: newGrade, error: gradeErr } = await supabase
           .from('grades')
           .insert({ name: gName, stage, sort_order: gradeMap.size + 1 })
           .select('id')
           .single();
-        if (newGrade) gradeMap.set(gName, newGrade.id);
+        if (gradeErr || !newGrade) {
+          return NextResponse.json(
+            { error: `فشل إنشاء الصف "${gName}": ${gradeErr?.message || 'سبب غير معروف'}` },
+            { status: 500 },
+          );
+        }
+        gradeMap.set(gName, newGrade.id);
       }
     }
 
@@ -80,12 +101,18 @@ export async function POST(request: NextRequest) {
       for (const sName of sNames) {
         const key = `${gId}:${sName}`;
         if (!sectionMap.has(key)) {
-          const { data: newSection } = await supabase
+          const { data: newSection, error: sectionErr } = await supabase
             .from('sections')
             .insert({ grade_id: gId, name: sName, sort_order: sortOrder++ })
             .select('id')
             .single();
-          if (newSection) sectionMap.set(key, newSection.id);
+          if (sectionErr || !newSection) {
+            return NextResponse.json(
+              { error: `فشل إنشاء الشعبة "${sName}" في الصف "${gName}": ${sectionErr?.message || 'سبب غير معروف'}` },
+              { status: 500 },
+            );
+          }
+          sectionMap.set(key, newSection.id);
         }
       }
     }
@@ -102,19 +129,17 @@ export async function POST(request: NextRequest) {
 
   const existingIds = new Set((existingStudents || []).map((s: any) => s.student_id));
 
-  // الحصول على آخر device_uid
-  const { data: maxRow } = await supabase
-    .from('students')
-    .select('device_uid')
-    .order('device_uid', { ascending: false })
-    .limit(1)
-    .single();
-
-  let nextUid = (maxRow?.device_uid || 0) + 1;
-
   const results = { imported: 0, skipped: 0, errors: [] as string[], grades_created: gradeMap.size, sections_created: sectionMap.size };
 
-  const validRecords: any[] = [];
+  const validRecords: Array<{
+    student_id: string;
+    first_name: string;
+    last_name: string;
+    father_name: string;
+    phone: string | null;
+    grade_id: number | null;
+    section_id: number | null;
+  }> = [];
 
   for (const student of students) {
     if (!student.student_id || !/^\d{7,10}$/.test(String(student.student_id))) {
@@ -154,49 +179,38 @@ export async function POST(request: NextRequest) {
       last_name: student.last_name || '',
       father_name: student.father_name || '',
       phone: student.phone || null,
-      device_uid: nextUid++,
       grade_id: finalGradeId || null,
       section_id: finalSectionId || null,
     });
   }
 
+  // Allocate all device_uids up-front from the sequence (single round-trip),
+  // guaranteeing no collisions even with concurrent imports.
+  let allocated: number[] = [];
+  if (validRecords.length > 0) {
+    const { data: uids, error: uidsError } = await supabase
+      .rpc('next_device_uids', { n: validRecords.length });
+    if (uidsError || !Array.isArray(uids) || uids.length < validRecords.length) {
+      return NextResponse.json(
+        { error: 'فشل في تخصيص معرّفات الأجهزة للطلاب' },
+        { status: 500 },
+      );
+    }
+    allocated = uids.map(Number);
+  }
+
   // Batch insert in chunks of BATCH_SIZE
   for (let i = 0; i < validRecords.length; i += BATCH_SIZE) {
-    const batch = validRecords.slice(i, i + BATCH_SIZE);
+    const slice = validRecords.slice(i, i + BATCH_SIZE);
+    const batch = slice.map((rec, j) => ({ ...rec, device_uid: allocated[i + j] }));
 
     const { error } = await supabase.from('students').insert(batch);
 
     if (error) {
-      // If duplicate device_uid, refetch max uid and retry this batch once
-      if (error.code === '23505') {
-        const { data: refreshedMax } = await supabase
-          .from('students')
-          .select('device_uid')
-          .order('device_uid', { ascending: false })
-          .limit(1)
-          .single();
-
-        let retryUid = (refreshedMax?.device_uid || 0) + 1;
-        for (const record of batch) {
-          record.device_uid = retryUid++;
-        }
-        // Update nextUid for subsequent batches
-        nextUid = retryUid;
-
-        const { error: retryError } = await supabase.from('students').insert(batch);
-        if (retryError) {
-          // Count individual errors for this batch
-          for (const record of batch) {
-            results.errors.push(`خطأ في الطالب ${record.student_id}: ${retryError.message}`);
-          }
-          continue;
-        }
-      } else {
-        for (const record of batch) {
-          results.errors.push(`خطأ في الطالب ${record.student_id}: ${error.message}`);
-        }
-        continue;
+      for (const record of batch) {
+        results.errors.push(`خطأ في الطالب ${record.student_id}: ${error.message}`);
       }
+      continue;
     }
 
     results.imported += batch.length;

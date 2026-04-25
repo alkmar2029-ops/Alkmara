@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateBody, promoteSchema } from '@/lib/validations/schemas';
+import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const auth = await requireRole(['admin']);
+  if (!auth.ok) return auth.res;
+
+  const supabase = await createServerSupabaseClient();
 
   let body: unknown;
   try {
@@ -22,7 +26,7 @@ export async function POST(request: NextRequest) {
   const { confirm } = validation.data;
 
   if (!confirm) {
-    // Preview mode - show what will happen
+    // Preview mode — describe what the atomic RPC will do.
     const { data: settings } = await supabase.from('school_settings').select('stage').single();
     if (!settings) return NextResponse.json({ error: 'لم يتم إعداد المدرسة' }, { status: 400 });
 
@@ -45,7 +49,6 @@ export async function POST(request: NextRequest) {
         .eq('is_active', true);
 
       if (grade.sort_order === maxOrder) {
-        // Last grade - will be deleted (graduated)
         preview.push({
           grade_id: grade.id,
           grade_name: grade.name,
@@ -54,7 +57,6 @@ export async function POST(request: NextRequest) {
           action_label: 'حذف (تخرّج)',
         });
       } else {
-        // Will be promoted to next grade
         const nextGrade = grades.find(g => g.sort_order === grade.sort_order + 1);
         preview.push({
           grade_id: grade.id,
@@ -68,7 +70,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Count devices that will be cleared
     const { count: deviceCount } = await supabase
       .from('devices')
       .select('id', { count: 'exact', head: true })
@@ -84,107 +85,24 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Execute promotion
-  const { data: settings } = await supabase.from('school_settings').select('stage').single();
-  if (!settings) return NextResponse.json({ error: 'لم يتم إعداد المدرسة' }, { status: 400 });
-
-  const { data: grades } = await supabase
-    .from('grades')
-    .select('id, name, sort_order')
-    .eq('stage', settings.stage)
-    .order('sort_order', { ascending: false });
-
-  if (!grades || grades.length === 0) return NextResponse.json({ error: 'لا توجد صفوف' }, { status: 400 });
-
-  const maxOrder = grades[0].sort_order;
-  let promoted = 0;
-  let deleted = 0;
-
-  // Process from highest grade to lowest to avoid conflicts
-  for (const grade of grades) {
-    if (grade.sort_order === maxOrder) {
-      // Delete graduated students (soft delete)
-      const { data: deletedRows } = await supabase
-        .from('students')
-        .update({ is_active: false, updated_at: new Date().toISOString() })
-        .eq('grade_id', grade.id)
-        .eq('is_active', true)
-        .select('id');
-      deleted += deletedRows?.length || 0;
-    } else {
-      // Find next grade
-      const nextGrade = grades.find(g => g.sort_order === grade.sort_order + 1);
-      if (!nextGrade) continue;
-
-      // Get sections mapping: try to match by name
-      const { data: currentSections } = await supabase
-        .from('sections')
-        .select('id, name')
-        .eq('grade_id', grade.id);
-
-      const { data: nextSections } = await supabase
-        .from('sections')
-        .select('id, name')
-        .eq('grade_id', nextGrade.id);
-
-      // For each section in current grade, find matching section in next grade
-      for (const currentSection of (currentSections || [])) {
-        const matchingNext = (nextSections || []).find(ns => ns.name === currentSection.name);
-
-        if (matchingNext) {
-          const { data: updatedRows } = await supabase
-            .from('students')
-            .update({
-              grade_id: nextGrade.id,
-              section_id: matchingNext.id,
-              is_fingerprint_enrolled: false,
-              enrolled_at: null,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('section_id', currentSection.id)
-            .eq('is_active', true)
-            .select('id');
-          promoted += updatedRows?.length || 0;
-        } else {
-          const { data: updatedRows } = await supabase
-            .from('students')
-            .update({
-              grade_id: nextGrade.id,
-              section_id: null,
-              is_fingerprint_enrolled: false,
-              enrolled_at: null,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('section_id', currentSection.id)
-            .eq('is_active', true)
-            .select('id');
-          promoted += updatedRows?.length || 0;
-        }
-      }
-
-      // Also handle students without section
-      const { data: noSectionRows } = await supabase
-        .from('students')
-        .update({
-          grade_id: nextGrade.id,
-          section_id: null,
-          is_fingerprint_enrolled: false,
-          enrolled_at: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('grade_id', grade.id)
-        .is('section_id', null)
-        .eq('is_active', true)
-        .select('id');
-      promoted += noSectionRows?.length || 0;
-    }
+  // Atomic execution via RPC: all-or-nothing.
+  const { data: result, error } = await supabase.rpc('promote_students');
+  if (error) {
+    return NextResponse.json(
+      { error: `فشلت عملية الترقية: ${error.message}` },
+      { status: 500 },
+    );
   }
 
-  // Clear all device sync - reset fingerprint status
-  await supabase
-    .from('devices')
-    .update({ status: 'disconnected', last_seen_at: null })
-    .not('section_id', 'is', null);
+  const promoted = (result as { promoted?: number })?.promoted ?? 0;
+  const deleted = (result as { deleted?: number })?.deleted ?? 0;
+
+  await writeAuditLog({
+    ctx: auth.ctx,
+    action: 'students.promote',
+    details: { promoted, deleted },
+    request,
+  });
 
   return NextResponse.json({
     data: {

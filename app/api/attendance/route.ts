@@ -1,12 +1,13 @@
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateBody, createAttendanceSchema } from '@/lib/validations/schemas';
 import { getLocalToday, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '@/lib/utils/helpers';
+import { requireRole } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { searchParams } = new URL(request.url);
   const date = searchParams.get('date') || getLocalToday();
   const section_id = searchParams.get('section_id');
@@ -50,7 +51,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const auth = await requireRole(['admin', 'staff']);
+  if (!auth.ok) return auth.res;
+
+  const supabase = await createServerSupabaseClient();
   let body;
   try {
     body = await request.json();

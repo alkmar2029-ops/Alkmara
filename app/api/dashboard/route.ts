@@ -1,4 +1,4 @@
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { getConnectedDeviceIds } from '@/lib/zkteco/device-service';
 import { getLocalToday } from '@/lib/utils/helpers';
@@ -6,7 +6,7 @@ import { getLocalToday } from '@/lib/utils/helpers';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const today = getLocalToday();
 
   try {

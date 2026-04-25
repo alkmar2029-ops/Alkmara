@@ -1,12 +1,13 @@
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnectedDeviceIds } from '@/lib/zkteco/device-service';
 import { validateBody, createDeviceSchemaStrict } from '@/lib/validations/schemas';
+import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from('devices')
     .select('*, sections(id, name, grades(id, name, stage))')
@@ -29,7 +30,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const auth = await requireRole(['admin']);
+  if (!auth.ok) return auth.res;
+
+  const supabase = await createServerSupabaseClient();
   let body;
   try {
     body = await request.json();
@@ -44,5 +48,15 @@ export async function POST(request: NextRequest) {
 
   const { data, error } = await supabase.from('devices').insert(validation.data).select().single();
   if (error) return NextResponse.json({ error: 'حدث خطأ في إضافة الجهاز' }, { status: 400 });
+
+  await writeAuditLog({
+    ctx: auth.ctx,
+    action: 'device.create',
+    targetType: 'device',
+    targetId: data?.id ?? null,
+    details: { ip: data?.ip_address, name: data?.name },
+    request,
+  });
+
   return NextResponse.json({ data }, { status: 201 });
 }

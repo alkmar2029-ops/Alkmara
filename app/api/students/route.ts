@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateBody, createStudentSchema } from '@/lib/validations/schemas';
 import { MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '@/lib/utils/helpers';
+import { requireRole } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ function sanitizeSearch(raw: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { searchParams } = new URL(request.url);
   const rawSearch = searchParams.get('search');
   const grade_id = searchParams.get('grade_id');
@@ -63,7 +64,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const auth = await requireRole(['admin', 'staff']);
+  if (!auth.ok) return auth.res;
+
+  const supabase = await createServerSupabaseClient();
 
   let body: unknown;
   try {
@@ -79,36 +83,21 @@ export async function POST(request: NextRequest) {
 
   const validatedData = validation.data;
 
-  // Retry loop for device_uid race condition (up to 3 attempts)
-  const MAX_RETRIES = 3;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    // Fetch current max device_uid
-    const { data: maxRow } = await supabase
-      .from('students')
-      .select('device_uid')
-      .order('device_uid', { ascending: false })
-      .limit(1)
-      .single();
+  // Allocate a collision-free device_uid via the database sequence (RPC).
+  const { data: nextUid, error: uidError } = await supabase.rpc('next_device_uid');
+  if (uidError || typeof nextUid !== 'number') {
+    return NextResponse.json({ error: 'فشل في تخصيص معرّف الجهاز' }, { status: 500 });
+  }
 
-    const nextUid = (maxRow?.device_uid || 0) + 1;
+  const { data, error } = await supabase
+    .from('students')
+    .insert({ ...validatedData, device_uid: nextUid })
+    .select()
+    .single();
 
-    const { data, error } = await supabase
-      .from('students')
-      .insert({ ...validatedData, device_uid: nextUid })
-      .select()
-      .single();
-
-    if (!error) {
-      return NextResponse.json({ data }, { status: 201 });
-    }
-
-    // If unique constraint violation on device_uid, retry
-    if (error.code === '23505' && attempt < MAX_RETRIES - 1) {
-      continue;
-    }
-
+  if (error) {
     return NextResponse.json({ error: 'حدث خطأ أثناء إضافة الطالب' }, { status: 400 });
   }
 
-  return NextResponse.json({ error: 'فشل في تخصيص معرّف الجهاز، يرجى المحاولة مرة أخرى' }, { status: 500 });
+  return NextResponse.json({ data }, { status: 201 });
 }

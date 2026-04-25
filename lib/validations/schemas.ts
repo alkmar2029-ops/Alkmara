@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { checkDeviceIp } from '@/lib/utils/ip-allowlist';
 
 // Student schemas
 export const createStudentSchema = z.object({
@@ -32,23 +33,21 @@ export const createDeviceSchema = z.object({
   section_id: z.number().int().positive().optional().nullable(),
 });
 
-// Also add a refine to reject private/internal IPs for SSRF protection:
-export const createDeviceSchemaStrict = createDeviceSchema.refine(
-  (data) => {
-    const parts = data.ip_address.split('.').map(Number);
-    const [a, b] = parts;
-    if (a === 127) return false; // localhost
-    if (a === 10) return false; // private class A
-    if (a === 172 && b >= 16 && b <= 31) return false; // private class B
-    if (a === 192 && b === 168) return false; // private class C
-    if (a === 169 && b === 254) return false; // link-local
-    if (a === 0) return false; // unspecified
-    if (a === 100 && b >= 64 && b <= 127) return false; // CGN
-    if (data.ip_address === '255.255.255.255') return false; // broadcast
-    return true;
-  },
-  { message: 'عنوان IP غير مسموح به - لا يمكن استخدام عناوين الشبكة الداخلية', path: ['ip_address'] }
-);
+// Allowlist-based IP validation: ZKTeco devices live on internal school
+// networks, so blocking RFC1918 outright (the previous behaviour) made device
+// registration impossible. checkDeviceIp() permits internal ranges by default,
+// blocks loopback/broadcast/link-local/multicast always, and tightens the
+// allowlist when ALLOWED_DEVICE_CIDRS or ALLOWED_DEVICE_IP_PREFIXES is set.
+export const createDeviceSchemaStrict = createDeviceSchema.superRefine((data, ctx) => {
+  const result = checkDeviceIp(data.ip_address);
+  if (!result.ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: result.reason || 'عنوان IP غير مسموح به',
+      path: ['ip_address'],
+    });
+  }
+});
 
 // Attendance schemas
 export const createAttendanceSchema = z.object({
@@ -64,8 +63,11 @@ export const createAttendanceSchema = z.object({
 // Settings schemas
 export const updateSettingsSchema = z.object({
   school_name: z.string().min(1, 'اسم المدرسة مطلوب').max(200).optional(),
+  principal_name: z.string().max(200).optional().or(z.literal('')),
+  phone: z.string().max(20).optional().or(z.literal('')),
   stage: z.enum(['elementary', 'middle', 'secondary']).optional(),
   academic_year: z.string().max(20).optional(),
+  section_type: z.enum(['letters', 'numbers']).optional(),
   late_threshold: z.number().int().min(1).max(120).optional(),
   absent_threshold: z.number().int().min(1).max(240).optional(),
 });
@@ -87,19 +89,26 @@ export const createScheduleSchema = z.object({
 });
 
 // Import schemas
+// Hard ceiling on rows per import — protects the API from accidentally being
+// used as a vector for prototype-pollution / ReDoS payloads built upstream
+// from xlsx (no upstream patch available for SheetJS).
+export const MAX_IMPORT_ROWS = 10_000;
+
 export const importStudentsSchema = z.object({
   students: z.array(z.object({
-    student_id: z.string().min(1),
-    first_name: z.string().min(1),
-    last_name: z.string().optional().default(''),
-    father_name: z.string().optional().default(''),
-    phone: z.string().optional().default(''),
-    notes: z.string().optional().default(''),
+    student_id: z.string().min(1).max(20),
+    first_name: z.string().min(1).max(100),
+    last_name: z.string().max(100).optional().default(''),
+    father_name: z.string().max(100).optional().default(''),
+    phone: z.string().max(20).optional().default(''),
+    notes: z.string().max(500).optional().default(''),
     grade_id: z.number().int().positive().optional(),
     section_id: z.number().int().positive().optional(),
-    grade_name: z.string().optional().default(''),
-    section_name: z.string().optional().default(''),
-  })).min(1, 'يجب إضافة طالب واحد على الأقل'),
+    grade_name: z.string().max(100).optional().default(''),
+    section_name: z.string().max(100).optional().default(''),
+  }))
+    .min(1, 'يجب إضافة طالب واحد على الأقل')
+    .max(MAX_IMPORT_ROWS, `يتجاوز الحد الأقصى للطلاب في الاستيراد (${MAX_IMPORT_ROWS})`),
   grade_id: z.number().int().positive().optional(),
   section_id: z.number().int().positive().optional(),
   skip_duplicates: z.boolean().default(false),
@@ -115,6 +124,8 @@ export const promoteSchema = z.object({
 export const deviceActionSchema = z.object({
   action: z.enum(['connect', 'disconnect', 'sync-time', 'info', 'users', 'clear-logs', 'push-users', 'pull-logs', 'compare']),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // Required for destructive actions (clear-logs, push-users, pull-logs).
+  confirm: z.boolean().optional(),
 });
 
 // Query params helpers

@@ -1,11 +1,12 @@
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateBody, updateSettingsSchema } from '@/lib/validations/schemas';
+import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.from('school_settings').select('*').limit(1);
 
   if (error) return NextResponse.json({ error: 'حدث خطأ في جلب الإعدادات' }, { status: 400 });
@@ -26,7 +27,10 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
-  const supabase = createAdminSupabaseClient();
+  const auth = await requireRole(['admin']);
+  if (!auth.ok) return auth.res;
+
+  const supabase = await createServerSupabaseClient();
   let body;
   try {
     body = await request.json();
@@ -48,5 +52,15 @@ export async function PUT(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: 'حدث خطأ في حفظ الإعدادات' }, { status: 400 });
+
+  await writeAuditLog({
+    ctx: auth.ctx,
+    action: 'settings.update',
+    targetType: 'school_settings',
+    targetId: 1,
+    details: { changed_keys: Object.keys(validation.data) },
+    request,
+  });
+
   return NextResponse.json({ data }, { headers: { 'Cache-Control': 'no-store' } });
 }

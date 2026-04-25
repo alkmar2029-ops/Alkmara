@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateBody, updateStudentSchema } from '@/lib/validations/schemas';
+import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'معرّف الطالب غير صالح' }, { status: 400 });
   }
 
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from('students')
     .select('*, grades(name, stage), sections(name)')
@@ -22,6 +23,9 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireRole(['admin', 'staff']);
+  if (!auth.ok) return auth.res;
+
   const id = parseInt(params.id);
   if (isNaN(id)) {
     return NextResponse.json({ error: 'معرّف الطالب غير صالح' }, { status: 400 });
@@ -39,7 +43,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
 
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from('students')
     .update({ ...validation.data, updated_at: new Date().toISOString() })
@@ -51,18 +55,31 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   return NextResponse.json({ data });
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  // Disabling/deleting students is admin-only.
+  const auth = await requireRole(['admin']);
+  if (!auth.ok) return auth.res;
+
   const id = parseInt(params.id);
   if (isNaN(id)) {
     return NextResponse.json({ error: 'معرّف الطالب غير صالح' }, { status: 400 });
   }
 
-  const supabase = createAdminSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { error } = await supabase
     .from('students')
     .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq('id', id);
 
   if (error) return NextResponse.json({ error: 'حدث خطأ أثناء حذف الطالب' }, { status: 400 });
+
+  await writeAuditLog({
+    ctx: auth.ctx,
+    action: 'student.deactivate',
+    targetType: 'student',
+    targetId: id,
+    request,
+  });
+
   return NextResponse.json({ message: 'تم إلغاء تفعيل الطالب' });
 }
