@@ -37,7 +37,7 @@ export default function DashboardPage() {
       <div>
         <h2 className="text-2xl font-bold">لوحة التحكم</h2>
         {stats?.schoolName && (
-          <p className="text-gray-500 mt-1">{stats.schoolName} - {STAGE_LABELS[stats.stage] || ''}</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">{stats.schoolName} - {STAGE_LABELS[stats.stage] || ''}</p>
         )}
       </div>
 
@@ -60,7 +60,7 @@ export default function DashboardPage() {
             </PieChart>
           </ResponsiveContainer>
         ) : (
-          <p className="text-center text-gray-400 py-12">لا توجد بيانات حضور اليوم</p>
+          <p className="text-center text-gray-400 dark:text-gray-500 py-12">لا توجد بيانات حضور اليوم</p>
         )}
       </div>
     </div>
@@ -69,13 +69,15 @@ export default function DashboardPage() {
 
 function StatCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: any; color: string }) {
   const colors: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-600', green: 'bg-green-50 text-green-600',
-    purple: 'bg-purple-50 text-purple-600', yellow: 'bg-yellow-50 text-yellow-600',
+    blue: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
+    green: 'bg-green-50 text-green-600 dark:bg-green-500/15 dark:text-green-400',
+    purple: 'bg-purple-50 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400',
+    yellow: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-500/15 dark:text-yellow-400',
   };
   return (
-    <div className="card flex items-center gap-4">
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${colors[color]}`}><Icon className="w-6 h-6" /></div>
-      <div><p className="text-sm text-gray-500">{label}</p><p className="text-2xl font-bold">{value}</p></div>
+    <div className="card flex items-center gap-4 min-w-0">
+      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${colors[color]}`}><Icon className="w-6 h-6" /></div>
+      <div className="min-w-0"><p className="text-sm text-gray-500 dark:text-gray-400 truncate">{label}</p><p className="text-2xl font-bold truncate">{value}</p></div>
     </div>
   );
 }

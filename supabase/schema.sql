@@ -617,6 +617,62 @@ $$;
 GRANT EXECUTE ON FUNCTION set_device_runtime_status(INTEGER, TEXT, BOOLEAN) TO authenticated;
 
 -- ============================================
+-- Message templates (e.g. WhatsApp late-notification body)
+-- Stored as named records so admins can edit body text without redeploy.
+-- ============================================
+CREATE TABLE IF NOT EXISTS message_templates (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT,
+    body TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+INSERT INTO message_templates (name, description, body) VALUES (
+    'late_notification',
+    'رسالة إبلاغ ولي الأمر بتأخر الطالب',
+    E'السلام عليكم،\n\nنود إعلامكم بأن الطالب/ـة {{student_name}} ({{grade}} - {{section}}) قد تأخر عن الحضور لليوم {{date}}.\nوقت التسجيل في الجهاز: {{punch_time}}\nمدة التأخير: {{minutes_late}} دقيقة\n\nشكراً لتعاونكم.\nإدارة المدرسة'
+)
+ON CONFLICT (name) DO NOTHING;
+
+ALTER TABLE message_templates ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "templates read" ON message_templates;
+CREATE POLICY "templates read" ON message_templates
+    FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "templates admin write" ON message_templates;
+CREATE POLICY "templates admin write" ON message_templates
+    FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+
+-- ============================================
+-- WhatsApp (WasenderAPI) integration settings — singleton (id=1)
+-- ============================================
+CREATE TABLE IF NOT EXISTS whatsapp_settings (
+    id SERIAL PRIMARY KEY,
+    api_key TEXT,
+    session_id TEXT,
+    phone_number TEXT,
+    status VARCHAR(20) DEFAULT 'disconnected'
+        CHECK (status IN ('connected', 'disconnected', 'connecting', 'scanning', 'error', 'unknown')),
+    last_checked_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+INSERT INTO whatsapp_settings (id, status) VALUES (1, 'disconnected')
+ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE whatsapp_settings ENABLE ROW LEVEL SECURITY;
+
+-- API key is sensitive; restrict both read and write to admin only.
+DROP POLICY IF EXISTS "whatsapp_settings admin read" ON whatsapp_settings;
+CREATE POLICY "whatsapp_settings admin read" ON whatsapp_settings
+    FOR SELECT TO authenticated USING (is_admin());
+DROP POLICY IF EXISTS "whatsapp_settings admin write" ON whatsapp_settings;
+CREATE POLICY "whatsapp_settings admin write" ON whatsapp_settings
+    FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+
+-- ============================================
 -- Migration block (idempotent — safe to re-run on existing databases)
 -- ============================================
 

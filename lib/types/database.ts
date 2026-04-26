@@ -96,6 +96,20 @@ export interface SchoolSettings {
   updated_at: string;
 }
 
+export type WhatsappStatus = 'connected' | 'disconnected' | 'connecting' | 'scanning' | 'error' | 'unknown';
+
+export interface WhatsappSettings {
+  id: number;
+  // api_key is intentionally returned as a masked string (e.g. "••••AB12") to the client
+  api_key: string | null;
+  api_key_set: boolean;
+  session_id: string | null;
+  phone_number: string | null;
+  status: WhatsappStatus;
+  last_checked_at: string | null;
+  updated_at: string;
+}
+
 export interface DeviceSyncLog {
   id: number;
   device_id: number;

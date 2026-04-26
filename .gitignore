@@ -5,6 +5,9 @@ node_modules/
 *.log
 .DS_Store
 
+# PM2 logs
+logs/
+
 # Local Claude Code settings & memory
 .claude/
 

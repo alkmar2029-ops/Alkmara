@@ -20,7 +20,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Paginatio
       >
         <ChevronRight className="w-4 h-4" />
       </button>
-      <span className="text-sm text-gray-600">
+      <span className="text-sm text-gray-600 dark:text-gray-300">
         صفحة {page} من {totalPages}
       </span>
       <button

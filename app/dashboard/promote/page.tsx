@@ -56,17 +56,17 @@ export default function PromotePage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center gap-3">
-        <GraduationCap className="w-7 h-7 text-gray-400" />
+        <GraduationCap className="w-7 h-7 text-gray-400 dark:text-gray-500" />
         <div>
           <h2 className="text-2xl font-bold">ترقية الطلاب</h2>
-          <p className="text-gray-500 text-sm">نقل الطلاب للصف التالي في بداية العام الدراسي الجديد</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">نقل الطلاب للصف التالي في بداية العام الدراسي الجديد</p>
         </div>
       </div>
 
       {/* Warning */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-        <div className="text-sm text-amber-800">
+      <div className="bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30 rounded-lg p-4 flex gap-3">
+        <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="text-sm text-amber-800 dark:text-amber-200">
           <p className="font-semibold mb-1">تنبيه مهم</p>
           <ul className="space-y-1 list-disc list-inside">
             <li>سيتم <strong>حذف</strong> طلاب الصف الأخير (المتخرجين)</li>
@@ -80,7 +80,7 @@ export default function PromotePage() {
 
       {/* Error state */}
       {isError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+        <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg p-4 text-red-700 dark:text-red-400 text-sm">
           {(error as Error)?.message || 'حدث خطأ أثناء تحميل المعاينة'}
         </div>
       )}
@@ -97,49 +97,53 @@ export default function PromotePage() {
           <div className="space-y-3 mb-6">
             {preview.preview.map((item: any) => (
               <div key={item.grade_id} className={`flex items-center gap-4 p-4 rounded-lg border-2 ${
-                item.action === 'delete' ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'
+                item.action === 'delete'
+                  ? 'border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-500/15'
+                  : 'border-blue-200 bg-blue-50 dark:border-blue-500/30 dark:bg-blue-500/15'
               }`}>
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  item.action === 'delete' ? 'bg-red-100' : 'bg-blue-100'
+                  item.action === 'delete'
+                    ? 'bg-red-100 dark:bg-red-500/25'
+                    : 'bg-blue-100 dark:bg-blue-500/25'
                 }`}>
                   {item.action === 'delete' ? (
-                    <Trash2 className="w-5 h-5 text-red-600" />
+                    <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
                   ) : (
-                    <ArrowUp className="w-5 h-5 text-blue-600" />
+                    <ArrowUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   )}
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <p className="font-medium">{item.grade_name} {STAGE_LABELS[settings?.stage] || ''}</p>
-                  <p className={`text-sm ${item.action === 'delete' ? 'text-red-600' : 'text-blue-600'}`}>
+                  <p className={`text-sm ${item.action === 'delete' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                     {item.action_label}
                   </p>
                 </div>
                 <div className="text-start">
                   <p className="text-2xl font-bold">{item.student_count}</p>
-                  <p className="text-xs text-gray-500">طالب</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">طالب</p>
                 </div>
               </div>
             ))}
           </div>
 
           {/* Summary */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 text-center">
               <p className="text-xl font-bold">{preview.total_students}</p>
-              <p className="text-xs text-gray-500">إجمالي الطلاب</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">إجمالي الطلاب</p>
             </div>
-            <div className="bg-red-50 rounded-lg p-3 text-center">
-              <p className="text-xl font-bold text-red-600">{preview.graduated_count}</p>
-              <p className="text-xs text-red-600">سيتم حذفهم</p>
+            <div className="bg-red-50 dark:bg-red-500/15 rounded-lg p-3 text-center">
+              <p className="text-xl font-bold text-red-600 dark:text-red-400">{preview.graduated_count}</p>
+              <p className="text-xs text-red-600 dark:text-red-400">سيتم حذفهم</p>
             </div>
-            <div className="bg-blue-50 rounded-lg p-3 text-center">
-              <p className="text-xl font-bold text-blue-600">{preview.total_students - preview.graduated_count}</p>
-              <p className="text-xs text-blue-600">سيتم ترقيتهم</p>
+            <div className="bg-blue-50 dark:bg-blue-500/15 rounded-lg p-3 text-center">
+              <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{preview.total_students - preview.graduated_count}</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400">سيتم ترقيتهم</p>
             </div>
           </div>
 
           {preview.devices_to_clear > 0 && (
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
               <Fingerprint className="w-4 h-4" />
               <span>{preview.devices_to_clear} جهاز سيتم إعادة تعيينه</span>
             </div>
@@ -151,20 +155,20 @@ export default function PromotePage() {
               بدء الترقية
             </button>
           ) : (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-3">
-              <p className="text-red-800 font-semibold">هل أنت متأكد؟ هذا الإجراء لا يمكن التراجع عنه.</p>
-              <div className="flex gap-3">
+            <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg p-4 space-y-3 max-w-[calc(100vw-2rem)]">
+              <p className="text-red-800 dark:text-red-200 font-semibold">هل أنت متأكد؟ هذا الإجراء لا يمكن التراجع عنه.</p>
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button onClick={() => promoteMutation.mutate()} disabled={promoteMutation.isPending}
                   className="btn-danger flex-1 flex items-center justify-center gap-2">
                   {promoteMutation.isPending ? 'جاري الترقية...' : 'تأكيد الترقية'}
                 </button>
-                <button onClick={() => setShowConfirm(false)} className="btn-secondary">إلغاء</button>
+                <button onClick={() => setShowConfirm(false)} className="btn-secondary w-full sm:w-auto">إلغاء</button>
               </div>
             </div>
           )}
         </div>
       ) : (
-        <div className="text-center py-12 text-gray-400">لا يوجد طلاب للترقية</div>
+        <div className="text-center py-12 text-gray-400 dark:text-gray-500">لا يوجد طلاب للترقية</div>
       )}
     </div>
   );

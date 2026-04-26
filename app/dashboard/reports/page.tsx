@@ -68,17 +68,17 @@ export default function ReportsPage() {
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold">التقارير</h2>
-      <div className="flex gap-2 border-b">
-        <button onClick={() => setTab('daily')} className={`px-4 py-2 -mb-px text-sm font-medium border-b-2 ${tab === 'daily' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>تقرير يومي</button>
-        <button onClick={() => setTab('section')} className={`px-4 py-2 -mb-px text-sm font-medium border-b-2 ${tab === 'section' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>تقرير بالشعبة</button>
+      <div className="flex gap-2 border-b dark:border-gray-800 overflow-x-auto">
+        <button onClick={() => setTab('daily')} className={`px-4 py-2 -mb-px text-sm font-medium border-b-2 whitespace-nowrap ${tab === 'daily' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400'}`}>تقرير يومي</button>
+        <button onClick={() => setTab('section')} className={`px-4 py-2 -mb-px text-sm font-medium border-b-2 whitespace-nowrap ${tab === 'section' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400'}`}>تقرير بالشعبة</button>
       </div>
 
       {tab === 'daily' && (
         <>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input max-w-xs" />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input w-full sm:max-w-xs" />
 
           {dailyError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+            <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg p-4 text-red-700 dark:text-red-400 text-sm">
               حدث خطأ أثناء تحميل التقرير اليومي
             </div>
           )}
@@ -87,32 +87,34 @@ export default function ReportsPage() {
             <>
               {dailyReport?.length > 0 && (
                 <div className="card">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={dailyReport} layout="vertical">
-                      <XAxis type="number" /><YAxis dataKey="grade_name" type="category" width={100} /><Tooltip /><Legend />
-                      <Bar dataKey="present" name="حاضر" fill="#22c55e" stackId="a" />
-                      <Bar dataKey="late" name="متأخر" fill="#eab308" stackId="a" />
-                      <Bar dataKey="absent" name="غائب" fill="#ef4444" stackId="a" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div className="overflow-x-auto">
+                    <ResponsiveContainer width="100%" height={300} minWidth={320}>
+                      <BarChart data={dailyReport} layout="vertical">
+                        <XAxis type="number" /><YAxis dataKey="grade_name" type="category" width={100} /><Tooltip /><Legend />
+                        <Bar dataKey="present" name="حاضر" fill="#22c55e" stackId="a" />
+                        <Bar dataKey="late" name="متأخر" fill="#eab308" stackId="a" />
+                        <Bar dataKey="absent" name="غائب" fill="#ef4444" stackId="a" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               )}
               <div className="overflow-x-auto">
                 <div className="card p-0 overflow-hidden">
                   <table className="w-full">
-                    <thead><tr className="bg-gray-50 text-gray-600 text-sm font-semibold">
+                    <thead><tr className="bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 text-sm font-semibold">
                       <th className="px-4 py-3 text-right">الصف</th><th className="px-4 py-3 text-right">الشعبة</th>
                       <th className="px-4 py-3 text-right">حاضر</th><th className="px-4 py-3 text-right">متأخر</th>
                       <th className="px-4 py-3 text-right">غائب</th><th className="px-4 py-3 text-right">النسبة</th>
                     </tr></thead>
                     <tbody>
                       {(dailyReport || []).map((r: any) => (
-                        <tr key={r.section_id} className="border-b border-gray-100">
+                        <tr key={r.section_id} className="border-b border-gray-100 dark:border-gray-800">
                           <td className="px-4 py-3">{r.grade_name}</td>
                           <td className="px-4 py-3">{r.section_name}</td>
-                          <td className="px-4 py-3 text-green-600 font-medium">{r.present}</td>
-                          <td className="px-4 py-3 text-yellow-600 font-medium">{r.late}</td>
-                          <td className="px-4 py-3 text-red-600 font-medium">{r.absent}</td>
+                          <td className="px-4 py-3 text-green-600 dark:text-green-400 font-medium">{r.present}</td>
+                          <td className="px-4 py-3 text-yellow-600 dark:text-yellow-400 font-medium">{r.late}</td>
+                          <td className="px-4 py-3 text-red-600 dark:text-red-400 font-medium">{r.absent}</td>
                           <td className="px-4 py-3">{r.attendance_rate}%</td>
                         </tr>
                       ))}
@@ -132,21 +134,21 @@ export default function ReportsPage() {
 
       {tab === 'section' && (
         <>
-          <div className="flex gap-3 flex-wrap">
-            <select value={gradeId} onChange={e => { setGradeId(e.target.value); setSectionId(''); }} className="input max-w-[180px]">
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+            <select value={gradeId} onChange={e => { setGradeId(e.target.value); setSectionId(''); }} className="input w-full sm:max-w-[180px]">
               <option value="">اختر الصف</option>
               {(grades || []).map((g: any) => <option key={g.id} value={g.id}>{g.name} {STAGE_LABELS[g.stage]}</option>)}
             </select>
-            <select value={sectionId} onChange={e => setSectionId(e.target.value)} className="input max-w-[150px]" disabled={!gradeId}>
+            <select value={sectionId} onChange={e => setSectionId(e.target.value)} className="input w-full sm:max-w-[150px]" disabled={!gradeId}>
               <option value="">اختر الشعبة</option>
               {(sections || []).map((s: any) => <option key={s.id} value={s.id}>شعبة {s.name}</option>)}
             </select>
-            <input type="date" value={range.from} onChange={e => handleRangeChange('from', e.target.value)} className="input max-w-xs" />
-            <input type="date" value={range.to} onChange={e => handleRangeChange('to', e.target.value)} className="input max-w-xs" />
+            <input type="date" value={range.from} onChange={e => handleRangeChange('from', e.target.value)} className="input w-full sm:max-w-xs" />
+            <input type="date" value={range.to} onChange={e => handleRangeChange('to', e.target.value)} className="input w-full sm:max-w-xs" />
           </div>
 
           {sectionError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+            <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg p-4 text-red-700 dark:text-red-400 text-sm">
               حدث خطأ أثناء تحميل تقرير الشعبة
             </div>
           )}
@@ -155,18 +157,18 @@ export default function ReportsPage() {
             <div className="overflow-x-auto">
               <div className="card p-0 overflow-hidden">
                 <table className="w-full">
-                  <thead><tr className="bg-gray-50 text-gray-600 text-sm font-semibold">
+                  <thead><tr className="bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 text-sm font-semibold">
                     <th className="px-4 py-3 text-right">رقم الهوية</th><th className="px-4 py-3 text-right">الاسم</th>
                     <th className="px-4 py-3 text-right">حاضر</th><th className="px-4 py-3 text-right">متأخر</th><th className="px-4 py-3 text-right">غائب</th>
                   </tr></thead>
                   <tbody>
                     {sectionReport.map((s: any) => (
-                      <tr key={s.id} className="border-b border-gray-100">
+                      <tr key={s.id} className="border-b border-gray-100 dark:border-gray-800">
                         <td className="px-4 py-3 font-mono text-sm">{s.student_id}</td>
                         <td className="px-4 py-3">{s.first_name} {s.father_name ? s.father_name + ' ' : ''}{s.last_name}</td>
-                        <td className="px-4 py-3 text-green-600">{s.summary.present}</td>
-                        <td className="px-4 py-3 text-yellow-600">{s.summary.late}</td>
-                        <td className="px-4 py-3 text-red-600">{s.summary.absent}</td>
+                        <td className="px-4 py-3 text-green-600 dark:text-green-400">{s.summary.present}</td>
+                        <td className="px-4 py-3 text-yellow-600 dark:text-yellow-400">{s.summary.late}</td>
+                        <td className="px-4 py-3 text-red-600 dark:text-red-400">{s.summary.absent}</td>
                       </tr>
                     ))}
                     {(!sectionReport || sectionReport.length === 0) && (

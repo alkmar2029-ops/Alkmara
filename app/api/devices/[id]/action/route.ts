@@ -56,7 +56,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         const { data: device } = await supabase.from('devices').select('*').eq('id', deviceId).single();
         if (!device) return NextResponse.json({ error: 'الجهاز غير موجود' }, { status: 404 });
 
-        const service = new DeviceService(device.ip_address, device.port);
+        // Use a generous timeout — Wi-Fi networks at schools are often slow.
+        const service = new DeviceService(device.ip_address, device.port, 15000);
         await service.connect();
         await addDeviceToPool(deviceId, service);
 
@@ -372,7 +373,28 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       default:
         return NextResponse.json({ error: 'إجراء غير معروف' }, { status: 400 });
     }
-  } catch {
-    return NextResponse.json({ error: 'حدث خطأ في تنفيذ العملية' }, { status: 500 });
+  } catch (e: any) {
+    // zkteco-js sometimes throws plain objects (no .message). Pull whatever
+    // hint we can: message → error → code → reason → stringified body.
+    let raw: string;
+    if (e instanceof Error) raw = e.message;
+    else if (e && typeof e === 'object') {
+      raw = e.message || e.error || e.reason || e.code || '';
+      if (!raw) {
+        try { raw = JSON.stringify(e, Object.getOwnPropertyNames(e)).slice(0, 300); }
+        catch { raw = '[unserializable error]'; }
+      }
+    } else {
+      raw = String(e);
+    }
+    console.error(`[device-action] device=${deviceId} action=${action} error:`, raw, e);
+
+    let userMsg = 'حدث خطأ في تنفيذ العملية';
+    if (/ETIMEDOUT|timeout|timed.?out/i.test(raw)) userMsg = 'انتهت مهلة الاتصال — Wi-Fi ضعيف أو الجهاز بطيء. أعد المحاولة (يفضّل ربط PC بكابل LAN)';
+    else if (/ECONNREFUSED/i.test(raw)) userMsg = 'الجهاز رفض الاتصال — تأكد من المنفذ (4370 افتراضياً)';
+    else if (/EHOSTUNREACH|ENETUNREACH/i.test(raw)) userMsg = 'لا يمكن الوصول للجهاز — تحقق من الشبكة وعنوان IP';
+    else if (/EADDRNOTAVAIL/i.test(raw)) userMsg = 'عنوان IP غير صالح';
+    else if (raw && raw.length < 200) userMsg = `خطأ: ${raw}`;
+    return NextResponse.json({ error: userMsg }, { status: 500 });
   }
 }

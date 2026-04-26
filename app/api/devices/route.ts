@@ -8,13 +8,19 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const supabase = await createServerSupabaseClient();
+  // Disambiguate the embed: there are two FKs between devices and sections
+  // (sections.device_id → devices.id, and devices.section_id → sections.id).
+  // We want the section the device belongs to.
   const { data, error } = await supabase
     .from('devices')
-    .select('*, sections(id, name, grades(id, name, stage))')
+    .select('*, sections!devices_section_id_fkey(id, name, grades(id, name, stage))')
     .eq('is_active', true)
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: 'حدث خطأ في جلب الأجهزة' }, { status: 400 });
+  if (error) {
+    console.error('[api/devices] supabase error:', error.message);
+    return NextResponse.json({ error: error.message || 'حدث خطأ في جلب الأجهزة' }, { status: 400 });
+  }
 
   const connectedIds = getConnectedDeviceIds();
   const devices = (data || []).map((d: any) => ({

@@ -1,8 +1,8 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { validateBody, createAttendanceSchema } from '@/lib/validations/schemas';
+import { validateBody, createAttendanceSchema, deleteAttendanceBulkSchema } from '@/lib/validations/schemas';
 import { getLocalToday, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '@/lib/utils/helpers';
-import { requireRole } from '@/lib/supabase/auth';
+import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,4 +74,36 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: 'حدث خطأ في حفظ سجل الحضور' }, { status: 400 });
   return NextResponse.json({ data }, { status: 201 });
+}
+
+// Bulk delete: used by the late-notifications page to remove duplicate/wrong
+// late records. Admin-only because mass deletes shouldn't sit with staff.
+export async function DELETE(request: NextRequest) {
+  const auth = await requireRole(['admin']);
+  if (!auth.ok) return auth.res;
+
+  const supabase = await createServerSupabaseClient();
+  let body;
+  try { body = await request.json(); } catch {
+    return NextResponse.json({ error: 'صيغة البيانات المرسلة غير صالحة' }, { status: 400 });
+  }
+  const validation = validateBody(deleteAttendanceBulkSchema, body);
+  if (!validation.success) return NextResponse.json({ error: validation.error }, { status: 400 });
+
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .delete()
+    .in('id', validation.data.ids)
+    .select('id');
+  if (error) return NextResponse.json({ error: 'فشل حذف السجلات' }, { status: 400 });
+
+  await writeAuditLog({
+    ctx: auth.ctx,
+    action: 'attendance.bulk_delete',
+    targetType: 'attendance_records',
+    details: { count: data?.length ?? 0, ids: validation.data.ids },
+    request,
+  });
+
+  return NextResponse.json({ data: { deleted: data?.length ?? 0 } });
 }

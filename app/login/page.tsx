@@ -32,15 +32,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-900 dark:to-gray-950 p-4 px-4">
       <div className="w-full max-w-md">
         <div className="card">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Fingerprint className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">نظام حضور الطلاب</h1>
-            <p className="text-gray-500 mt-1">ZKTeco MB2000</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">نظام حضور الطلاب</h1>
+            <p className="text-gray-500 dark:text-gray-400 mt-1">ZKTeco MB2000</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -67,7 +67,7 @@ export default function LoginPage() {
                   required
                   disabled={loading}
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>

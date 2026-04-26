@@ -19,15 +19,35 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Inline before hydration to apply the saved theme and avoid flash.
+const themeInitScript = `
+(function(){try{
+  var t = localStorage.getItem('theme');
+  var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (t === 'dark' || (!t && prefersDark)) document.documentElement.classList.add('dark');
+  document.documentElement.classList.add('theme-ready');
+}catch(e){}})();
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ar" dir="rtl" className={cairo.className}>
-      <body className="bg-gray-50 text-gray-900 min-h-screen">
+    // suppressHydrationWarning: the inline theme-init script mutates <html>
+    // (adds `dark` / `theme-ready`) before React hydrates, by design.
+    <html lang="ar" dir="rtl" className={cairo.className} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 min-h-screen transition-colors">
         <Providers>
           <ErrorBoundary>
             {children}
           </ErrorBoundary>
-          <Toaster position="top-center" />
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              className: '!bg-white !text-gray-900 dark:!bg-gray-800 dark:!text-gray-100',
+            }}
+          />
         </Providers>
       </body>
     </html>

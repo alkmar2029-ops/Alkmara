@@ -120,6 +120,40 @@ export const promoteSchema = z.object({
   confirm: z.boolean(),
 });
 
+// Message template schema
+export const updateTemplateSchema = z.object({
+  body: z.string().min(5, 'نص الرسالة قصير جداً').max(4000, 'نص الرسالة طويل جداً'),
+  description: z.string().max(200).optional().or(z.literal('')),
+  is_active: z.boolean().optional(),
+});
+
+// Bulk send late notifications
+export const sendLateBulkSchema = z.object({
+  attendance_ids: z.array(z.number().int().positive()).min(1, 'لا توجد سجلات للإرسال').max(500, 'الحد الأقصى 500 سجل'),
+  template_name: z.string().min(1).max(50).default('late_notification'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+// Bulk delete attendance records
+export const deleteAttendanceBulkSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, 'لا يوجد عناصر للحذف').max(500),
+});
+
+// Bulk sync from devices
+export const syncBulkSchema = z.object({
+  device_ids: z.array(z.number().int().positive()).min(1, 'يجب اختيار جهاز واحد على الأقل').max(20),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ غير صالح'),
+  // dry_run=true → preview only, no writes. Defaults to true for safety.
+  dry_run: z.boolean().optional().default(true),
+});
+
+// WhatsApp (WasenderAPI) settings schema
+export const updateWhatsappSettingsSchema = z.object({
+  // Allow either a fresh key or the masked sentinel meaning "keep existing".
+  api_key: z.string().min(10, 'مفتاح API يجب أن يكون 10 أحرف على الأقل').max(500).optional(),
+  session_id: z.string().max(100).optional().or(z.literal('')),
+});
+
 // Device action schema
 export const deviceActionSchema = z.object({
   action: z.enum(['connect', 'disconnect', 'sync-time', 'info', 'users', 'clear-logs', 'push-users', 'pull-logs', 'compare']),

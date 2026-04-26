@@ -65,7 +65,7 @@ export default function SettingsPage() {
 
   if (isError) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+      <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg p-4 text-red-700 dark:text-red-400 text-sm">
         {(error as Error)?.message || 'حدث خطأ أثناء تحميل الإعدادات'}
       </div>
     );
@@ -87,12 +87,12 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center gap-3">
-        <Settings className="w-7 h-7 text-gray-400" />
+        <Settings className="w-7 h-7 text-gray-400 dark:text-gray-500" />
         <h2 className="text-2xl font-bold">إعدادات المدرسة</h2>
       </div>
 
       {!settings?.school_name && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800 text-sm">
+        <div className="bg-yellow-50 dark:bg-yellow-500/15 border border-yellow-200 dark:border-yellow-500/30 rounded-lg p-4 text-yellow-800 dark:text-yellow-200 text-sm">
           يرجى إكمال إعدادات المدرسة أولاً للبدء في استخدام النظام
         </div>
       )}
@@ -106,7 +106,7 @@ export default function SettingsPage() {
             <input value={form.school_name} onChange={e => setForm({ ...form, school_name: e.target.value })}
               className="input" placeholder="مثال: مدرسة الملك فهد الابتدائية" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="label">اسم المدير</label>
               <input value={form.principal_name} onChange={e => setForm({ ...form, principal_name: e.target.value })}
@@ -136,14 +136,16 @@ export default function SettingsPage() {
           {STAGES.map(stage => (
             <label key={stage.value}
               className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
-                form.stage === stage.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                form.stage === stage.value
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/15'
+                  : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
               }`}>
               <input type="radio" name="stage" value={stage.value} checked={form.stage === stage.value}
                 onChange={e => setForm({ ...form, stage: e.target.value })}
                 className="w-4 h-4 text-blue-600" />
               <div>
                 <p className="font-medium">{stage.label}</p>
-                <p className="text-sm text-gray-500">{stage.desc}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{stage.desc}</p>
               </div>
             </label>
           ))}
@@ -153,32 +155,36 @@ export default function SettingsPage() {
       {/* نوع تصنيف الشعب */}
       <div className="card">
         <h3 className="font-semibold text-lg mb-4">نوع تصنيف الشعب</h3>
-        <div className="flex gap-4">
-          <label className={`flex-1 flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
-            form.section_type === 'letters' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+            form.section_type === 'letters'
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/15'
+              : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
           }`}>
             <input type="radio" name="section_type" value="letters" checked={form.section_type === 'letters'}
               onChange={e => setForm({ ...form, section_type: e.target.value })} className="w-4 h-4 text-blue-600" />
             <div>
               <p className="font-medium">حروف</p>
-              <p className="text-sm text-gray-500">أ ، ب ، ج ، د ...</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">أ ، ب ، ج ، د ...</p>
             </div>
           </label>
-          <label className={`flex-1 flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
-            form.section_type === 'numbers' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+          <label className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+            form.section_type === 'numbers'
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/15'
+              : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
           }`}>
             <input type="radio" name="section_type" value="numbers" checked={form.section_type === 'numbers'}
               onChange={e => setForm({ ...form, section_type: e.target.value })} className="w-4 h-4 text-blue-600" />
             <div>
               <p className="font-medium">أرقام</p>
-              <p className="text-sm text-gray-500">1 ، 2 ، 3 ، 4 ...</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">1 ، 2 ، 3 ، 4 ...</p>
             </div>
           </label>
         </div>
       </div>
 
       <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending || !form.school_name}
-        className="btn-primary flex items-center gap-2 relative">
+        className="btn-primary w-full sm:w-auto flex items-center justify-center gap-2 relative">
         <Save className="w-4 h-4" />
         {saveMutation.isPending ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
         {hasUnsavedChanges && (

@@ -86,9 +86,9 @@ export default function GradesPage() {
   if (!settings?.school_name) {
     return (
       <div className="text-center py-12">
-        <Info className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
+        <Info className="w-12 h-12 text-yellow-400 dark:text-yellow-500 mx-auto mb-4" />
         <h3 className="text-lg font-semibold mb-2">أكمل إعدادات المدرسة أولاً</h3>
-        <p className="text-gray-500 mb-4">يرجى الذهاب لصفحة الإعدادات وتحديد المرحلة الدراسية</p>
+        <p className="text-gray-500 dark:text-gray-400 mb-4">يرجى الذهاب لصفحة الإعدادات وتحديد المرحلة الدراسية</p>
         <Link href="/dashboard/settings" className="btn-primary">الذهاب للإعدادات</Link>
       </div>
     );
@@ -98,7 +98,7 @@ export default function GradesPage() {
 
   if (gradesError || sectionsError) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+      <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg p-4 text-red-700 dark:text-red-300 text-sm">
         حدث خطأ أثناء تحميل البيانات. يرجى تحديث الصفحة والمحاولة مرة أخرى.
       </div>
     );
@@ -108,20 +108,20 @@ export default function GradesPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <BookOpen className="w-7 h-7 text-gray-400" />
+          <BookOpen className="w-7 h-7 text-gray-400 dark:text-gray-500" />
           <h2 className="text-2xl font-bold">الصفوف والشعب</h2>
         </div>
-        <span className="text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded-full font-medium">
+        <span className="text-sm bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full font-medium self-start sm:self-auto">
           المرحلة: {STAGE_LABELS[settings.stage]}
         </span>
       </div>
 
       <div className="card">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
           <h3 className="font-semibold">تحديد عدد الشعب لكل صف</h3>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-gray-500 dark:text-gray-400">
             التصنيف: {settings.section_type === 'letters' ? 'حروف (أ، ب، ج...)' : 'أرقام (1، 2، 3...)'}
           </span>
         </div>
@@ -129,7 +129,7 @@ export default function GradesPage() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 text-gray-600 text-sm font-semibold">
+              <tr className="bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 text-sm font-semibold">
                 <th className="px-4 py-3 text-right">الصف</th>
                 <th className="px-4 py-3 text-right w-32">عدد الشعب</th>
                 <th className="px-4 py-3 text-right">الشعب المُنشأة</th>
@@ -141,7 +141,7 @@ export default function GradesPage() {
                 const names = getSectionNames(count, settings?.section_type || 'letters');
 
                 return (
-                  <tr key={grade.id} className="border-b border-gray-100">
+                  <tr key={grade.id} className="border-b border-gray-100 dark:border-gray-800">
                     <td className="px-4 py-3 font-medium">
                       {grade.name} {STAGE_LABELS[grade.stage]}
                     </td>
@@ -161,7 +161,7 @@ export default function GradesPage() {
                     <td className="px-4 py-3">
                       <div className="flex gap-2 flex-wrap">
                         {names.map(name => (
-                          <span key={name} className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium">
+                          <span key={name} className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 text-sm font-medium">
                             {name}
                           </span>
                         ))}
@@ -174,10 +174,10 @@ export default function GradesPage() {
           </table>
         </div>
 
-        <div className="flex items-center justify-between mt-4 pt-4 border-t">
-          <span className="text-sm text-gray-500">الإجمالي: <strong>{totalSections}</strong> شعبة</span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t border-gray-200 dark:border-gray-800">
+          <span className="text-sm text-gray-500 dark:text-gray-400">الإجمالي: <strong>{totalSections}</strong> شعبة</span>
           <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
-            className="btn-primary flex items-center gap-2">
+            className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
             <Save className="w-4 h-4" />
             {saveMutation.isPending ? 'جاري الحفظ...' : 'حفظ التعديلات'}
           </button>

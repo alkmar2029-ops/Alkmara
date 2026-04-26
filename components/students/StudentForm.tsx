@@ -76,9 +76,9 @@ export default function StudentForm({ student, grades, onSubmit, onClose, loadin
           <div><label className="label">ملاحظات</label>
             <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="input" /></div>
         </div>
-        <div className="flex gap-3 pt-2">
-          <button type="submit" disabled={loading} className="btn-primary flex-1">{loading ? 'جاري الحفظ...' : 'حفظ'}</button>
-          <button type="button" onClick={onClose} className="btn-secondary">إلغاء</button>
+        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+          <button type="submit" disabled={loading} className="btn-primary flex-1 w-full sm:w-auto">{loading ? 'جاري الحفظ...' : 'حفظ'}</button>
+          <button type="button" onClick={onClose} className="btn-secondary w-full sm:w-auto">إلغاء</button>
         </div>
       </form>
     </Modal>

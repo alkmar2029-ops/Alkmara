@@ -42,15 +42,15 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
       <div
         ref={modalRef}
         tabIndex={-1}
-        className={`bg-white rounded-xl shadow-xl w-full ${maxWidth} max-h-[90vh] overflow-y-auto`}
+        className={`bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full ${maxWidth} max-w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto`}
       >
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 id="modal-title" className="text-lg font-bold">{title}</h2>
-          <button onClick={onClose} aria-label="إغلاق" className="text-gray-400 hover:text-gray-600 transition-colors">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 dark:border-gray-800">
+          <h2 id="modal-title" className="text-lg font-bold text-gray-900 dark:text-gray-100">{title}</h2>
+          <button onClick={onClose} aria-label="إغلاق" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-4">
+        <div className="p-4 sm:p-6">
           {children}
         </div>
       </div>

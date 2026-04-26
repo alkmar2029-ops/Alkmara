@@ -57,13 +57,13 @@ export default function DevicesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-2xl font-bold">أجهزة البصمة</h2>
-        <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> إضافة جهاز</button>
+        <button onClick={() => setShowForm(true)} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto"><Plus className="w-4 h-4" /> إضافة جهاز</button>
       </div>
 
       {isError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+        <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg p-4 text-red-700 dark:text-red-300 text-sm">
           {(error as Error)?.message || 'حدث خطأ أثناء تحميل الأجهزة'}
         </div>
       )}
@@ -73,28 +73,28 @@ export default function DevicesPage() {
           {(!devices || devices.length === 0) ? (
             <EmptyState title="لا توجد أجهزة مسجلة" description="اضغط إضافة جهاز للبدء" />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {devices.map((d: any) => {
                   const st = STATUS_MAP[d.status] || STATUS_MAP['disconnected'];
                   return (
                     <div key={d.id} className="card">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold">{d.name}</h3>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${st.color}`}>{st.label}</span>
+                      <div className="flex items-center justify-between mb-3 gap-2">
+                        <h3 className="font-semibold min-w-0 truncate">{d.name}</h3>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium shrink-0 ${st.color}`}>{st.label}</span>
                       </div>
-                      <div className="text-sm text-gray-500 space-y-1 mb-2">
-                        <p>IP: {d.ip_address}:{d.port}</p>
-                        <p>الموقع: {d.location || '-'}</p>
-                        <p>الموديل: {d.model}</p>
+                      <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1 mb-2">
+                        <p className="truncate">IP: {d.ip_address}:{d.port}</p>
+                        <p className="truncate">الموقع: {d.location || '-'}</p>
+                        <p className="truncate">الموديل: {d.model}</p>
                       </div>
-                      {/* Linked section */}
+                      {/* Linked section (optional — generic device serves all students) */}
                       {d.section_name ? (
-                        <div className="bg-blue-50 text-blue-700 text-sm px-3 py-2 rounded-lg mb-3 font-medium">
+                        <div className="bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 text-sm px-3 py-2 rounded-lg mb-3 font-medium">
                           الشُعبة: {d.grade_name} {STAGE_LABELS[d.grade_stage] || ''} - {d.section_name}
                         </div>
                       ) : (
-                        <div className="bg-yellow-50 text-yellow-700 text-sm px-3 py-2 rounded-lg mb-3">
-                          لم يتم ربط الجهاز بشُعبة
+                        <div className="text-xs text-gray-500 dark:text-gray-400 px-1 py-2 mb-3">
+                          جهاز عام — للسحب استخدم صفحة <a href="/dashboard/sync" className="text-blue-600 dark:text-blue-400 hover:underline">«سحب البيانات»</a>
                         </div>
                       )}
                       <div className="flex flex-wrap gap-2">
@@ -166,7 +166,7 @@ function DeviceFormContent({ onSubmit, onClose, loading }: any) {
       </div>
       <div><label className="label">الموقع</label><input value={f.location} onChange={e => setF({ ...f, location: e.target.value })} className="input" placeholder="المبنى A" /></div>
 
-      <div className="border-t pt-3 mt-3">
+      <div className="border-t border-gray-200 dark:border-gray-800 pt-3 mt-3">
         <p className="label font-semibold mb-2">ربط الجهاز بشُعبة (اختياري)</p>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label">الصف</label>
@@ -230,38 +230,38 @@ function CompareModalContent({ deviceId }: { deviceId: number }) {
       </div>
 
       {compareMutation.isError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm mb-4">
+        <div className="bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg p-4 text-red-700 dark:text-red-300 text-sm mb-4">
           {(compareMutation.error as Error)?.message || 'حدث خطأ أثناء المقارنة'}
         </div>
       )}
 
-      {isLoading ? <div className="text-center py-8 text-gray-400">جاري التحميل...</div> : data ? (
+      {isLoading ? <div className="text-center py-8 text-gray-400 dark:text-gray-500">جاري التحميل...</div> : data ? (
         <div className="space-y-4">
           {/* Summary */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-green-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">{data.present_count}</p>
-              <p className="text-sm text-green-700">حاضر</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-green-50 dark:bg-green-500/15 rounded-lg p-4 text-center">
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{data.present_count}</p>
+              <p className="text-sm text-green-700 dark:text-green-300">حاضر</p>
             </div>
-            <div className="bg-red-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-red-600">{data.absent_count}</p>
-              <p className="text-sm text-red-700">غائب</p>
+            <div className="bg-red-50 dark:bg-red-500/15 rounded-lg p-4 text-center">
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{data.absent_count}</p>
+              <p className="text-sm text-red-700 dark:text-red-300">غائب</p>
             </div>
-            <div className="bg-blue-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-blue-600">{data.total}</p>
-              <p className="text-sm text-blue-700">الإجمالي</p>
+            <div className="bg-blue-50 dark:bg-blue-500/15 rounded-lg p-4 text-center">
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{data.total}</p>
+              <p className="text-sm text-blue-700 dark:text-blue-300">الإجمالي</p>
             </div>
           </div>
 
           {/* Absent list */}
           {data.absent.length > 0 && (
             <div>
-              <h4 className="font-semibold text-red-600 mb-2 flex items-center gap-2"><XCircle className="w-4 h-4" /> الغائبون ({data.absent.length})</h4>
-              <div className="bg-red-50 rounded-lg divide-y divide-red-100">
+              <h4 className="font-semibold text-red-600 dark:text-red-400 mb-2 flex items-center gap-2"><XCircle className="w-4 h-4" /> الغائبون ({data.absent.length})</h4>
+              <div className="bg-red-50 dark:bg-red-500/15 rounded-lg divide-y divide-red-100 dark:divide-red-500/20">
                 {data.absent.map((s: any) => (
                   <div key={s.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <span className="font-mono text-sm text-gray-500 w-24">{s.student_id}</span>
-                    <span className="flex-1">{s.name}</span>
+                    <span className="font-mono text-sm text-gray-500 dark:text-gray-400 w-24 shrink-0">{s.student_id}</span>
+                    <span className="flex-1 min-w-0 truncate">{s.name}</span>
                   </div>
                 ))}
               </div>
@@ -271,14 +271,14 @@ function CompareModalContent({ deviceId }: { deviceId: number }) {
           {/* Present list */}
           {data.present.length > 0 && (
             <div>
-              <h4 className="font-semibold text-green-600 mb-2 flex items-center gap-2"><CheckCircle className="w-4 h-4" /> الحاضرون ({data.present.length})</h4>
-              <div className="bg-green-50 rounded-lg divide-y divide-green-100">
+              <h4 className="font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-2"><CheckCircle className="w-4 h-4" /> الحاضرون ({data.present.length})</h4>
+              <div className="bg-green-50 dark:bg-green-500/15 rounded-lg divide-y divide-green-100 dark:divide-green-500/20">
                 {data.present.map((s: any) => (
                   <div key={s.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <span className="font-mono text-sm text-gray-500 w-24">{s.student_id}</span>
-                    <span className="flex-1">{s.name}</span>
-                    <span className="text-xs text-gray-500">{s.punch_time ? new Date(s.punch_time).toLocaleTimeString('ar-SA') : ''}</span>
-                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <span className="font-mono text-sm text-gray-500 dark:text-gray-400 w-24 shrink-0">{s.student_id}</span>
+                    <span className="flex-1 min-w-0 truncate">{s.name}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{s.punch_time ? new Date(s.punch_time).toLocaleTimeString('ar-SA') : ''}</span>
+                    <CheckCircle className="w-4 h-4 text-green-500 dark:text-green-400 shrink-0" />
                   </div>
                 ))}
               </div>
@@ -286,8 +286,8 @@ function CompareModalContent({ deviceId }: { deviceId: number }) {
           )}
 
           {data.total === 0 && (
-            <div className="text-center py-8 text-gray-400">
-              <Users className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+            <div className="text-center py-8 text-gray-400 dark:text-gray-500">
+              <Users className="w-12 h-12 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
               <p>لا يوجد طلاب في هذه الشُعبة</p>
             </div>
           )}
