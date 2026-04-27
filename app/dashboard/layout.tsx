@@ -26,6 +26,7 @@ const navItems = [
   { path: '/dashboard/reports', label: 'التقارير', icon: BarChart3 },
   { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap },
   { path: '/dashboard/whatsapp', label: 'إعدادات WhatsApp', icon: MessageCircle },
+  { path: '/dashboard/whatsapp-log', label: 'سجل المحادثات', icon: MessageCircle },
   { path: '/dashboard/settings', label: 'إعدادات المدرسة', icon: Settings },
 ];
 

@@ -55,7 +55,14 @@ export async function checkSession(apiKey: string, sessionId?: string | null): P
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 8000);
 
+  // Wasender issues two token kinds:
+  //   • Personal Access Token (PAT) → can list/manage sessions
+  //   • Session Token              → can only send + read /user
+  // If the management endpoints return 401 we fall back to /user, which any
+  // valid token answers — that's enough to confirm "the key works for send".
   try {
+    let managementUnauthorized = false;
+
     // Prefer the session-specific endpoint when we have a session id.
     if (sessionId) {
       const r = await call(`/whatsapp-sessions/${encodeURIComponent(sessionId)}`, apiKey, ac.signal);
@@ -69,14 +76,18 @@ export async function checkSession(apiKey: string, sessionId?: string | null): P
           http: r.http,
         };
       }
-      if (r.http === 401) return { ok: false, status: 'error', phone_number: null, error: 'مفتاح API غير صالح', http: 401 };
-      if (r.http === 404) return { ok: false, status: 'error', phone_number: null, error: 'الجلسة غير موجودة', http: 404 };
+      if (r.http === 401) managementUnauthorized = true;
+      else if (r.http === 404) {
+        // Session ID is wrong but the token itself might still be valid for sending.
+        // Probe /user before giving up.
+      } else if (r.http >= 500) {
+        return { ok: false, status: 'error', phone_number: null, error: `خطأ في خادم Wasender (HTTP ${r.http})`, http: r.http };
+      }
     }
 
-    // Fallback: account-level status (if any) or list sessions and surface the first.
+    // Try the listing endpoint (only works for PATs).
     const list = await call('/whatsapp-sessions', apiKey, ac.signal);
-    if (list.http === 401) return { ok: false, status: 'error', phone_number: null, error: 'مفتاح API غير صالح', http: 401 };
-    if (list.http >= 200 && list.http < 300) {
+    if (list.http === 200) {
       const arr = Array.isArray(list.body?.data) ? list.body.data : Array.isArray(list.body) ? list.body : [];
       if (arr.length === 0) {
         return { ok: true, status: 'disconnected', phone_number: null, raw: list.body, http: list.http };
@@ -89,6 +100,26 @@ export async function checkSession(apiKey: string, sessionId?: string | null): P
         raw: list.body,
         http: list.http,
       };
+    }
+    if (list.http === 401) managementUnauthorized = true;
+
+    // Session-token fallback: /user reflects the connected WhatsApp account
+    // identity. A 200 here means the token can send messages.
+    if (managementUnauthorized) {
+      const u = await call('/user', apiKey, ac.signal);
+      if (u.http === 200) {
+        const data = u.body?.data ?? u.body ?? {};
+        return {
+          ok: true,
+          status: 'connected',
+          phone_number: pickPhone(data),
+          raw: u.body,
+          http: u.http,
+        };
+      }
+      if (u.http === 401) {
+        return { ok: false, status: 'error', phone_number: null, error: 'مفتاح API غير صالح', http: 401 };
+      }
     }
 
     return { ok: false, status: 'error', phone_number: null, error: `استجابة غير متوقعة (HTTP ${list.http})`, http: list.http };

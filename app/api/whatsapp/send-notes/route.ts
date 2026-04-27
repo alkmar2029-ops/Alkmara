@@ -2,7 +2,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { sendNotesWhatsappSchema, validateBody } from '@/lib/validations/schemas';
-import { sendText } from '@/lib/whatsapp/wasender-client';
+import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { renderTemplate } from '@/lib/whatsapp/template';
 
 export const dynamic = 'force-dynamic';
@@ -141,7 +141,15 @@ export async function POST(request: NextRequest) {
       note_category: n.category || '',
     });
 
-    const result = await sendText(ws.api_key, phone, message);
+    const result = await sendTextAndLog({
+      supabase, apiKey: ws.api_key, phone, message,
+      recipientName: fullName,
+      recipientType: 'parent',
+      templateName: tmplName,
+      contextType: 'note',
+      contextId: n.id,
+      sentBy: auth.ctx.userId,
+    });
     out.ok = result.ok;
     out.error = result.error || null;
     if (result.ok) {

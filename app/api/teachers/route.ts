@@ -113,6 +113,8 @@ export async function POST(request: NextRequest) {
     password,
     portalUrl,
     schoolName: (settingsRow?.school_name as string) || undefined,
+    teacherUserId: userId,
+    sentBy: auth.ctx.userId,
   });
 
   await writeAuditLog({

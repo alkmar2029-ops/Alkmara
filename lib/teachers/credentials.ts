@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { sendText } from '@/lib/whatsapp/wasender-client';
+import { sendTextAndLog } from '@/lib/whatsapp/log';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -50,6 +50,8 @@ export interface SendCredentialsParams {
   portalUrl: string;
   isReset?: boolean;  // true → "تم إعادة تعيين كلمة السر"
   schoolName?: string;
+  teacherUserId?: string | null;  // logged into whatsapp_messages.context_id
+  sentBy?: string | null;         // admin's user id
 }
 
 /**
@@ -59,7 +61,7 @@ export interface SendCredentialsParams {
 export async function sendCredentialsViaWhatsapp(
   params: SendCredentialsParams,
 ): Promise<{ ok: boolean; error?: string }> {
-  const { supabase, fullName, email, phone, password, portalUrl, isReset, schoolName } = params;
+  const { supabase, fullName, email, phone, password, portalUrl, isReset, schoolName, teacherUserId, sentBy } = params;
 
   const { data: ws } = await supabase
     .from('whatsapp_settings')
@@ -91,8 +93,19 @@ ${email}
 ${password}
 
 ننصح بحفظ الرابط على الشاشة الرئيسية.
-يمكنك تغيير كلمة السر من صفحة "ملفي" بعد الدخول.`;
+يمكنك تغيير كلمة السر من صفحة «ملفي» بعد الدخول.`;
 
-  const result = await sendText(ws.api_key, normalizePhone(phone), message);
+  const result = await sendTextAndLog({
+    supabase,
+    apiKey: ws.api_key,
+    phone: normalizePhone(phone),
+    message,
+    recipientName: fullName,
+    recipientType: 'teacher',
+    templateName: isReset ? 'teacher_password_reset' : 'teacher_credentials',
+    contextType: 'teacher_credentials',
+    contextId: teacherUserId ?? null,
+    sentBy: sentBy ?? null,
+  });
   return { ok: result.ok, error: result.error };
 }

@@ -57,6 +57,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     portalUrl,
     isReset: true,
     schoolName: (settingsRow?.school_name as string) || undefined,
+    teacherUserId: params.id,
+    sentBy: auth.ctx.userId,
   });
 
   await writeAuditLog({
