@@ -5,6 +5,12 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
   },
+  // ESLint warnings (unused vars, hook deps) shouldn't gate production builds
+  // — we keep linting active in dev / IDE / CI but unblock Vercel deploys.
+  // Type errors still block the build (typescript.ignoreBuildErrors stays default).
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   async headers() {
     return [
       {
