@@ -62,7 +62,11 @@ export async function POST(request: NextRequest) {
   const tmplByName = new Map<string, { body: string; is_active: boolean }>();
   for (const t of tmplRows || []) tmplByName.set(t.name as string, t as any);
 
-  const teacherName = (profile?.full_name as string) || auth.ctx.email || 'المعلم';
+  // Sender label shown in WhatsApp messages. We avoid leaking emails into
+  // parent-facing messages — fall back to a generic admin/teacher label.
+  const teacherName =
+    (profile?.full_name as string)
+    || (auth.ctx.role === 'admin' || auth.ctx.role === 'staff' ? 'إدارة المدرسة' : 'المعلم');
 
   // 3. Load notes — by batch or by ids — joined with student/grade/section.
   let q = supabase
