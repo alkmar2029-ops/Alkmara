@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Cairo } from 'next/font/google';
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
@@ -17,6 +17,14 @@ export const metadata: Metadata = {
   },
   description: 'نظام إدارة حضور الطلاب باستخدام أجهزة البصمة',
   robots: { index: false, follow: false },
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'حضور المعلم' },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#2563eb',
+  width: 'device-width',
+  initialScale: 1,
 };
 
 // Inline before hydration to apply the saved theme and avoid flash.

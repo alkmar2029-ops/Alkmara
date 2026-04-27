@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from './server';
 
-export type UserRole = 'admin' | 'staff' | 'viewer';
+export type UserRole = 'admin' | 'staff' | 'viewer' | 'teacher';
 
 export interface AuthContext {
   userId: string;
@@ -19,9 +19,10 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   if (!user) return null;
 
   const metaRole = (user.app_metadata as { role?: string } | null)?.role;
-  let role: UserRole = (metaRole === 'admin' || metaRole === 'staff' || metaRole === 'viewer')
-    ? metaRole
-    : 'viewer';
+  const isValidRole = (r: unknown): r is UserRole =>
+    r === 'admin' || r === 'staff' || r === 'viewer' || r === 'teacher';
+
+  let role: UserRole = isValidRole(metaRole) ? metaRole : 'viewer';
 
   if (!metaRole) {
     const { data: profile } = await supabase
@@ -29,9 +30,8 @@ export async function getAuthContext(): Promise<AuthContext | null> {
       .select('role')
       .eq('user_id', user.id)
       .maybeSingle();
-    const profileRole = profile?.role;
-    if (profileRole === 'admin' || profileRole === 'staff' || profileRole === 'viewer') {
-      role = profileRole;
+    if (isValidRole(profile?.role)) {
+      role = profile!.role as UserRole;
     }
   }
 

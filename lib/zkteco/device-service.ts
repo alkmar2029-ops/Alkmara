@@ -7,12 +7,20 @@ export interface DeviceUser {
   role: number;
 }
 
+// zkteco-js returns snake_case fields; we expose the legacy camelCase too in
+// case an older build of the lib resurfaces. Consumers should accept either.
 export interface RawAttendanceLog {
-  uid: number;
-  id: string;
-  userId: string;
-  state: number;
-  timestamp: string;
+  sn?: number;
+  user_id?: string;
+  record_time?: string;
+  type?: number;
+  state?: number;
+  ip?: string;
+  // Legacy camelCase aliases (older zkteco-js):
+  uid?: number;
+  id?: string;
+  userId?: string;
+  timestamp?: string;
 }
 
 export interface PushUsersResult {
@@ -93,6 +101,20 @@ export class DeviceService {
     this.ensureConnected();
     try {
       await this.zk.setTime(new Date());
+    } catch (err) {
+      this.connected = false;
+      throw err;
+    }
+  }
+
+  /** Reads the device's current clock. Used to verify drift before pulling logs. */
+  async getDeviceTime(): Promise<Date> {
+    this.ensureConnected();
+    try {
+      const t = await this.zk.getTime();
+      const d = t instanceof Date ? t : new Date(t);
+      if (!Number.isFinite(d.getTime())) throw new Error('Invalid device time');
+      return d;
     } catch (err) {
       this.connected = false;
       throw err;

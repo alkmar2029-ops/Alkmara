@@ -201,7 +201,7 @@ ON attendance_records(student_id, attendance_date);
 
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    role VARCHAR(20) NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'staff', 'viewer')),
+    role VARCHAR(20) NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'staff', 'viewer', 'teacher')),
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -394,6 +394,7 @@ END $$;
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS principal_name VARCHAR(200);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
 ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS section_type VARCHAR(20) DEFAULT 'letters' CHECK (section_type IN ('letters', 'numbers'));
+ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS school_start_time TIME DEFAULT '06:45';
 
 INSERT INTO school_settings (id, school_name, stage, academic_year)
 VALUES (1, 'المدرسة', 'elementary', '2025-2026')

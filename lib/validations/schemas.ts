@@ -70,6 +70,11 @@ export const updateSettingsSchema = z.object({
   section_type: z.enum(['letters', 'numbers']).optional(),
   late_threshold: z.number().int().min(1).max(120).optional(),
   absent_threshold: z.number().int().min(1).max(240).optional(),
+  // HH:MM (24h) — lateness is computed from this time when no per-section schedule exists.
+  school_start_time: z
+    .string()
+    .regex(/^\d{2}:\d{2}(:\d{2})?$/, 'وقت غير صالح (HH:MM)')
+    .optional(),
 });
 
 // Sections schemas
@@ -87,6 +92,109 @@ export const createScheduleSchema = z.object({
   start_time: z.string().regex(/^\d{2}:\d{2}$/, 'وقت غير صالح'),
   end_time: z.string().regex(/^\d{2}:\d{2}$/, 'وقت غير صالح'),
 });
+
+// Note templates (admin-managed list of predefined notes shown when staff
+// records a student note).
+export const NOTE_TYPES = ['positive', 'negative'] as const;
+export const NOTE_CATEGORIES = ['academic', 'behavior', 'attendance', 'participation', 'general'] as const;
+
+export const createNoteTemplateSchema = z.object({
+  text: z.string().min(2, 'نص الملاحظة مطلوب').max(300, 'النص طويل جداً'),
+  type: z.enum(NOTE_TYPES),
+  category: z.enum(NOTE_CATEGORIES).default('general'),
+  // Single emoji or short symbol — keep tight to discourage abuse.
+  icon: z.string().max(8).optional().or(z.literal('')),
+  is_active: z.boolean().default(true),
+  sort_order: z.number().int().min(0).max(9999).default(0),
+});
+
+export const updateNoteTemplateSchema = createNoteTemplateSchema.partial();
+
+// Student notes — bulk save endpoint accepts an array. Each entry can either
+// reference a template (template_id) or supply free text; validation enforces
+// one of the two so we never store an empty note.
+export const NOTE_SOURCES = ['template', 'text', 'voice'] as const;
+
+export const studentNoteEntrySchema = z
+  .object({
+    student_id: z.number().int().positive(),
+    template_id: z.number().int().positive().optional().nullable(),
+    text: z.string().min(2, 'نص الملاحظة قصير جداً').max(1000),
+    type: z.enum(NOTE_TYPES),
+    category: z.enum(NOTE_CATEGORIES).optional().nullable(),
+    source: z.enum(NOTE_SOURCES).default('text'),
+  })
+  .refine((v) => v.text.trim().length >= 2, {
+    message: 'نص الملاحظة مطلوب',
+    path: ['text'],
+  });
+
+export const createStudentNotesSchema = z.object({
+  notes: z.array(studentNoteEntrySchema).min(1, 'يجب اختيار طالب واحد على الأقل').max(500, 'دفعة واحدة أكبر من اللازم'),
+});
+
+// Periods (admin-managed list of class periods)
+export const upsertPeriodSchema = z.object({
+  number: z.number().int().min(1).max(12),
+  name: z.string().min(1, 'اسم الحصة مطلوب').max(50),
+  start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'وقت غير صالح').optional().nullable(),
+  end_time:   z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'وقت غير صالح').optional().nullable(),
+  is_active: z.boolean().default(true),
+  sort_order: z.number().int().min(0).default(0),
+});
+
+// Teacher CRUD
+export const createTeacherSchema = z.object({
+  email: z.string().email('بريد إلكتروني غير صالح'),
+  full_name: z.string().min(2, 'الاسم مطلوب').max(200),
+  // Saudi mobile in 9665XXXXXXXX form (12 digits) or local 05XXXXXXXX (10 digits)
+  phone: z.string().regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح'),
+});
+
+export const updateTeacherSchema = z.object({
+  full_name: z.string().min(2).max(200).optional(),
+  phone: z.string().regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح').optional(),
+  is_active: z.boolean().optional(),
+});
+
+export const changePasswordSchema = z.object({
+  new_password: z.string().min(8, 'كلمة السر يجب أن تكون 8 أحرف فأكثر').max(72),
+});
+
+// Period attendance — submitted as a session (one save = one record + many absences)
+export const PERIOD_ATT_STATUSES = ['absent', 'late', 'excused'] as const;
+
+export const savePeriodAttendanceSchema = z.object({
+  section_id: z.number().int().positive(),
+  period_id: z.number().int().positive(),
+  attendance_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ غير صالح'),
+  notes: z.string().max(500).optional(),
+  // Only non-present students; rest are implicitly present.
+  absences: z.array(z.object({
+    student_id: z.number().int().positive(),
+    status: z.enum(PERIOD_ATT_STATUSES).default('absent'),
+    notes: z.string().max(500).optional(),
+  })).max(500),
+});
+
+// WhatsApp message template editor — admins can change the body and toggle
+// active state, but can't rename a template (other code depends on the name).
+export const updateMessageTemplateSchema = z.object({
+  description: z.string().max(500).optional(),
+  body: z.string().min(2, 'النص قصير جداً').max(4000, 'النص طويل جداً'),
+  is_active: z.boolean().optional(),
+});
+
+// WhatsApp send for notes — accepts either a batch_id (sends all notes from a
+// recording session) or an explicit list of note ids.
+export const sendNotesWhatsappSchema = z
+  .object({
+    batch_id: z.string().uuid().optional(),
+    note_ids: z.array(z.number().int().positive()).max(500).optional(),
+  })
+  .refine((v) => !!v.batch_id || (v.note_ids && v.note_ids.length > 0), {
+    message: 'يجب تحديد batch_id أو note_ids',
+  });
 
 // Import schemas
 // Hard ceiling on rows per import — protects the API from accidentally being

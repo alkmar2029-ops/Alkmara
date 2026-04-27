@@ -1,23 +1,40 @@
 // Lightweight {{placeholder}} renderer with sensible Arabic-ready defaults.
 
 export interface RenderVars {
+  // Common — used by every template type
   student_name?: string;
   grade?: string;
   section?: string;
   date?: string;        // YYYY-MM-DD or already formatted
+  phone?: string;
+  school_name?: string;
+  principal_name?: string;
+  teacher_name?: string;
+  // Late-notification specific
   punch_time?: string;  // HH:MM:SS or already formatted
   minutes_late?: number | string;
-  phone?: string;
+  // Note specific
+  note_text?: string;
+  note_emoji?: string;
+  note_type?: string;   // إيجابية | سلبية
+  note_category?: string;
 }
 
-export const TEMPLATE_PLACEHOLDERS: ReadonlyArray<{ key: keyof RenderVars; label: string }> = [
-  { key: 'student_name', label: 'اسم الطالب' },
-  { key: 'grade',        label: 'الصف' },
-  { key: 'section',      label: 'الشعبة' },
-  { key: 'date',         label: 'التاريخ' },
-  { key: 'punch_time',   label: 'وقت البصمة' },
-  { key: 'minutes_late', label: 'مدة التأخير (دقائق)' },
-  { key: 'phone',        label: 'رقم الجوال' },
+export const TEMPLATE_PLACEHOLDERS: ReadonlyArray<{ key: keyof RenderVars; label: string; group?: 'common' | 'late' | 'note' }> = [
+  { key: 'student_name',   label: 'اسم الطالب',           group: 'common' },
+  { key: 'grade',          label: 'الصف',                  group: 'common' },
+  { key: 'section',        label: 'الشعبة',                group: 'common' },
+  { key: 'date',           label: 'التاريخ',               group: 'common' },
+  { key: 'school_name',    label: 'اسم المدرسة',           group: 'common' },
+  { key: 'principal_name', label: 'اسم المدير',            group: 'common' },
+  { key: 'teacher_name',   label: 'اسم المعلم/المسجِّل',    group: 'common' },
+  { key: 'phone',          label: 'رقم الجوال',            group: 'common' },
+  { key: 'punch_time',     label: 'وقت البصمة',            group: 'late' },
+  { key: 'minutes_late',   label: 'مدة التأخير (دقائق)',   group: 'late' },
+  { key: 'note_text',      label: 'نص الملاحظة',           group: 'note' },
+  { key: 'note_emoji',     label: 'أيقونة الملاحظة',       group: 'note' },
+  { key: 'note_type',      label: 'نوع الملاحظة',          group: 'note' },
+  { key: 'note_category',  label: 'تصنيف الملاحظة',        group: 'note' },
 ];
 
 export function renderTemplate(body: string, vars: RenderVars): string {

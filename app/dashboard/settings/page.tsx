@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Settings, Save } from 'lucide-react';
+import { Settings, Save, Clock } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
+import NoteTemplatesSection from '@/components/settings/NoteTemplatesSection';
 
 const STAGES = [
   { value: 'elementary', label: 'ابتدائي', desc: 'الصف الأول إلى السادس' },
@@ -29,6 +30,9 @@ export default function SettingsPage() {
   // Only set form when data first loads
   useEffect(() => {
     if (settings && !form) {
+      // The DB column is TIME and may come back as 'HH:MM:SS' — trim seconds.
+      const rawStart = (settings.school_start_time || '06:45') as string;
+      const startTime = /^\d{2}:\d{2}:\d{2}$/.test(rawStart) ? rawStart.slice(0, 5) : rawStart;
       setForm({
         school_name: settings.school_name || '',
         principal_name: settings.principal_name || '',
@@ -36,6 +40,9 @@ export default function SettingsPage() {
         academic_year: settings.academic_year || '2025-2026',
         stage: settings.stage || 'elementary',
         section_type: settings.section_type || 'letters',
+        school_start_time: startTime,
+        late_threshold: settings.late_threshold ?? 15,
+        absent_threshold: settings.absent_threshold ?? 45,
       });
     }
   }, [settings, form]);
@@ -74,6 +81,13 @@ export default function SettingsPage() {
   // While form is being initialized from settings data
   if (!form) return <SkeletonPage />;
 
+  // Normalize 'HH:MM:SS' → 'HH:MM' for comparison since DB returns seconds.
+  const dbStart = settings
+    ? (/^\d{2}:\d{2}:\d{2}$/.test(settings.school_start_time || '')
+        ? (settings.school_start_time as string).slice(0, 5)
+        : (settings.school_start_time || '06:45'))
+    : '06:45';
+
   // Check if form has unsaved changes
   const hasUnsavedChanges = settings && (
     form.school_name !== (settings.school_name || '') ||
@@ -81,7 +95,10 @@ export default function SettingsPage() {
     form.phone !== (settings.phone || '') ||
     form.academic_year !== (settings.academic_year || '2025-2026') ||
     form.stage !== (settings.stage || 'elementary') ||
-    form.section_type !== (settings.section_type || 'letters')
+    form.section_type !== (settings.section_type || 'letters') ||
+    form.school_start_time !== dbStart ||
+    form.late_threshold !== (settings.late_threshold ?? 15) ||
+    form.absent_threshold !== (settings.absent_threshold ?? 45)
   );
 
   return (
@@ -152,6 +169,56 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* الدوام والتأخير */}
+      <div className="card">
+        <h3 className="font-semibold text-lg mb-1 flex items-center gap-2">
+          <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+          الدوام واحتساب التأخير
+        </h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          وقت الدوام يُستخدم كقيمة افتراضية لاحتساب التأخير عند سحب البصمات من الأجهزة، ما لم يكن للشُعبة جدول حصص خاص بها.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="label">وقت الدوام (24 ساعة)</label>
+            <input
+              type="time"
+              value={form.school_start_time}
+              onChange={e => setForm({ ...form, school_start_time: e.target.value })}
+              className="input"
+              step="60"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              يُحسب التأخير من هذا الوقت (مثلاً 06:45)
+            </p>
+          </div>
+          <div>
+            <label className="label">سماح التأخير (دقائق)</label>
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={form.late_threshold}
+              onChange={e => setForm({ ...form, late_threshold: +e.target.value })}
+              className="input"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">أقل من هذه القيمة = حاضر</p>
+          </div>
+          <div>
+            <label className="label">حد الغياب (دقائق)</label>
+            <input
+              type="number"
+              min={1}
+              max={240}
+              value={form.absent_threshold}
+              onChange={e => setForm({ ...form, absent_threshold: +e.target.value })}
+              className="input"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">أكثر من هذه القيمة = غائب</p>
+          </div>
+        </div>
+      </div>
+
       {/* نوع تصنيف الشعب */}
       <div className="card">
         <h3 className="font-semibold text-lg mb-4">نوع تصنيف الشعب</h3>
@@ -191,6 +258,9 @@ export default function SettingsPage() {
           <span className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full" />
         )}
       </button>
+
+      {/* Note templates — admin-managed list of canned positive/negative notes */}
+      <NoteTemplatesSection />
     </div>
   );
 }

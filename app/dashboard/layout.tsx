@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import {
   LayoutDashboard, Users, BookOpen, Fingerprint, ClipboardList, BarChart3,
   Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
-  Sun, Moon, Bell, Download,
+  Sun, Moon, Bell, Download, MessageSquarePlus, UserCog, ClipboardCheck,
 } from 'lucide-react';
 import { useTheme } from '@/lib/hooks/useTheme';
 
@@ -20,6 +20,9 @@ const navItems = [
   { path: '/dashboard/sync', label: 'سحب البيانات', icon: Download },
   { path: '/dashboard/attendance', label: 'سجل الحضور', icon: ClipboardList },
   { path: '/dashboard/late-notifications', label: 'إشعارات التأخير', icon: Bell },
+  { path: '/dashboard/notes', label: 'الملاحظات', icon: MessageSquarePlus },
+  { path: '/dashboard/teachers', label: 'المعلمون', icon: UserCog },
+  { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
   { path: '/dashboard/reports', label: 'التقارير', icon: BarChart3 },
   { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap },
   { path: '/dashboard/whatsapp', label: 'إعدادات WhatsApp', icon: MessageCircle },

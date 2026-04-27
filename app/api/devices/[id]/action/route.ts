@@ -61,6 +61,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         await service.connect();
         await addDeviceToPool(deviceId, service);
 
+        // Probe the clock so the UI can warn about drift right away.
+        let device_time: string | undefined, drift_seconds: number | undefined;
+        try {
+          const dt = await service.getDeviceTime();
+          device_time = dt.toISOString();
+          drift_seconds = Math.round((dt.getTime() - Date.now()) / 1000);
+        } catch { /* clock probe is informational only */ }
+
         // Use SECURITY DEFINER RPC so staff can update runtime fields without
         // RLS write access on the devices table.
         const { error: rpcError } = await supabase.rpc('set_device_runtime_status', {
@@ -74,7 +82,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
             { status: 500 },
           );
         }
-        return NextResponse.json({ message: 'تم الاتصال بالجهاز' });
+        const driftMsg = drift_seconds !== undefined && Math.abs(drift_seconds) > 120
+          ? ` ⚠ ساعة الجهاز تختلف عن الخادم بـ ${drift_seconds} ثانية`
+          : '';
+        return NextResponse.json({
+          message: 'تم الاتصال بالجهاز' + driftMsg,
+          data: { device_time, drift_seconds },
+        });
       }
 
       case 'disconnect': {
@@ -224,16 +238,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         let synced = 0, errors = 0;
         const allRecords: any[] = [];
 
-        for (const log of logs) {
+        for (const log of logs as any[]) {
           try {
-            // Look up student from pre-fetched maps instead of querying per log
-            const userId = String(log.userId || log.id);
+            // zkteco-js returns snake_case (user_id, record_time); older builds
+            // used camelCase. Accept either shape.
+            const userId = String(log.user_id || log.userId || log.id || '');
             const uid = Number(log.uid || 0);
             const student = studentByStudentId.get(userId) || studentByDeviceUid.get(uid);
 
             if (!student) continue;
 
-            const punchTime = new Date(log.timestamp);
+            const punchTime = new Date(log.record_time || log.timestamp);
             const attendanceDate = new Date(punchTime.getTime() - punchTime.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 
             // Classify attendance using schedule

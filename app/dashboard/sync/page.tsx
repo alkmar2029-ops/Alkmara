@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Download, RefreshCw, CheckCircle2, XCircle, AlertCircle, Wifi, WifiOff, Loader2, ChevronRight, Activity,
-  Eye, Save, Plus, RotateCcw, MinusCircle, HelpCircle,
+  Eye, Save, Plus, RotateCcw, MinusCircle, HelpCircle, Clock,
 } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 
@@ -45,16 +45,24 @@ interface UnmatchedRow {
 }
 
 interface SyncEvent {
-  type: 'started' | 'device-start' | 'device-progress' | 'device-error' | 'device-done' | 'aggregating' | 'comparing' | 'preview' | 'writing' | 'done' | 'error';
+  type: 'started' | 'device-start' | 'device-time' | 'device-progress' | 'device-error' | 'device-done' | 'aggregating' | 'comparing' | 'preview' | 'writing' | 'done' | 'error';
   device_id?: number;
   device_name?: string;
   message?: string;
   fetched?: number;
   matched?: number;
+  device_time?: string;
+  server_time?: string;
+  drift_seconds?: number;
+  drift_warning?: boolean;
+  school_start_time?: string;
   total_students_late?: number;
   written?: number;
   errors?: number;
-  device_results?: Array<{ device_id: number; name: string; ok: boolean; fetched: number; matched: number; error?: string }>;
+  device_results?: Array<{
+    device_id: number; name: string; ok: boolean; fetched: number; matched: number;
+    error?: string; device_time?: string; drift_seconds?: number;
+  }>;
   dry_run?: boolean;
   diff?: { new: DiffRow[]; replaces: DiffRow[]; unchanged: DiffRow[]; unmatched: UnmatchedRow[] };
 }
@@ -66,6 +74,11 @@ export default function SyncPage() {
   const [running, setRunning] = useState(false);
   const [pingStatus, setPingStatus] = useState<Record<number, 'ok' | 'fail' | 'checking'>>({});
   const abortRef = useRef<AbortController | null>(null);
+  // Post-pull filters: 'all' means no filter on that axis.
+  const [filterGrade, setFilterGrade] = useState<string>('all');
+  const [filterSection, setFilterSection] = useState<string>('all');
+  // Show only "late" rows (minutes_late > school grace) when true.
+  const [onlyLate, setOnlyLate] = useState<boolean>(false);
 
   const { data: devices, isLoading, refetch } = useQuery({
     queryKey: ['devices-list-sync'],
@@ -95,6 +108,22 @@ export default function SyncPage() {
     [events],
   );
 
+  // Extract latest device-time per device so we can render a clock-drift panel.
+  const deviceTimes = useMemo(() => {
+    const m = new Map<number, SyncEvent>();
+    for (const e of events) {
+      if (e.type === 'device-time' && e.device_id !== undefined) m.set(e.device_id, e);
+    }
+    return Array.from(m.values());
+  }, [events]);
+  const hasDriftWarning = deviceTimes.some((e) => e.drift_warning);
+
+  // School start time emitted by the runner (used as the lateness baseline).
+  const schoolStartTime = useMemo(
+    () => events.find((e) => e.type === 'started' && e.school_start_time)?.school_start_time,
+    [events],
+  );
+
   // The preview event captured during the run (last 'preview' event).
   const previewEvent = useMemo(
     () => [...events].reverse().find((e) => e.type === 'preview'),
@@ -103,6 +132,60 @@ export default function SyncPage() {
   const previewDiff = previewEvent?.diff;
   const lastWasDryRun = !!previewEvent?.dry_run;
   const canCommit = !!previewDiff && lastWasDryRun && !running && (previewDiff.new.length + previewDiff.replaces.length) > 0;
+
+  // Combined diff rows (new + replaces + unchanged) — what the table renders.
+  const allDiffRows = useMemo<DiffRow[]>(() => {
+    if (!previewDiff) return [];
+    return [...previewDiff.new, ...previewDiff.replaces, ...previewDiff.unchanged];
+  }, [previewDiff]);
+
+  // Build dropdown options from the actually-pulled rows so the user only sees
+  // grades/sections that have data this run.
+  const gradeOptions = useMemo(() => {
+    const s = new Set<string>();
+    allDiffRows.forEach((r) => { if (r.grade_name) s.add(r.grade_name); });
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'ar'));
+  }, [allDiffRows]);
+
+  const sectionOptions = useMemo(() => {
+    const s = new Set<string>();
+    allDiffRows.forEach((r) => {
+      // Cascade: only show sections of the chosen grade, otherwise show all.
+      if (r.section_name && (filterGrade === 'all' || r.grade_name === filterGrade)) {
+        s.add(r.section_name);
+      }
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'ar', { numeric: true }));
+  }, [allDiffRows, filterGrade]);
+
+  // Apply filters → final rows shown in the table.
+  const filteredRows = useMemo(() => {
+    return allDiffRows.filter((r) => {
+      if (filterGrade !== 'all' && r.grade_name !== filterGrade) return false;
+      if (filterSection !== 'all' && r.section_name !== filterSection) return false;
+      if (onlyLate && r.minutes_late <= 0) return false;
+      return true;
+    });
+  }, [allDiffRows, filterGrade, filterSection, onlyLate]);
+
+  // Per-section counts for the picked grade — useful summary above the table.
+  const sectionCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    filteredRows.forEach((r) => {
+      const k = `${r.grade_name || '—'} / ${r.section_name || '—'}`;
+      m.set(k, (m.get(k) || 0) + 1);
+    });
+    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0], 'ar', { numeric: true }));
+  }, [filteredRows]);
+
+  // Reset section filter when grade changes (otherwise it might point at a
+  // section that no longer exists under the new grade).
+  useEffect(() => {
+    if (filterGrade === 'all') return;
+    if (filterSection !== 'all' && !sectionOptions.includes(filterSection)) {
+      setFilterSection('all');
+    }
+  }, [filterGrade, filterSection, sectionOptions]);
 
   const pingMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -315,6 +398,87 @@ export default function SyncPage() {
         </div>
       </div>
 
+      {/* School start time banner (shown after the run starts) */}
+      {schoolStartTime && (
+        <div className="card border-blue-200 dark:border-blue-500/30 bg-blue-50/50 dark:bg-blue-500/5">
+          <div className="flex items-center gap-2 text-sm">
+            <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span className="text-gray-700 dark:text-gray-200">
+              وقت الدوام المعتمد:
+              <strong className="font-mono ms-2 text-blue-700 dark:text-blue-300" dir="ltr">{schoolStartTime}</strong>
+              <span className="text-xs text-gray-500 dark:text-gray-400 ms-2">— يحتسب التأخير من هذا الوقت</span>
+            </span>
+            <a href="/dashboard/settings" className="ms-auto text-xs text-blue-600 dark:text-blue-400 hover:underline">
+              تعديل من الإعدادات ←
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Device clocks (shown after the run starts pulling) */}
+      {deviceTimes.length > 0 && (
+        <div className={`card ${hasDriftWarning ? 'border-yellow-300 dark:border-yellow-500/40' : ''}`}>
+          <div className="flex items-center gap-2 mb-3">
+            <Activity className="w-4 h-4" />
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100">فحص ساعات الأجهزة</h2>
+            {hasDriftWarning && (
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-400">
+                <AlertCircle className="w-3 h-3" /> فرق كبير
+              </span>
+            )}
+          </div>
+          {hasDriftWarning && (
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 mb-3">
+              ساعة جهاز أو أكثر تختلف عن الخادم بأكثر من دقيقتين — تواريخ البصمات قد لا تطابق التاريخ المختار.
+              استخدم زر «مزامنة» في صفحة الأجهزة لضبط الساعة.
+            </p>
+          )}
+          <div className="overflow-x-auto -mx-4 sm:mx-0 rounded-lg border border-gray-200 dark:border-gray-800">
+            <table className="w-full text-sm min-w-[560px]">
+              <thead className="bg-gray-50 dark:bg-gray-900">
+                <tr className="text-right">
+                  <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الجهاز</th>
+                  <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">ساعة الجهاز</th>
+                  <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">ساعة الخادم</th>
+                  <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الفرق</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                {deviceTimes.map((e) => {
+                  const drift = e.drift_seconds;
+                  const driftLabel = drift === undefined
+                    ? '—'
+                    : Math.abs(drift) < 60
+                      ? `${drift > 0 ? '+' : ''}${drift} ث`
+                      : Math.abs(drift) < 3600
+                        ? `${drift > 0 ? '+' : ''}${Math.round(drift / 60)} د`
+                        : `${drift > 0 ? '+' : ''}${(drift / 3600).toFixed(1)} س`;
+                  const tone = drift === undefined
+                    ? 'text-gray-500 dark:text-gray-400'
+                    : Math.abs(drift) <= 60
+                      ? 'text-green-600 dark:text-green-400'
+                      : Math.abs(drift) <= 600
+                        ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-red-600 dark:text-red-400';
+                  return (
+                    <tr key={e.device_id}>
+                      <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{e.device_name}</td>
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-gray-300" dir="ltr">
+                        {e.device_time ? new Date(e.device_time).toLocaleString('ar-SA', { hour12: false }) : '—'}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-gray-300" dir="ltr">
+                        {e.server_time ? new Date(e.server_time).toLocaleString('ar-SA', { hour12: false }) : '—'}
+                      </td>
+                      <td className={`px-3 py-2 font-mono ${tone}`} dir="ltr">{driftLabel}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Comparison / Diff */}
       {previewDiff && (
         <div className="card">
@@ -331,29 +495,101 @@ export default function SyncPage() {
             </div>
           </div>
 
-          {(previewDiff.new.length + previewDiff.replaces.length + previewDiff.unchanged.length) === 0 ? (
+          {allDiffRows.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">لا توجد بصمات لطلاب لهذا التاريخ</p>
           ) : (
-            <div className="overflow-x-auto -mx-4 sm:mx-0 rounded-lg border border-gray-200 dark:border-gray-800">
-              <table className="w-full text-sm min-w-[800px]">
-                <thead className="bg-gray-50 dark:bg-gray-900">
-                  <tr className="text-right">
-                    <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الحالة</th>
-                    <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">رقم الهوية</th>
-                    <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الاسم</th>
-                    <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الصف / الشعبة</th>
-                    <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الجهاز</th>
-                    <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">وقت البصمة</th>
-                    <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">دقائق التأخير</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {[...previewDiff.new, ...previewDiff.replaces, ...previewDiff.unchanged].map((r, idx) => (
-                    <DiffRow key={`${r.kind}-${r.student_id}-${idx}`} row={r} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {/* Filters: grade / section / only-late */}
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-3">
+                <div className="flex-1 min-w-0">
+                  <label className="label">الصف</label>
+                  <select
+                    value={filterGrade}
+                    onChange={(e) => setFilterGrade(e.target.value)}
+                    className="input"
+                  >
+                    <option value="all">كل الصفوف ({gradeOptions.length})</option>
+                    {gradeOptions.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <label className="label">الشعبة</label>
+                  <select
+                    value={filterSection}
+                    onChange={(e) => setFilterSection(e.target.value)}
+                    className="input"
+                    disabled={sectionOptions.length === 0}
+                  >
+                    <option value="all">كل الشُعب ({sectionOptions.length})</option>
+                    {sectionOptions.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2 sm:pb-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={onlyLate}
+                      onChange={(e) => setOnlyLate(e.target.checked)}
+                    />
+                    المتأخرون فقط
+                  </label>
+                  {(filterGrade !== 'all' || filterSection !== 'all' || onlyLate) && (
+                    <button
+                      onClick={() => { setFilterGrade('all'); setFilterSection('all'); setOnlyLate(false); }}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
+                    >
+                      مسح الفلاتر
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                المعروض: <strong className="text-gray-900 dark:text-gray-100">{filteredRows.length}</strong> من {allDiffRows.length}
+                {sectionCounts.length > 1 && filteredRows.length > 0 && (
+                  <span className="ms-3 inline-flex flex-wrap gap-1.5">
+                    {sectionCounts.slice(0, 8).map(([k, v]) => (
+                      <span key={k} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                        {k}: <strong>{v}</strong>
+                      </span>
+                    ))}
+                    {sectionCounts.length > 8 && (
+                      <span className="text-gray-500 dark:text-gray-400">+{sectionCounts.length - 8} أخرى</span>
+                    )}
+                  </span>
+                )}
+              </div>
+
+              {filteredRows.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">لا توجد نتائج بعد تطبيق الفلاتر</p>
+              ) : (
+                <div className="overflow-x-auto -mx-4 sm:mx-0 rounded-lg border border-gray-200 dark:border-gray-800">
+                  <table className="w-full text-sm min-w-[800px]">
+                    <thead className="bg-gray-50 dark:bg-gray-900">
+                      <tr className="text-right">
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الحالة</th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">رقم الهوية</th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الاسم</th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الصف</th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الشعبة</th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">الجهاز</th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">وقت البصمة</th>
+                        <th className="px-3 py-2 font-medium text-gray-700 dark:text-gray-200">دقائق التأخير</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                      {filteredRows.map((r, idx) => (
+                        <DiffRow key={`${r.kind}-${r.student_id}-${idx}`} row={r} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
 
           {previewDiff.unmatched.length > 0 && (
@@ -481,9 +717,8 @@ function DiffRow({ row }: { row: DiffRow }) {
       </td>
       <td className="px-3 py-2 font-mono text-gray-900 dark:text-gray-100" dir="ltr">{row.student_code || '—'}</td>
       <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{row.student_name || '—'}</td>
-      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
-        {row.grade_name} <span className="text-gray-400">/</span> {row.section_name}
-      </td>
+      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{row.grade_name || '—'}</td>
+      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{row.section_name || '—'}</td>
       <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{row.device_name}</td>
       <td className="px-3 py-2 font-mono text-gray-700 dark:text-gray-300" dir="ltr">
         {row.punch_local}
@@ -525,6 +760,13 @@ function ProgressLine({ e }: { e: SyncEvent }) {
       return <div className={`${base} text-blue-600 dark:text-blue-400`}><ChevronRight className="w-3 h-3 mt-0.5" /><span>{e.message}</span></div>;
     case 'device-start':
       return <div className={`${base} text-gray-700 dark:text-gray-300`}><Loader2 className="w-3 h-3 mt-0.5 animate-spin" /><span>الاتصال بـ{e.device_name}...</span></div>;
+    case 'device-time':
+      return (
+        <div className={`${base} ${e.drift_warning ? 'text-yellow-700 dark:text-yellow-400' : 'text-gray-700 dark:text-gray-300'}`}>
+          {e.drift_warning ? <AlertCircle className="w-3 h-3 mt-0.5" /> : <ChevronRight className="w-3 h-3 mt-0.5" />}
+          <span>{e.device_name}: {e.message}</span>
+        </div>
+      );
     case 'device-done':
       return <div className={`${base} text-green-600 dark:text-green-400`}><CheckCircle2 className="w-3 h-3 mt-0.5" /><span>{e.device_name}: جلب {e.fetched} سجل، طابق {e.matched} طالب</span></div>;
     case 'device-error':

@@ -35,6 +35,7 @@ export interface SyncEvent {
   type:
     | 'started'
     | 'device-start'
+    | 'device-time'
     | 'device-progress'
     | 'device-error'
     | 'device-done'
@@ -47,14 +48,30 @@ export interface SyncEvent {
   device_id?: number;
   device_name?: string;
   message?: string;
+  /** School-wide work start time used as the lateness baseline (HH:MM). */
+  school_start_time?: string;
   /** Per-device counts. */
   fetched?: number;
   matched?: number;
+  /** Device clock check (emitted right after connect, before pulling logs). */
+  device_time?: string;       // ISO from device clock
+  server_time?: string;       // ISO from server at the same instant
+  drift_seconds?: number;     // device − server (negative = device is behind)
+  drift_warning?: boolean;    // true when |drift| exceeds threshold
   /** Final summary. */
   total_students_late?: number;
   written?: number;
   errors?: number;
-  device_results?: Array<{ device_id: number; name: string; ok: boolean; fetched: number; matched: number; error?: string }>;
+  device_results?: Array<{
+    device_id: number;
+    name: string;
+    ok: boolean;
+    fetched: number;
+    matched: number;
+    error?: string;
+    device_time?: string;
+    drift_seconds?: number;
+  }>;
   /** Diff details (preview / done). */
   dry_run?: boolean;
   diff?: {
@@ -94,17 +111,27 @@ interface ScheduleRow {
   end_time: string;
 }
 
-/** Match a raw log entry to a student via student_id then device_uid. */
+/**
+ * Match a raw log entry to a student via student_id then device_uid.
+ *
+ * zkteco-js returns logs with snake_case fields (`user_id`, `record_time`)
+ * — older versions used `userId` / `id`. Accept both shapes.
+ */
 function matchStudent(
-  log: { userId?: string; id?: string; uid?: number | string },
+  log: { user_id?: string; userId?: string; id?: string; uid?: number | string },
   byStudentId: Map<string, StudentRow>,
   byDeviceUid: Map<number, StudentRow>,
 ): StudentRow | null {
-  const userId = String(log.userId ?? log.id ?? '').trim();
+  const userId = String(log.user_id ?? log.userId ?? log.id ?? '').trim();
   if (userId && byStudentId.has(userId)) return byStudentId.get(userId)!;
   const uid = Number(log.uid ?? 0);
   if (uid && byDeviceUid.has(uid)) return byDeviceUid.get(uid)!;
   return null;
+}
+
+/** Pull the punch timestamp from whichever field the lib uses. */
+function logTimestamp(log: any): unknown {
+  return log?.record_time ?? log?.timestamp ?? log?.recordTime;
 }
 
 /** Convert any timestamp (Date | ISO string | epoch ms) to a Date. */
@@ -123,12 +150,22 @@ function localDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Compute minutes late from schedule start time. Returns 0 if no schedule. */
-function computeMinutesLate(punch: Date, schedules: ScheduleRow[]): number {
+/**
+ * Compute minutes late from the section's schedule for the punch's day-of-week.
+ * Falls back to the school-wide start time when no per-section schedule exists,
+ * so every punch is measured against *something* sensible.
+ */
+function computeMinutesLate(
+  punch: Date,
+  schedules: ScheduleRow[],
+  fallbackStartTime: string | null,
+): number {
   const dow = punch.getDay();
   const matched = schedules.find((s) => s.day_of_week === dow);
-  if (!matched) return 0;
-  const [hh, mm] = matched.start_time.split(':').map(Number);
+  const startStr = matched?.start_time ?? fallbackStartTime ?? null;
+  if (!startStr) return 0;
+  const [hh, mm] = startStr.split(':').map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return 0;
   const start = new Date(punch);
   start.setHours(hh, mm, 0, 0);
   const diffMin = Math.floor((punch.getTime() - start.getTime()) / 60000);
@@ -160,6 +197,8 @@ export async function runSync(supabase: SupabaseClient, opts: RunSyncOpts): Prom
       : `بدء السحب لـ${deviceIds.length} جهاز للتاريخ ${date}`,
     dry_run: dryRun,
   });
+
+  // School start time is loaded a few lines below; emit a hint event after.
 
   // 1. Fetch device rows + figure out which sections are involved.
   const { data: deviceRows, error: devErr } = await supabase
@@ -207,7 +246,31 @@ export async function runSync(supabase: SupabaseClient, opts: RunSyncOpts): Prom
     if (s.device_uid) byDeviceUid.set(Number(s.device_uid), s);
   }
 
-  // 3. Pre-fetch schedules for involved sections (sections.id == classes.id in K-12).
+  // 3. School-wide fallback start time — used when a section has no schedule row.
+  let schoolStartTime: string | null = null;
+  try {
+    const { data: settingsRow } = await supabase
+      .from('school_settings')
+      .select('school_start_time')
+      .limit(1)
+      .maybeSingle();
+    schoolStartTime = (settingsRow?.school_start_time as string | undefined) ?? '06:45';
+  } catch {
+    // Column may not exist on older DBs; fall back to a safe default.
+    schoolStartTime = '06:45';
+  }
+  // Trim seconds if present ('06:45:00' → '06:45') for cleaner UI.
+  if (schoolStartTime && /^\d{2}:\d{2}:\d{2}$/.test(schoolStartTime)) {
+    schoolStartTime = schoolStartTime.slice(0, 5);
+  }
+  emit({
+    type: 'started',
+    message: `وقت الدوام المعتمد: ${schoolStartTime} — يحتسب التأخير من هذا الوقت`,
+    school_start_time: schoolStartTime ?? undefined,
+    dry_run: dryRun,
+  });
+
+  // 3.1. Pre-fetch schedules for involved sections (sections.id == classes.id in K-12).
   let schedules: ScheduleRow[] = [];
   if (sectionIds.length > 0) {
     const { data: schedRows } = await supabase
@@ -231,11 +294,16 @@ export async function runSync(supabase: SupabaseClient, opts: RunSyncOpts): Prom
   for (const d of devices) deviceById.set(d.id, d);
   const unmatched: NonNullable<SyncEvent['diff']>['unmatched'] = [];
 
+  // |drift| above this threshold raises a warning in the UI; logs may still be pulled.
+  const DRIFT_WARN_SECONDS = 120;
+
   for (const dev of devices) {
     emit({ type: 'device-start', device_id: dev.id, device_name: dev.name });
 
     let svc = getDeviceFromPool(dev.id);
     let createdNow = false;
+    let devTimeIso: string | undefined;
+    let driftSec: number | undefined;
     try {
       if (!svc) {
         // Generous timeout — school Wi-Fi can spike to >2s per packet.
@@ -247,10 +315,41 @@ export async function runSync(supabase: SupabaseClient, opts: RunSyncOpts): Prom
         if (createdNow) await addDeviceToPool(dev.id, svc);
       }
 
+      // Verify the device's clock before reading logs — if it's drifted, dates
+      // on the punches may not match the selected day.
+      try {
+        const devTime = await svc.getDeviceTime();
+        const serverTime = new Date();
+        devTimeIso = devTime.toISOString();
+        driftSec = Math.round((devTime.getTime() - serverTime.getTime()) / 1000);
+        emit({
+          type: 'device-time',
+          device_id: dev.id,
+          device_name: dev.name,
+          device_time: devTimeIso,
+          server_time: serverTime.toISOString(),
+          drift_seconds: driftSec,
+          drift_warning: Math.abs(driftSec) > DRIFT_WARN_SECONDS,
+          message:
+            Math.abs(driftSec) > DRIFT_WARN_SECONDS
+              ? `⚠ ساعة الجهاز مختلفة عن الخادم بـ ${driftSec} ثانية — قد تتأثر تواريخ السجلات`
+              : `ساعة الجهاز: ${devTime.toLocaleString('ar-SA')} (فرق ${driftSec} ث)`,
+        });
+      } catch {
+        // Non-fatal — clock check is informational; continue with the pull.
+        emit({
+          type: 'device-time',
+          device_id: dev.id,
+          device_name: dev.name,
+          drift_warning: false,
+          message: 'تعذر قراءة ساعة الجهاز (سيتم المتابعة بناءً على تواريخ السجلات نفسها)',
+        });
+      }
+
       const logs = await svc.pullAttendanceLogs();
       let matched = 0;
       for (const log of logs as any[]) {
-        const punch = toDate(log.timestamp);
+        const punch = toDate(logTimestamp(log));
         if (!punch) continue;
         if (localDateStr(punch) !== date) continue; // filter by selected date
         const stu = matchStudent(log, byStudentId, byDeviceUid);
@@ -258,7 +357,7 @@ export async function runSync(supabase: SupabaseClient, opts: RunSyncOpts): Prom
           unmatched.push({
             device_id: dev.id,
             device_name: dev.name,
-            user_id: String(log.userId ?? log.id ?? ''),
+            user_id: String(log.user_id ?? log.userId ?? log.id ?? ''),
             uid: Number(log.uid ?? 0),
             punch_time: punch.toISOString(),
             punch_local: localTimeStr(punch),
@@ -273,11 +372,17 @@ export async function runSync(supabase: SupabaseClient, opts: RunSyncOpts): Prom
         matched++;
       }
 
-      deviceResults.push({ device_id: dev.id, name: dev.name, ok: true, fetched: logs.length, matched });
+      deviceResults.push({
+        device_id: dev.id, name: dev.name, ok: true, fetched: logs.length, matched,
+        device_time: devTimeIso, drift_seconds: driftSec,
+      });
       emit({ type: 'device-done', device_id: dev.id, device_name: dev.name, fetched: logs.length, matched });
     } catch (e: any) {
       const msg = e?.message || 'فشل غير متوقع';
-      deviceResults.push({ device_id: dev.id, name: dev.name, ok: false, fetched: 0, matched: 0, error: msg });
+      deviceResults.push({
+        device_id: dev.id, name: dev.name, ok: false, fetched: 0, matched: 0, error: msg,
+        device_time: devTimeIso, drift_seconds: driftSec,
+      });
       emit({ type: 'device-error', device_id: dev.id, device_name: dev.name, message: msg });
 
       // Best-effort cleanup so a stuck connection doesn't block the next device.
@@ -322,7 +427,7 @@ export async function runSync(supabase: SupabaseClient, opts: RunSyncOpts): Prom
   for (const [stuId, e] of earliest) {
     const stu = students.find((s) => s.id === stuId);
     const sectionScheds = e.section_id ? (schedulesBySection.get(e.section_id) || []) : [];
-    const minutes_late = computeMinutesLate(e.punch, sectionScheds);
+    const minutes_late = computeMinutesLate(e.punch, sectionScheds, schoolStartTime);
     const newPunchIso = e.punch.toISOString();
 
     const dev = deviceById.get(e.device_id);

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { MessageCircle, Save, RefreshCw, Eye, EyeOff, CheckCircle2, XCircle, Loader2, QrCode, AlertTriangle } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 import type { WhatsappSettings, WhatsappStatus } from '@/lib/types/database';
+import MessageTemplatesEditor from '@/components/whatsapp/MessageTemplatesEditor';
 
 const STATUS_META: Record<WhatsappStatus, { label: string; cls: string; Icon: any }> = {
   connected:    { label: 'متصل',         cls: 'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400 border-green-200 dark:border-green-500/30',     Icon: CheckCircle2 },
@@ -220,6 +221,9 @@ export default function WhatsappSettingsPage() {
           <li>انسخ الـ <span className="font-mono">Bearer Token</span> والصقه أعلاه</li>
         </ol>
       </div>
+
+      {/* Templates editor — admins can change message bodies and toggle active state */}
+      <MessageTemplatesEditor />
     </div>
   );
 }

@@ -3,6 +3,8 @@
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'excused';
 export type DeviceStatus = 'connected' | 'disconnected' | 'error' | 'syncing';
 export type SchoolStage = 'elementary' | 'middle' | 'secondary';
+export type NoteType = 'positive' | 'negative';
+export type NoteCategory = 'academic' | 'behavior' | 'attendance' | 'participation' | 'general';
 
 // === Table Types ===
 
@@ -93,10 +95,93 @@ export interface SchoolSettings {
   section_type: 'letters' | 'numbers';
   late_threshold: number;
   absent_threshold: number;
+  /** School-wide work start time as 'HH:MM' (24h). Default '06:45'. */
+  school_start_time: string | null;
   updated_at: string;
 }
 
 export type WhatsappStatus = 'connected' | 'disconnected' | 'connecting' | 'scanning' | 'error' | 'unknown';
+
+export type PeriodAttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
+
+export interface Period {
+  id: number;
+  number: number;
+  name: string;
+  start_time: string | null;
+  end_time: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface PeriodSession {
+  id: number;
+  section_id: number;
+  period_id: number;
+  attendance_date: string;
+  recorded_by: string | null;
+  recorded_at: string;
+  absent_count: number;
+  late_count: number;
+  excused_count: number;
+  total_count: number;
+  notes: string | null;
+}
+
+export interface PeriodAbsence {
+  id: number;
+  session_id: number;
+  student_id: number;
+  status: 'absent' | 'late' | 'excused';
+  notes: string | null;
+  recorded_at: string;
+}
+
+export interface TeacherProfile {
+  user_id: string;
+  role: 'teacher';
+  full_name: string | null;
+  phone: string | null;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  // From auth.users
+  email?: string;
+}
+
+export interface NoteTemplate {
+  id: number;
+  text: string;
+  type: NoteType;
+  category: NoteCategory;
+  icon: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type NoteSource = 'template' | 'text' | 'voice';
+
+export interface StudentNote {
+  id: number;
+  student_id: number;
+  template_id: number | null;
+  text: string;
+  type: NoteType;
+  category: NoteCategory | null;
+  source: NoteSource;
+  recorded_by: string | null;
+  recorded_at: string;
+  batch_id: string | null;
+  whatsapp_sent_at: string | null;
+  printed_at: string | null;
+  created_at: string;
+  // Joined for display
+  student_name?: string;
+  grade_name?: string;
+  section_name?: string;
+}
 
 export interface WhatsappSettings {
   id: number;

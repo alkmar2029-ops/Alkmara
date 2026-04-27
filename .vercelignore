@@ -1,0 +1,29 @@
+# Local-only files that don't belong on the public deployment.
+.env.local
+.env.development
+.env*.backup
+
+# Local dev artifacts
+node_modules
+.next
+out
+*.log
+*.tsbuildinfo
+
+# Local-only data dumps and one-off scripts
+device-data/
+debug-templates.js
+generate-report.js
+migrate-to-new-project.js
+pull-and-compare.js
+pull-device-data.js
+pull-students-from-db.js
+update-zero-ids.js
+
+# Self-host scripts (not needed on Vercel)
+ecosystem.config.js
+start.bat
+start.ps1
+
+# Git history
+.git
