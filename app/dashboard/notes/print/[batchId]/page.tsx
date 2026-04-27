@@ -200,7 +200,7 @@ export default function NotesPrintPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
           <span className="text-gray-500 dark:text-gray-400">
-            💡 لحفظ PDF: اضغط طباعة → اختر "حفظ كـ PDF".
+            💡 لحفظ PDF: اضغط طباعة → اختر «حفظ كـ PDF».
           </span>
           {sentCount > 0 && sentCount < totalCount && (
             <span className="text-yellow-600 dark:text-yellow-400">
