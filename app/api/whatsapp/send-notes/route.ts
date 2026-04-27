@@ -160,9 +160,10 @@ export async function POST(request: NextRequest) {
     }
     outcomes.push(out);
 
-    // Pacing — 400ms between sends.
+    // Pace 5.5s between sends — Wasender's "Account Protection" rate limits
+    // to 1 message every 5 seconds; we add a small buffer.
     if (i < notes.length - 1) {
-      await new Promise((res) => setTimeout(res, 400));
+      await new Promise((res) => setTimeout(res, 5500));
     }
   }
 

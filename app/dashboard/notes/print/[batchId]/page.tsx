@@ -191,7 +191,7 @@ export default function NotesPrintPage() {
                 <Send className="w-4 h-4" />
               )}
               {sendWaMut.isPending
-                ? 'جارٍ الإرسال...'
+                ? `جارٍ الإرسال... (~${Math.ceil(totalCount * 5.5)}ث)`
                 : allSent
                   ? `تم الإرسال (${sentCount})`
                   : `إرسال واتساب (${totalCount})`}

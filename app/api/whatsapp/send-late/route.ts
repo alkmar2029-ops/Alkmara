@@ -115,9 +115,10 @@ export async function POST(request: NextRequest) {
     if (result.ok) successCount++; else failCount++;
     outcomes.push(out);
 
-    // Small pacing delay between sends (skipped on last one).
+    // Pace 5.5s between sends — Wasender's "Account Protection" rate limits
+    // to 1 message every 5 seconds; we add a buffer.
     if (r !== (rows || [])[rows!.length - 1]) {
-      await new Promise((res) => setTimeout(res, 400));
+      await new Promise((res) => setTimeout(res, 5500));
     }
   }
 
