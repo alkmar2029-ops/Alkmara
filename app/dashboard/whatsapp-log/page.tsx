@@ -4,8 +4,9 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   MessageCircle, Search, RefreshCw, CheckCircle2, XCircle, Calendar,
-  Filter, ChevronDown, ChevronUp, Phone, User, Loader2,
+  Filter, ChevronDown, ChevronUp, Phone, User, Loader2, Printer,
 } from 'lucide-react';
+import Link from 'next/link';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 
 interface WaMessage {
@@ -96,14 +97,25 @@ export default function WhatsappLogPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="btn-secondary inline-flex items-center gap-1"
-        >
-          {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          تحديث
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/dashboard/whatsapp-log/print?${params}`}
+            target="_blank"
+            className="btn-secondary inline-flex items-center gap-1"
+            title="توليد تقرير قابل للطباعة بنفس الفلاتر الحالية"
+          >
+            <Printer className="w-4 h-4" />
+            تقرير PDF
+          </Link>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="btn-secondary inline-flex items-center gap-1"
+          >
+            {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            تحديث
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
