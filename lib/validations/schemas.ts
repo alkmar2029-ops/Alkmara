@@ -97,11 +97,13 @@ export const createScheduleSchema = z.object({
 // records a student note).
 export const NOTE_TYPES = ['positive', 'negative'] as const;
 export const NOTE_CATEGORIES = ['academic', 'behavior', 'attendance', 'participation', 'general'] as const;
+export const NOTE_AUDIENCES = ['admin', 'teacher', 'both'] as const;
 
 export const createNoteTemplateSchema = z.object({
   text: z.string().min(2, 'نص الملاحظة مطلوب').max(300, 'النص طويل جداً'),
   type: z.enum(NOTE_TYPES),
   category: z.enum(NOTE_CATEGORIES).default('general'),
+  audience: z.enum(NOTE_AUDIENCES).default('both'),
   // Single emoji or short symbol — keep tight to discourage abuse.
   icon: z.string().max(8).optional().or(z.literal('')),
   is_active: z.boolean().default(true),

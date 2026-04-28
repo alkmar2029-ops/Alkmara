@@ -5,16 +5,22 @@ import {
   createNoteTemplateSchema,
   validateBody,
   NOTE_TYPES,
+  NOTE_AUDIENCES,
 } from '@/lib/validations/schemas';
 
 export const dynamic = 'force-dynamic';
 
-// GET — list templates. Optional ?type=positive|negative filter for the
-// recording UI; admins on the settings page get the full list.
+// GET — list templates. Optional filters:
+//   ?type=positive|negative
+//   ?audience=admin|teacher|both
+//   ?for_role=admin|staff|teacher  → returns audience='both' + matching role
+//   ?active=1                       → only active
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const { searchParams } = new URL(request.url);
   const typeParam = searchParams.get('type');
+  const audienceParam = searchParams.get('audience');
+  const forRole = searchParams.get('for_role');
   const onlyActive = searchParams.get('active') === '1';
 
   let query = supabase
@@ -26,6 +32,16 @@ export async function GET(request: NextRequest) {
 
   if (typeParam && (NOTE_TYPES as readonly string[]).includes(typeParam)) {
     query = query.eq('type', typeParam);
+  }
+  if (audienceParam && (NOTE_AUDIENCES as readonly string[]).includes(audienceParam)) {
+    query = query.eq('audience', audienceParam);
+  }
+  // Convenience: caller passes the user's role and we resolve to which
+  // audiences they can see (always include 'both').
+  if (forRole === 'admin' || forRole === 'staff') {
+    query = query.in('audience', ['admin', 'both']);
+  } else if (forRole === 'teacher') {
+    query = query.in('audience', ['teacher', 'both']);
   }
   if (onlyActive) query = query.eq('is_active', true);
 
@@ -60,6 +76,7 @@ export async function POST(request: NextRequest) {
       text: v.data.text.trim(),
       type: v.data.type,
       category: v.data.category,
+      audience: v.data.audience,
       icon: v.data.icon || null,
       is_active: v.data.is_active,
       sort_order: v.data.sort_order,

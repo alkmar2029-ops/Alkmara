@@ -24,6 +24,7 @@ const navItems = [
   { path: '/dashboard/teachers', label: 'المعلمون', icon: UserCog },
   { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
   { path: '/dashboard/reports', label: 'التقارير', icon: BarChart3 },
+  { path: '/dashboard/reports/builder', label: 'منشئ التقارير', icon: BarChart3 },
   { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap },
   { path: '/dashboard/whatsapp', label: 'إعدادات WhatsApp', icon: MessageCircle },
   { path: '/dashboard/whatsapp-log', label: 'سجل المحادثات', icon: MessageCircle },

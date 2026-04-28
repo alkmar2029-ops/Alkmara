@@ -5,8 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   MessageSquarePlus, Pencil, Trash2, ThumbsUp, ThumbsDown, Tag, X, Save, Plus,
+  Shield, GraduationCap, Users as UsersIcon,
 } from 'lucide-react';
-import type { NoteTemplate, NoteType, NoteCategory } from '@/lib/types/database';
+import type { NoteTemplate, NoteType, NoteCategory, NoteAudience } from '@/lib/types/database';
 
 const CATEGORY_LABELS: Record<NoteCategory, string> = {
   academic:      'أكاديمي',
@@ -15,13 +16,20 @@ const CATEGORY_LABELS: Record<NoteCategory, string> = {
   participation: 'مشاركة',
   general:       'عام',
 };
+const AUDIENCE_LABELS: Record<NoteAudience, string> = {
+  admin:   'الإدارة فقط',
+  teacher: 'المعلم فقط',
+  both:    'الكل',
+};
 
 const CATEGORY_OPTIONS: NoteCategory[] = ['academic', 'behavior', 'attendance', 'participation', 'general'];
+const AUDIENCE_OPTIONS: NoteAudience[] = ['both', 'admin', 'teacher'];
 
 interface FormState {
   text: string;
   type: NoteType;
   category: NoteCategory;
+  audience: NoteAudience;
   icon: string;
   is_active: boolean;
   sort_order: number;
@@ -31,6 +39,7 @@ const emptyForm = (type: NoteType): FormState => ({
   text: '',
   type,
   category: 'general',
+  audience: 'both',
   icon: '',
   is_active: true,
   sort_order: 0,
@@ -39,6 +48,7 @@ const emptyForm = (type: NoteType): FormState => ({
 export default function NoteTemplatesSection() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<NoteType>('positive');
+  const [audienceFilter, setAudienceFilter] = useState<NoteAudience | 'all'>('all');
   const [editing, setEditing] = useState<NoteTemplate | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm('positive'));
@@ -100,7 +110,9 @@ export default function NoteTemplatesSection() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const tabTemplates = templates.filter((t) => t.type === activeTab);
+  const tabTemplates = templates
+    .filter((t) => t.type === activeTab)
+    .filter((t) => audienceFilter === 'all' || (t.audience ?? 'both') === audienceFilter);
 
   const openAdd = () => {
     setEditing(null);
@@ -114,6 +126,7 @@ export default function NoteTemplatesSection() {
       text: t.text,
       type: t.type,
       category: t.category,
+      audience: t.audience ?? 'both',
       icon: t.icon ?? '',
       is_active: t.is_active,
       sort_order: t.sort_order,
@@ -174,6 +187,15 @@ export default function NoteTemplatesSection() {
         />
       </div>
 
+      {/* Audience filter — pill row */}
+      <div className="flex flex-wrap gap-1.5 mb-3 text-xs">
+        <span className="text-gray-500 dark:text-gray-400 me-1 self-center">الجمهور:</span>
+        <AudiencePill active={audienceFilter === 'all'} onClick={() => setAudienceFilter('all')} Icon={UsersIcon} label="الكل" />
+        <AudiencePill active={audienceFilter === 'both'} onClick={() => setAudienceFilter('both')} Icon={UsersIcon} label="مشترك" />
+        <AudiencePill active={audienceFilter === 'admin'} onClick={() => setAudienceFilter('admin')} Icon={Shield} label="إدارة فقط" />
+        <AudiencePill active={audienceFilter === 'teacher'} onClick={() => setAudienceFilter('teacher')} Icon={GraduationCap} label="معلم فقط" />
+      </div>
+
       {/* List */}
       {isLoading ? (
         <p className="text-center text-gray-400 dark:text-gray-500 py-8 text-sm">جارٍ التحميل...</p>
@@ -195,6 +217,16 @@ export default function NoteTemplatesSection() {
                 <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
                     <Tag className="w-3 h-3" /> {CATEGORY_LABELS[t.category]}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${
+                    (t.audience ?? 'both') === 'admin' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-400' :
+                    (t.audience ?? 'both') === 'teacher' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400' :
+                    'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                  }`}>
+                    {(t.audience ?? 'both') === 'admin' ? <Shield className="w-3 h-3" /> :
+                     (t.audience ?? 'both') === 'teacher' ? <GraduationCap className="w-3 h-3" /> :
+                     <UsersIcon className="w-3 h-3" />}
+                    {AUDIENCE_LABELS[t.audience ?? 'both']}
                   </span>
                   {!t.is_active && <span className="text-yellow-600 dark:text-yellow-400">معطّل</span>}
                 </div>
@@ -273,6 +305,21 @@ export default function NoteTemplatesSection() {
                   </select>
                 </div>
               </div>
+              <div>
+                <label className="label">الجمهور</label>
+                <select
+                  value={form.audience}
+                  onChange={(e) => setForm({ ...form, audience: e.target.value as NoteAudience })}
+                  className="input"
+                >
+                  {AUDIENCE_OPTIONS.map((a) => (
+                    <option key={a} value={a}>{AUDIENCE_LABELS[a]}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  من يرى هذا القالب عند تسجيل الملاحظة
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">الأيقونة (اختياري)</label>
@@ -320,6 +367,22 @@ export default function NoteTemplatesSection() {
         </div>
       )}
     </div>
+  );
+}
+
+function AudiencePill({ active, onClick, Icon, label }: { active: boolean; onClick: () => void; Icon: any; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border transition-colors ${
+        active
+          ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400'
+          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+      }`}
+    >
+      <Icon className="w-3 h-3" />
+      {label}
+    </button>
   );
 }
 

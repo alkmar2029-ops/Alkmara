@@ -99,9 +99,10 @@ export default function NotesPage() {
   });
   const students = studentsResp?.data ?? [];
 
+  // Admin sees admin + both audiences (teacher templates are hidden here).
   const { data: templates = [] } = useQuery<NoteTemplate[]>({
-    queryKey: ['note-templates'],
-    queryFn: async () => (await (await fetch('/api/note-templates?active=1')).json()).data,
+    queryKey: ['note-templates', 'admin-audience'],
+    queryFn: async () => (await (await fetch('/api/note-templates?active=1&for_role=admin')).json()).data,
   });
 
   // Reset section when grade changes; reset selection when section changes.

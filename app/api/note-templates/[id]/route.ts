@@ -31,6 +31,7 @@ export async function PATCH(
   if (v.data.text !== undefined) patch.text = v.data.text.trim();
   if (v.data.type !== undefined) patch.type = v.data.type;
   if (v.data.category !== undefined) patch.category = v.data.category;
+  if (v.data.audience !== undefined) patch.audience = v.data.audience;
   if (v.data.icon !== undefined) patch.icon = v.data.icon || null;
   if (v.data.is_active !== undefined) patch.is_active = v.data.is_active;
   if (v.data.sort_order !== undefined) patch.sort_order = v.data.sort_order;

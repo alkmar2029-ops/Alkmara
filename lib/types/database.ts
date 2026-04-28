@@ -5,6 +5,7 @@ export type DeviceStatus = 'connected' | 'disconnected' | 'error' | 'syncing';
 export type SchoolStage = 'elementary' | 'middle' | 'secondary';
 export type NoteType = 'positive' | 'negative';
 export type NoteCategory = 'academic' | 'behavior' | 'attendance' | 'participation' | 'general';
+export type NoteAudience = 'admin' | 'teacher' | 'both';
 
 // === Table Types ===
 
@@ -154,6 +155,7 @@ export interface NoteTemplate {
   text: string;
   type: NoteType;
   category: NoteCategory;
+  audience: NoteAudience;
   icon: string | null;
   is_active: boolean;
   sort_order: number;
