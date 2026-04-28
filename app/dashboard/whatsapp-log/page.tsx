@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import {
   MessageCircle, Search, RefreshCw, CheckCircle2, XCircle, Calendar,
-  Filter, ChevronDown, ChevronUp, Phone, User, Loader2, Printer,
+  Filter, ChevronDown, ChevronUp, Phone, User, Loader2, Printer, Send,
 } from 'lucide-react';
 import Link from 'next/link';
 import { SkeletonTable } from '@/components/ui/Skeleton';
@@ -63,12 +64,30 @@ export default function WhatsappLogPage() {
     return p.toString();
   }, [statusFilter, contextFilter, typeFilter, from, to, q, page]);
 
+  const qc = useQueryClient();
   const { data, isLoading, isFetching, refetch } = useQuery<{
     data: WaMessage[]; total: number; stats: { success: number; failed: number; today: number; last_24h: number };
   }>({
     queryKey: ['whatsapp-log', params],
     queryFn: async () => (await fetch(`/api/whatsapp/messages?${params}`)).json(),
     refetchInterval: 30000,  // auto-refresh every 30s
+  });
+
+  // Re-send a previously failed message; the new attempt is logged as a fresh
+  // row so the original failure stays in the audit history.
+  const resendMut = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await fetch(`/api/whatsapp/messages/${id}/resend`, { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'فشل');
+      return d.data as { ok: boolean; error: string | null };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['whatsapp-log'] });
+      if (data.ok) toast.success('تم إعادة الإرسال بنجاح');
+      else toast.error(`الإرسال فشل مجدداً: ${data.error || 'سبب غير معروف'}`);
+    },
+    onError: (e: any) => toast.error(e.message),
   });
 
   const messages = data?.data || [];
@@ -196,6 +215,8 @@ export default function WhatsappLogPage() {
                   message={m}
                   expanded={expanded === m.id}
                   onToggle={() => setExpanded(expanded === m.id ? null : m.id)}
+                  onResend={() => resendMut.mutate(m.id)}
+                  resending={resendMut.isPending && resendMut.variables === m.id}
                 />
               ))}
             </ul>
@@ -231,7 +252,13 @@ export default function WhatsappLogPage() {
   );
 }
 
-function MessageRow({ message: m, expanded, onToggle }: { message: WaMessage; expanded: boolean; onToggle: () => void }) {
+function MessageRow({ message: m, expanded, onToggle, onResend, resending }: {
+  message: WaMessage;
+  expanded: boolean;
+  onToggle: () => void;
+  onResend: () => void;
+  resending: boolean;
+}) {
   const isOk = m.status === 'success';
   return (
     <li className={`py-3 px-2 -mx-2 rounded transition-colors ${expanded ? 'bg-gray-50 dark:bg-gray-800/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/40'}`}>
@@ -289,6 +316,23 @@ function MessageRow({ message: m, expanded, onToggle }: { message: WaMessage; ex
             {m.http_status && <div>HTTP: <code>{m.http_status}</code></div>}
             {m.context_id && <div>Context ID: <code dir="ltr">{m.context_id}</code></div>}
           </div>
+
+          {/* Resend action — only shown for failed messages */}
+          {!isOk && (
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800 flex flex-wrap items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); onResend(); }}
+                disabled={resending}
+                className="btn-primary text-xs inline-flex items-center gap-1.5"
+              >
+                {resending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                {resending ? 'جارٍ الإعادة...' : 'إعادة إرسال'}
+              </button>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                إعادة الإرسال تنشئ سجلاً جديداً مع الحفاظ على السجل القديم
+              </span>
+            </div>
+          )}
         </div>
       )}
     </li>
