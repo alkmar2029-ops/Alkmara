@@ -20,7 +20,11 @@ export async function GET(request: NextRequest) {
   const from = searchParams.get('from');
   const to = searchParams.get('to');
   const sectionId = searchParams.get('section_id');
-  const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10) || 50, 200);
+  const periodId = searchParams.get('period_id');
+  const periodNumber = searchParams.get('period_number');
+  const gradeId = searchParams.get('grade_id');
+  const gradeName = searchParams.get('grade');
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10) || 50, 500);
 
   const supabase = await createServerSupabaseClient();
   let q = supabase
@@ -29,10 +33,11 @@ export async function GET(request: NextRequest) {
       id, attendance_date, recorded_at, recorded_by,
       absent_count, late_count, excused_count, total_count, notes,
       section_id, period_id,
-      sections ( id, name, grades ( name ) ),
-      periods ( number, name )
+      sections!inner ( id, name, grade_id, grades!inner ( id, name ) ),
+      periods!inner ( number, name )
     `)
-    .order('recorded_at', { ascending: false })
+    .order('attendance_date', { ascending: false })
+    .order('period_id', { ascending: true })
     .limit(limit);
 
   if (mine) q = q.eq('recorded_by', ctx.userId);
@@ -40,6 +45,11 @@ export async function GET(request: NextRequest) {
   if (from) q = q.gte('attendance_date', from);
   if (to) q = q.lte('attendance_date', to);
   if (sectionId) q = q.eq('section_id', parseInt(sectionId, 10));
+  if (periodId) q = q.eq('period_id', parseInt(periodId, 10));
+  // Filtering by period number / grade name needs joined-column syntax.
+  if (periodNumber) q = q.eq('periods.number', parseInt(periodNumber, 10));
+  if (gradeId) q = q.eq('sections.grade_id', parseInt(gradeId, 10));
+  if (gradeName) q = q.eq('sections.grades.name', gradeName);
 
   const { data, error } = await q;
   if (error) {

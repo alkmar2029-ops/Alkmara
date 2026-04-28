@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   Calendar, Clock, Search, Save, CheckCircle2, Loader2, AlertCircle,
@@ -37,12 +38,26 @@ function todayStr() {
 }
 
 export default function TeacherHomePage() {
-  const qc = useQueryClient();
+  return (
+    <Suspense fallback={<div className="text-center py-10"><Loader2 className="w-6 h-6 animate-spin inline text-gray-400" /></div>}>
+      <TeacherEntryPage />
+    </Suspense>
+  );
+}
 
-  const [date, setDate] = useState(todayStr());
-  const [periodId, setPeriodId] = useState<number | null>(null);
-  const [gradeId, setGradeId] = useState<number | null>(null);
-  const [sectionId, setSectionId] = useState<number | null>(null);
+function TeacherEntryPage() {
+  const qc = useQueryClient();
+  // Edit-mode prefill from URL: /teacher?date=YYYY-MM-DD&period_id=N&section_id=N&grade_id=N
+  const sp = useSearchParams();
+  const initialDate = sp.get('date') || todayStr();
+  const initialPeriodId = sp.get('period_id') ? Number(sp.get('period_id')) : null;
+  const initialGradeId = sp.get('grade_id') ? Number(sp.get('grade_id')) : null;
+  const initialSectionId = sp.get('section_id') ? Number(sp.get('section_id')) : null;
+
+  const [date, setDate] = useState(initialDate);
+  const [periodId, setPeriodId] = useState<number | null>(initialPeriodId);
+  const [gradeId, setGradeId] = useState<number | null>(initialGradeId);
+  const [sectionId, setSectionId] = useState<number | null>(initialSectionId);
   const [search, setSearch] = useState('');
 
   // status[student_id] — defaults to 'present', set explicitly for non-present.
@@ -84,8 +99,13 @@ export default function TeacherHomePage() {
   useEffect(() => { if (!periodId && periods.length > 0) setPeriodId(periods[0].id); }, [periods, periodId]);
   useEffect(() => { if (!gradeId && grades.length > 0) setGradeId(grades[0].id); }, [grades, gradeId]);
 
-  // Reset section when grade changes; clear statuses when key fields change.
-  useEffect(() => { setSectionId(null); }, [gradeId]);
+  // Reset section when grade changes — but skip the first run so URL-prefilled
+  // section_id (edit mode) survives initial mount.
+  const gradeChangeCount = useMemo(() => ({ count: 0 }), []);
+  useEffect(() => {
+    gradeChangeCount.count++;
+    if (gradeChangeCount.count > 1) setSectionId(null);
+  }, [gradeId, gradeChangeCount]);
   useEffect(() => { setStatuses({}); }, [sectionId, periodId, date]);
 
   // Pre-fill statuses from any saved session for this combination.
