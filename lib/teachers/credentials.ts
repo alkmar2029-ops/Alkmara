@@ -145,9 +145,9 @@ export async function sendCredentialsViaWhatsapp(
     ? buildResetMessage({ fullName, email, password, portalUrl, schoolName })
     : buildWelcomeMessage({ fullName, email, password, portalUrl, schoolName });
 
-  const result = await sendTextAndLog({
+  const send = () => sendTextAndLog({
     supabase,
-    apiKey: ws.api_key,
+    apiKey: ws.api_key!,
     phone: normalizePhone(phone),
     message,
     recipientName: fullName,
@@ -157,5 +157,31 @@ export async function sendCredentialsViaWhatsapp(
     contextId: teacherUserId ?? null,
     sentBy: sentBy ?? null,
   });
+
+  // Approval often happens within seconds of the registration confirmation
+  // message we just sent on the same WhatsApp account, so Wasender's
+  // "1 message every 5 seconds" account-protection blocks it. Detect that
+  // exact error and retry once after a 6-second wait — this turns a manual
+  // copy-paste into a transparent auto-retry for the admin.
+  let result = await send();
+  if (!result.ok && isRateLimitError(result.error)) {
+    await new Promise((r) => setTimeout(r, 6000));
+    result = await send();
+  }
   return { ok: result.ok, error: result.error };
+}
+
+/**
+ * Wasender's rate-limit response is a free-form English string. Match
+ * conservatively on the distinctive phrase rather than the full text so
+ * minor wording changes upstream don't break detection.
+ */
+function isRateLimitError(err?: string): boolean {
+  if (!err) return false;
+  const e = err.toLowerCase();
+  return (
+    e.includes('account protection') ||
+    e.includes('1 message every') ||
+    e.includes('rate limit')
+  );
 }

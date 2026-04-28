@@ -100,9 +100,9 @@ export async function sendRegistrationConfirmation(
   }
 
   const message = buildRegistrationConfirmation(params);
-  const result = await sendTextAndLog({
+  const send = () => sendTextAndLog({
     supabase: params.supabase,
-    apiKey: ws.api_key,
+    apiKey: ws.api_key!,
     phone: normalizePhone(params.phone),
     message,
     recipientName: params.fullName,
@@ -112,5 +112,25 @@ export async function sendRegistrationConfirmation(
     contextId: null,
     sentBy: null,
   });
+
+  // Auto-retry once on Wasender rate-limit — see lib/teachers/credentials.ts
+  // for the same pattern. This message follows immediately after the user
+  // submits, so a back-to-back send (e.g. another teacher just registered)
+  // can hit the 5-second account-protection window.
+  let result = await send();
+  if (!result.ok && isRateLimitError(result.error)) {
+    await new Promise((r) => setTimeout(r, 6000));
+    result = await send();
+  }
   return { ok: result.ok, error: result.error };
+}
+
+function isRateLimitError(err?: string): boolean {
+  if (!err) return false;
+  const e = err.toLowerCase();
+  return (
+    e.includes('account protection') ||
+    e.includes('1 message every') ||
+    e.includes('rate limit')
+  );
 }
