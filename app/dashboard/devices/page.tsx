@@ -8,6 +8,7 @@ import { STATUS_MAP, STAGE_LABELS } from '@/lib/utils/helpers';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import Modal from '@/components/ui/Modal';
 import EmptyState from '@/components/ui/EmptyState';
+import CloudDeploymentBanner from '@/components/ui/CloudDeploymentBanner';
 
 export default function DevicesPage() {
   const qc = useQueryClient();
@@ -57,6 +58,8 @@ export default function DevicesPage() {
 
   return (
     <div className="space-y-4">
+      <CloudDeploymentBanner feature="الاتصال بأجهزة البصمة وسحب البيانات منها" />
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-2xl font-bold">أجهزة البصمة</h2>
         <button onClick={() => setShowForm(true)} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto"><Plus className="w-4 h-4" /> إضافة جهاز</button>

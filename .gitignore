@@ -16,3 +16,6 @@ tsconfig.tsbuildinfo
 
 # Real student/device dumps — never commit (PII)
 device-data/
+
+.vercel
+.env*.local

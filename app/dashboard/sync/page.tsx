@@ -8,6 +8,7 @@ import {
   Eye, Save, Plus, RotateCcw, MinusCircle, HelpCircle, Clock,
 } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
+import CloudDeploymentBanner from '@/components/ui/CloudDeploymentBanner';
 
 function todayStr() {
   const d = new Date();
@@ -266,6 +267,8 @@ export default function SyncPage() {
 
   return (
     <div className="space-y-6">
+      <CloudDeploymentBanner feature="سحب البصمات من الأجهزة" />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
