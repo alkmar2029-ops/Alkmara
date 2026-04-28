@@ -19,6 +19,18 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'حضور المعلم' },
+  // Modern equivalent of apple-mobile-web-app-capable (the legacy tag is
+  // emitted automatically by Next from appleWebApp; we add the standard one
+  // alongside it to silence the deprecation console warning).
+  other: { 'mobile-web-app-capable': 'yes' },
+  icons: {
+    icon: [
+      { url: '/icon-192.svg', type: 'image/svg+xml', sizes: '192x192' },
+      { url: '/icon-512.svg', type: 'image/svg+xml', sizes: '512x512' },
+    ],
+    shortcut: '/icon-192.svg',
+    apple: '/icon-192.svg',
+  },
 };
 
 export const viewport: Viewport = {
