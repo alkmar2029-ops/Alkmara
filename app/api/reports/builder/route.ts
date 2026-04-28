@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
   };
 
   const wantAll = types.includes('comprehensive');
-  const want = (t: string) => wantAll || types.includes(t);
+  const want = (t: string) => wantAll || (types as string[]).includes(t);
 
   // ============= 1. Daily attendance (fingerprint records) =============
   if (want('attendance_daily')) {
