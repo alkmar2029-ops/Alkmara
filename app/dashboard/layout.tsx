@@ -9,9 +9,10 @@ import {
   LayoutDashboard, Users, BookOpen, Fingerprint, ClipboardList, BarChart3,
   Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
   Sun, Moon, Bell, Download, MessageSquarePlus, UserCog, ClipboardCheck, Mail,
-  AlertTriangle,
+  AlertTriangle, UserPlus,
 } from 'lucide-react';
 import UnreadBadge from '@/components/ui/UnreadBadge';
+import PendingRegistrationsBadge from '@/components/ui/PendingRegistrationsBadge';
 import { useTheme } from '@/lib/hooks/useTheme';
 
 const navItems = [
@@ -24,6 +25,7 @@ const navItems = [
   { path: '/dashboard/late-notifications', label: 'إشعارات التأخير', icon: Bell },
   { path: '/dashboard/notes', label: 'الملاحظات', icon: MessageSquarePlus },
   { path: '/dashboard/teachers', label: 'المعلمون', icon: UserCog },
+  { path: '/dashboard/teacher-registrations', label: 'طلبات انضمام المعلمين', icon: UserPlus },
   { path: '/dashboard/messages', label: 'الرسائل الداخلية', icon: Mail },
   { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
   { path: '/dashboard/reports', label: 'التقارير', icon: BarChart3 },
@@ -104,6 +106,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Icon className="w-5 h-5 flex-shrink-0" />
                 {sidebarOpen && <span className="truncate flex-1">{item.label}</span>}
                 {item.path === '/dashboard/messages' && <UnreadBadge />}
+                {item.path === '/dashboard/teacher-registrations' && <PendingRegistrationsBadge />}
               </Link>
             );
           })}

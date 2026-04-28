@@ -153,6 +153,18 @@ export const createTeacherSchema = z.object({
   phone: z.string().regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح'),
 });
 
+// Public teacher self-registration (no auth required).
+export const teacherRegistrationSchema = z.object({
+  full_name: z.string().min(3, 'الاسم الكامل مطلوب (٣ أحرف على الأقل)').max(200),
+  email: z.string().email('بريد إلكتروني غير صالح'),
+  phone: z.string().regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح (مثال: 0555555555)'),
+});
+
+export const updateRegistrationSchema = z.object({
+  status: z.enum(['approved', 'rejected']),
+  notes: z.string().max(500).optional(),
+});
+
 export const updateTeacherSchema = z.object({
   full_name: z.string().min(2).max(200).optional(),
   phone: z.string().regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح').optional(),

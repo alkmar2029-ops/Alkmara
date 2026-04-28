@@ -27,6 +27,7 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isPublic =
     path.startsWith('/login') ||
+    path.startsWith('/register') ||
     path === '/manifest.webmanifest' ||
     path === '/sw.js' ||
     path.startsWith('/icon-');
@@ -53,6 +54,7 @@ export async function middleware(request: NextRequest) {
         '/api/sections',
         '/api/students',
         '/api/settings',              // GET only — already RLS-restricted for writes
+        '/api/teacher-registrations', // public submission
       ];
       const allowed = teacherApiAllowlist.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'));
       if (!allowed) {
@@ -61,7 +63,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (!user && path.startsWith('/api/')) {
+  // Public APIs (no auth required) — kept narrow for safety.
+  const publicApis = ['/api/teacher-registrations'];
+  const isPublicApi = publicApis.some((p) => path === p || path.startsWith(p + '/'));
+
+  if (!user && path.startsWith('/api/') && !isPublicApi) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

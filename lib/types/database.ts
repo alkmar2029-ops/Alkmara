@@ -150,6 +150,23 @@ export interface TeacherProfile {
   email?: string;
 }
 
+export type RegistrationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface TeacherRegistration {
+  id: number;
+  full_name: string;
+  email: string;
+  phone: string;
+  status: RegistrationStatus;
+  notes: string | null;
+  user_id: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejected_by: string | null;
+  rejected_at: string | null;
+  created_at: string;
+}
+
 export type MessageType = 'general' | 'student_referral' | 'student_notice' | 'reply';
 export type MessageStatus = 'sent' | 'read' | 'archived' | 'closed';
 export type MessageRecipientRole = 'admin' | 'teacher' | 'staff';

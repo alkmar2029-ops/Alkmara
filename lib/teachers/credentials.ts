@@ -41,6 +41,72 @@ export function normalizePhone(phone: string): string {
   return digits;
 }
 
+interface MessageParams {
+  fullName: string;
+  email: string;
+  password: string;
+  portalUrl: string;
+  schoolName?: string;
+}
+
+/**
+ * Warm welcome message sent the moment an admin approves a teacher's
+ * application. Tone is celebratory and emphasizes the teacher's value to the
+ * school — they took the step of applying, and we want their first contact
+ * with the system to feel like a genuine welcome to the family.
+ */
+function buildWelcomeMessage(p: MessageParams): string {
+  const school = p.schoolName ? ` في ${p.schoolName}` : '';
+  return `🌟 أهلاً وسهلاً بك أستاذنا الفاضل ${p.fullName} 🌹
+
+🎉 يسعدنا أن نُعلمكم باعتماد طلب انضمامكم لأسرة المعلمين${school}،
+فمرحباً بكم بين إخوانكم وزملائكم 🤝
+
+🎓 نحن على ثقة أن وجودكم سيكون إضافةً نوعية،
+وأن بصمتكم في تعليم أبنائنا ستبقى راسخة بإذن الله ✨
+
+📋 بيانات الدخول لبوابة المعلم:
+
+🔗 الرابط:
+${p.portalUrl}
+
+📧 البريد:
+${p.email}
+
+🔐 كلمة السر:
+${p.password}
+
+📱 لتجربة أفضل:
+• افتح الرابط من المتصفح ثم اضغط «إضافة إلى الشاشة الرئيسية» ليعمل كتطبيق.
+• يمكنك تغيير كلمة السر من صفحة «ملفي» داخل البوابة.
+
+🤲 نسأل الله لكم التوفيق والسداد،
+وأن يبارك في جهودكم ويُعينكم على رسالتكم التربوية النبيلة.
+
+— مع خالص الشكر والتقدير 🌷
+${p.schoolName || ''}`.trim();
+}
+
+/** Concise password-reset notification — no welcome flourish. */
+function buildResetMessage(p: MessageParams): string {
+  return `🔐 تم إعادة تعيين كلمة السر
+
+أهلاً ${p.fullName} 👋
+
+بيانات الدخول لبوابة المعلم${p.schoolName ? ` — ${p.schoolName}` : ''}:
+
+🔗 الرابط:
+${p.portalUrl}
+
+📧 البريد:
+${p.email}
+
+🔑 كلمة السر الجديدة:
+${p.password}
+
+يمكنك تغيير كلمة السر من صفحة «ملفي» بعد الدخول.`;
+}
+
 export interface SendCredentialsParams {
   supabase: SupabaseClient;
   fullName: string;
@@ -72,28 +138,12 @@ export async function sendCredentialsViaWhatsapp(
     return { ok: false, error: 'مفتاح API للواتساب غير مضبوط' };
   }
 
-  const heading = isReset
-    ? 'تم إعادة تعيين كلمة السر'
-    : 'تم إنشاء حسابك في نظام الحضور';
-
-  const message =
-`${heading}
-
-أهلاً ${fullName} 👋
-
-بيانات الدخول لبوابة المعلم${schoolName ? ` — ${schoolName}` : ''}:
-
-🔗 الرابط:
-${portalUrl}
-
-📧 البريد:
-${email}
-
-🔑 كلمة السر:
-${password}
-
-ننصح بحفظ الرابط على الشاشة الرئيسية.
-يمكنك تغيير كلمة السر من صفحة «ملفي» بعد الدخول.`;
+  // Two distinct messages — a freshly-approved teacher gets the warm welcome
+  // (they applied, were approved, and are joining the team), while a password
+  // reset stays short & functional.
+  const message = isReset
+    ? buildResetMessage({ fullName, email, password, portalUrl, schoolName })
+    : buildWelcomeMessage({ fullName, email, password, portalUrl, schoolName });
 
   const result = await sendTextAndLog({
     supabase,
