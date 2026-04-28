@@ -179,6 +179,27 @@ export const savePeriodAttendanceSchema = z.object({
   })).max(500),
 });
 
+// Internal messages — admin/staff ↔ teacher communications
+export const MESSAGE_TYPES = ['general', 'student_referral', 'student_notice', 'reply'] as const;
+export const MESSAGE_RECIPIENT_ROLES = ['admin', 'teacher', 'staff'] as const;
+export const MESSAGE_STATUSES = ['sent', 'read', 'archived', 'closed'] as const;
+
+export const sendMessageSchema = z.object({
+  type: z.enum(MESSAGE_TYPES).default('general'),
+  recipient_id: z.string().uuid().optional().nullable(),
+  recipient_role: z.enum(MESSAGE_RECIPIENT_ROLES).optional().nullable(),
+  student_id: z.number().int().positive().optional().nullable(),
+  subject: z.string().max(200).optional(),
+  body: z.string().min(1, 'الرسالة مطلوبة').max(2000),
+  parent_message_id: z.number().int().positive().optional().nullable(),
+}).refine((v) => v.recipient_id || v.recipient_role, {
+  message: 'يجب تحديد المستقبل (مستخدم محدد أو دور)',
+});
+
+export const updateMessageStatusSchema = z.object({
+  status: z.enum(MESSAGE_STATUSES),
+});
+
 // WhatsApp message template editor — admins can change the body and toggle
 // active state, but can't rename a template (other code depends on the name).
 export const updateMessageTemplateSchema = z.object({

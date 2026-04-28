@@ -150,6 +150,33 @@ export interface TeacherProfile {
   email?: string;
 }
 
+export type MessageType = 'general' | 'student_referral' | 'student_notice' | 'reply';
+export type MessageStatus = 'sent' | 'read' | 'archived' | 'closed';
+export type MessageRecipientRole = 'admin' | 'teacher' | 'staff';
+
+export interface InternalMessage {
+  id: number;
+  thread_id: string;
+  type: MessageType;
+  sender_id: string;
+  recipient_id: string | null;
+  recipient_role: MessageRecipientRole | null;
+  student_id: number | null;
+  subject: string | null;
+  body: string;
+  parent_message_id: number | null;
+  status: MessageStatus;
+  read_at: string | null;
+  created_at: string;
+  // Joined
+  sender_name?: string | null;
+  recipient_name?: string | null;
+  student_name?: string | null;
+  student_code?: string | null;
+  student_grade?: string | null;
+  student_section?: string | null;
+}
+
 export interface NoteTemplate {
   id: number;
   text: string;

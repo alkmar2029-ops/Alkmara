@@ -5,14 +5,16 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
-import { ClipboardList, History, User, LogOut, Menu, X, MessageSquarePlus, FileText } from 'lucide-react';
+import { ClipboardList, History, User, LogOut, Menu, X, MessageSquarePlus, FileText, Mail } from 'lucide-react';
+import UnreadBadge from '@/components/ui/UnreadBadge';
 
 const navItems = [
-  { path: '/teacher',         label: 'تسجيل الغياب', Icon: ClipboardList },
-  { path: '/teacher/notes',   label: 'الملاحظات',     Icon: MessageSquarePlus },
-  { path: '/teacher/history', label: 'سجل حصصي',     Icon: History },
-  { path: '/teacher/reports', label: 'التقارير',     Icon: FileText },
-  { path: '/teacher/profile', label: 'ملفي',          Icon: User },
+  { path: '/teacher',          label: 'تسجيل الغياب', Icon: ClipboardList },
+  { path: '/teacher/notes',    label: 'الملاحظات',     Icon: MessageSquarePlus },
+  { path: '/teacher/messages', label: 'الرسائل',       Icon: Mail },
+  { path: '/teacher/history',  label: 'سجل حصصي',     Icon: History },
+  { path: '/teacher/reports',  label: 'التقارير',     Icon: FileText },
+  { path: '/teacher/profile',  label: 'ملفي',          Icon: User },
 ];
 
 export default function TeacherLayout({ children }: { children: React.ReactNode }) {
@@ -103,6 +105,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   }`}
                 >
                   <Icon className="w-4 h-4" /> {label}
+                  {path === '/teacher/messages' && <UnreadBadge className="ms-1" />}
                 </Link>
               );
             })}
@@ -127,6 +130,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   }`}
                 >
                   <Icon className="w-4 h-4" /> {label}
+                  {path === '/teacher/messages' && <UnreadBadge className="ms-1" />}
                 </Link>
               );
             })}
