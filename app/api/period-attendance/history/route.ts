@@ -46,11 +46,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'فشل جلب السجل' }, { status: 500 });
   }
 
+  // Resolve teacher names in one batch — recorded_by FKs auth.users(id), but
+  // the user-facing display name lives in public.user_profiles.full_name.
+  const teacherIds = Array.from(new Set((data || []).map((r: any) => r.recorded_by).filter(Boolean)));
+  const teacherMap = new Map<string, string>();
+  if (teacherIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('user_id, full_name')
+      .in('user_id', teacherIds);
+    for (const p of profiles || []) {
+      if (p.full_name) teacherMap.set(p.user_id, p.full_name);
+    }
+  }
+
   const flat = (data || []).map((r: any) => ({
     id: r.id,
     attendance_date: r.attendance_date,
     recorded_at: r.recorded_at,
     recorded_by: r.recorded_by,
+    teacher_name: r.recorded_by ? (teacherMap.get(r.recorded_by) ?? null) : null,
     section_id: r.section_id,
     period_id: r.period_id,
     section_name: r.sections?.name ?? null,

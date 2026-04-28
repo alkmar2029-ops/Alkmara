@@ -18,6 +18,10 @@ export interface RenderVars {
   note_emoji?: string;
   note_type?: string;   // إيجابية | سلبية
   note_category?: string;
+  // Period attendance specific
+  period_name?: string;     // e.g. "الحصة الثالثة"
+  period_number?: number | string;
+  absence_status?: string;  // "غائب" | "متأخر" | "مستأذن"
 }
 
 export const TEMPLATE_PLACEHOLDERS: ReadonlyArray<{ key: keyof RenderVars; label: string; group?: 'common' | 'late' | 'note' }> = [
@@ -35,6 +39,9 @@ export const TEMPLATE_PLACEHOLDERS: ReadonlyArray<{ key: keyof RenderVars; label
   { key: 'note_emoji',     label: 'أيقونة الملاحظة',       group: 'note' },
   { key: 'note_type',      label: 'نوع الملاحظة',          group: 'note' },
   { key: 'note_category',  label: 'تصنيف الملاحظة',        group: 'note' },
+  { key: 'period_name',    label: 'اسم الحصة',             group: 'note' },
+  { key: 'period_number',  label: 'رقم الحصة',             group: 'note' },
+  { key: 'absence_status', label: 'حالة الغياب',           group: 'note' },
 ];
 
 export function renderTemplate(body: string, vars: RenderVars): string {
