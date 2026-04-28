@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Printer, ArrowRight, ClipboardCheck } from 'lucide-react';
@@ -52,6 +52,14 @@ function formatDateAr(d: string): string {
 }
 
 export default function PeriodAttendancePrintPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>}>
+      <PrintReport />
+    </Suspense>
+  );
+}
+
+function PrintReport() {
   const sp = useSearchParams();
   const date = sp.get('date') || '';
   const grade = sp.get('grade') || '';
