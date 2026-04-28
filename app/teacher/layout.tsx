@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
-import { ClipboardList, History, User, LogOut, Menu, X } from 'lucide-react';
+import { ClipboardList, History, User, LogOut, Menu, X, MessageSquarePlus } from 'lucide-react';
 
 const navItems = [
   { path: '/teacher',         label: 'تسجيل الغياب', Icon: ClipboardList },
+  { path: '/teacher/notes',   label: 'الملاحظات',     Icon: MessageSquarePlus },
   { path: '/teacher/history', label: 'سجل حصصي',     Icon: History },
   { path: '/teacher/profile', label: 'ملفي',          Icon: User },
 ];
