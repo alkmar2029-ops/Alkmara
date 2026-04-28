@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
     teacher_name: r.recorded_by ? (teacherMap.get(r.recorded_by) ?? null) : null,
     section_id: r.section_id,
     period_id: r.period_id,
+    grade_id: r.sections?.grade_id ?? null,
     section_name: r.sections?.name ?? null,
     grade_name: r.sections?.grades?.name ?? null,
     period_number: r.periods?.number ?? null,

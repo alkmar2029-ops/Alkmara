@@ -15,6 +15,7 @@ interface SessionRow {
   recorded_at: string;
   section_id: number;
   period_id: number;
+  grade_id: number | null;
   section_name: string | null;
   grade_name: string | null;
   period_number: number | null;
@@ -238,7 +239,7 @@ function SessionItem({ session: s }: { session: SessionRow }) {
       </div>
       <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-200 dark:border-gray-700/40">
         <Link
-          href={`/teacher?date=${s.attendance_date}&period_id=${s.period_id}&section_id=${s.section_id}`}
+          href={`/teacher?date=${s.attendance_date}&period_id=${s.period_id}&grade_id=${s.grade_id ?? ''}&section_id=${s.section_id}`}
           className="text-xs px-2.5 py-1 rounded bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-500/25 inline-flex items-center gap-1"
         >
           <Pencil className="w-3 h-3" /> تعديل
