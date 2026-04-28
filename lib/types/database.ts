@@ -168,13 +168,14 @@ export interface InternalMessage {
   status: MessageStatus;
   read_at: string | null;
   created_at: string;
-  // Joined
+  // Joined / derived
   sender_name?: string | null;
   recipient_name?: string | null;
   student_name?: string | null;
   student_code?: string | null;
   student_grade?: string | null;
   student_section?: string | null;
+  is_mine?: boolean;
 }
 
 export interface NoteTemplate {
