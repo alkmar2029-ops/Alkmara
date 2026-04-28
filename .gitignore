@@ -19,3 +19,6 @@ device-data/
 
 .vercel
 .env*.local
+.env.production-check
+.env.production-check*
+build.log
