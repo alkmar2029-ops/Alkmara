@@ -72,7 +72,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!user && !isPublic) {
+  // Page-redirect for unauthenticated users — but skip API paths, they were
+  // already handled above. Without this exclusion, public API calls get
+  // 307-redirected to /login and the client receives HTML instead of JSON.
+  if (!user && !isPublic && !path.startsWith('/api/')) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
