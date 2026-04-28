@@ -6,11 +6,12 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   MessageSquarePlus, Search, Mic, MicOff, Save, ThumbsUp, ThumbsDown,
-  CheckSquare, Square, Loader2, Eraser, AlertCircle,
+  CheckSquare, Square, Loader2, Eraser, AlertCircle, Calendar, Clock,
 } from 'lucide-react';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import { STAGE_LABELS } from '@/lib/utils/helpers';
 import { useSpeechToText } from '@/lib/hooks/useSpeechToText';
+import { useClassSession } from '@/lib/hooks/useClassSession';
 import type { NoteTemplate, NoteType, NoteCategory } from '@/lib/types/database';
 
 interface Student {
@@ -31,14 +32,42 @@ const CATEGORY_LABELS: Record<NoteCategory, string> = {
   academic: 'أكاديمي', behavior: 'سلوكي', attendance: 'حضور', participation: 'مشاركة', general: 'عام',
 };
 
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 export default function TeacherNotesPage() {
   const router = useRouter();
   const qc = useQueryClient();
 
-  // Filters
+  // Class session — persists grade/section/date for ~45 minutes so the
+  // teacher doesn't keep re-picking the same class.
+  const { session, patch, loaded } = useClassSession();
+
+  const [date, setDate] = useState<string>(todayStr());
   const [gradeId, setGradeId] = useState<string>('');
   const [sectionId, setSectionId] = useState<string>('');
   const [search, setSearch] = useState('');
+
+  // Hydrate from class session once.
+  useEffect(() => {
+    if (!loaded) return;
+    if (session.date) setDate(session.date);
+    if (session.gradeId) setGradeId(String(session.gradeId));
+    if (session.sectionId) setSectionId(String(session.sectionId));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
+  // Persist on change (skip while still hydrating).
+  useEffect(() => {
+    if (!loaded) return;
+    patch({
+      date,
+      gradeId: gradeId ? Number(gradeId) : null,
+      sectionId: sectionId ? Number(sectionId) : null,
+    });
+  }, [date, gradeId, sectionId, loaded, patch]);
 
   // Selection
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -96,7 +125,16 @@ export default function TeacherNotesPage() {
     queryFn: async () => (await (await fetch('/api/note-templates?active=1&for_role=teacher')).json()).data,
   });
 
-  useEffect(() => { setSectionId(''); setSelected(new Set()); }, [gradeId]);
+  // Reset section when grade changes — but skip the first run so persisted
+  // session_id survives initial mount.
+  const gradeChangeSeen = useMemo(() => ({ count: 0 }), []);
+  useEffect(() => {
+    gradeChangeSeen.count++;
+    if (gradeChangeSeen.count > 1) {
+      setSectionId('');
+      setSelected(new Set());
+    }
+  }, [gradeId, gradeChangeSeen]);
   useEffect(() => { setSelected(new Set()); }, [sectionId]);
 
   const visibleTemplates = useMemo(() =>
@@ -170,22 +208,29 @@ export default function TeacherNotesPage() {
 
   return (
     <div className="space-y-3 pb-40 lg:pb-0">
-      {/* Header */}
-      <div className="card flex items-center gap-3">
-        <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
-          <MessageSquarePlus className="w-5 h-5 text-white" />
+      {/* Sticky filters — date + grade + section */}
+      <div className="card sticky top-[60px] z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
+        <div className="flex items-center gap-2 mb-2 text-xs text-gray-500 dark:text-gray-400">
+          <MessageSquarePlus className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <span className="font-semibold text-gray-900 dark:text-gray-100">تسجيل الملاحظات</span>
+          <Clock className="w-3 h-3 ms-auto" />
+          <span title="جلسة الصف تُحفَظ ٤٥ دقيقة">جلسة محفوظة</span>
         </div>
-        <div>
-          <h1 className="font-bold">تسجيل الملاحظات</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">اختر الصف والشعبة، حدّد طلاباً، واكتب ملاحظتك</p>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="card">
+        <label className="block mb-2">
+          <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-1">
+            <Calendar className="w-3 h-3" /> التاريخ
+          </span>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="input"
+            max={todayStr()}
+          />
+        </label>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="label">الصف</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">الصف</label>
             <select value={gradeId} onChange={(e) => setGradeId(e.target.value)} className="input">
               <option value="">اختر</option>
               {grades.map((g: any) => (
@@ -196,7 +241,7 @@ export default function TeacherNotesPage() {
             </select>
           </div>
           <div>
-            <label className="label">الشعبة</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">الشعبة</label>
             <select value={sectionId} onChange={(e) => setSectionId(e.target.value)} className="input" disabled={!gradeId}>
               <option value="">اختر</option>
               {sections.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}

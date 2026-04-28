@@ -8,6 +8,7 @@ import {
   Calendar, Clock, Search, Save, CheckCircle2, Loader2, AlertCircle,
   ChevronDown, Users, RefreshCw, ArrowRight,
 } from 'lucide-react';
+import { useClassSession } from '@/lib/hooks/useClassSession';
 import type { PeriodAttendanceStatus } from '@/lib/types/database';
 
 interface Student {
@@ -49,16 +50,35 @@ function TeacherEntryPage() {
   const qc = useQueryClient();
   // Edit-mode prefill from URL: /teacher?date=YYYY-MM-DD&period_id=N&section_id=N&grade_id=N
   const sp = useSearchParams();
-  const initialDate = sp.get('date') || todayStr();
-  const initialPeriodId = sp.get('period_id') ? Number(sp.get('period_id')) : null;
-  const initialGradeId = sp.get('grade_id') ? Number(sp.get('grade_id')) : null;
-  const initialSectionId = sp.get('section_id') ? Number(sp.get('section_id')) : null;
+  const urlDate = sp.get('date');
+  const urlPeriodId = sp.get('period_id') ? Number(sp.get('period_id')) : null;
+  const urlGradeId = sp.get('grade_id') ? Number(sp.get('grade_id')) : null;
+  const urlSectionId = sp.get('section_id') ? Number(sp.get('section_id')) : null;
+  const hasUrlPrefill = !!(urlDate || urlPeriodId || urlGradeId || urlSectionId);
 
-  const [date, setDate] = useState(initialDate);
-  const [periodId, setPeriodId] = useState<number | null>(initialPeriodId);
-  const [gradeId, setGradeId] = useState<number | null>(initialGradeId);
-  const [sectionId, setSectionId] = useState<number | null>(initialSectionId);
+  const { session, patch, loaded } = useClassSession();
+
+  const [date, setDate] = useState(urlDate || todayStr());
+  const [periodId, setPeriodId] = useState<number | null>(urlPeriodId);
+  const [gradeId, setGradeId] = useState<number | null>(urlGradeId);
+  const [sectionId, setSectionId] = useState<number | null>(urlSectionId);
   const [search, setSearch] = useState('');
+
+  // Hydrate from class session if URL didn't prefill (URL wins).
+  useEffect(() => {
+    if (!loaded || hasUrlPrefill) return;
+    if (session.date) setDate(session.date);
+    if (session.gradeId) setGradeId(session.gradeId);
+    if (session.sectionId) setSectionId(session.sectionId);
+    if (session.periodId) setPeriodId(session.periodId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
+  // Persist on change.
+  useEffect(() => {
+    if (!loaded) return;
+    patch({ date, gradeId, sectionId, periodId });
+  }, [date, gradeId, sectionId, periodId, loaded, patch]);
 
   // status[student_id] — defaults to 'present', set explicitly for non-present.
   const [statuses, setStatuses] = useState<Record<number, PeriodAttendanceStatus>>({});
