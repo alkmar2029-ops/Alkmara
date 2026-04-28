@@ -55,6 +55,7 @@ export async function middleware(request: NextRequest) {
         '/api/students',
         '/api/settings',              // GET only — already RLS-restricted for writes
         '/api/teacher-registrations', // public submission
+        '/api/public/',               // public info (school name, etc.)
       ];
       const allowed = teacherApiAllowlist.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'));
       if (!allowed) {
@@ -64,7 +65,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Public APIs (no auth required) — kept narrow for safety.
-  const publicApis = ['/api/teacher-registrations'];
+  const publicApis = ['/api/teacher-registrations', '/api/public/'];
   const isPublicApi = publicApis.some((p) => path === p || path.startsWith(p + '/'));
 
   if (!user && path.startsWith('/api/') && !isPublicApi) {

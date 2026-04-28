@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/supabase/auth';
 import { teacherRegistrationSchema, validateBody } from '@/lib/validations/schemas';
 import { normalizePhone } from '@/lib/teachers/credentials';
+import { sendRegistrationConfirmation } from '@/lib/teachers/registration-confirmation';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,27 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: 'فشل حفظ الطلب' }, { status: 500 });
+  }
+
+  // Best-effort confirmation WhatsApp — thanks the teacher and showcases what
+  // they'll get once approved. Failures are swallowed: the registration row
+  // is already saved, so admin can still review and approve from the dashboard.
+  // We don't await admin's response — if Wasender is slow the user shouldn't
+  // wait, so this runs but the API returns success regardless.
+  try {
+    const { data: settingsRow } = await admin
+      .from('school_settings')
+      .select('school_name')
+      .eq('id', 1)
+      .maybeSingle();
+    await sendRegistrationConfirmation({
+      supabase: admin,
+      fullName: data.full_name,
+      phone: data.phone,
+      schoolName: (settingsRow?.school_name as string) || undefined,
+    });
+  } catch {
+    // Silent — the row is already in the DB.
   }
 
   return NextResponse.json({ data }, { status: 201 });

@@ -2,7 +2,12 @@ import { sendText, type SendResult } from './wasender-client';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type WhatsappRecipientType = 'parent' | 'teacher' | 'admin' | 'unknown';
-export type WhatsappContextType = 'note' | 'late' | 'teacher_credentials' | 'manual';
+export type WhatsappContextType =
+  | 'note'
+  | 'late'
+  | 'teacher_credentials'
+  | 'teacher_registration_confirmation'
+  | 'manual';
 
 export interface SendAndLogParams {
   supabase: SupabaseClient;
