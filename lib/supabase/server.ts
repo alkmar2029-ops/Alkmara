@@ -2,12 +2,18 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+// Vercel env vars added via CLI piping pick up trailing newlines on Windows.
+// Trim defensively so a stray '\n' doesn't break URL parsing at build time.
+function envTrimmed(key: string): string {
+  return (process.env[key] || '').trim();
+}
+
 export async function createServerSupabaseClient() {
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    envTrimmed('NEXT_PUBLIC_SUPABASE_URL'),
+    envTrimmed('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
     {
       cookies: {
         getAll() {
@@ -40,8 +46,8 @@ export async function getAuthenticatedUser() {
 
 export function createAdminSupabaseClient() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    envTrimmed('NEXT_PUBLIC_SUPABASE_URL'),
+    envTrimmed('SUPABASE_SERVICE_ROLE_KEY'),
     {
       auth: {
         autoRefreshToken: false,
