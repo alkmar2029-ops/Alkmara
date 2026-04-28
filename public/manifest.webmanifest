@@ -1,15 +1,17 @@
 {
   "name": "نظام الحضور — بوابة المعلم",
   "short_name": "حضور المعلم",
-  "description": "تسجيل غياب الحصص للمعلمين",
+  "description": "تسجيل الغياب وكتابة الملاحظات للمعلمين",
   "start_url": "/teacher",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "lang": "ar",
   "dir": "rtl",
   "theme_color": "#2563eb",
   "background_color": "#ffffff",
+  "categories": ["education", "productivity"],
   "icons": [
     {
       "src": "/icon-192.svg",
@@ -23,5 +25,28 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "تسجيل الغياب",
+      "short_name": "غياب",
+      "description": "صفحة تسجيل غياب الحصة",
+      "url": "/teacher",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "تسجيل الملاحظات",
+      "short_name": "ملاحظات",
+      "description": "كتابة ملاحظات على الطلاب",
+      "url": "/teacher/notes",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "سجل حصصي",
+      "short_name": "السجل",
+      "url": "/teacher/history",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false
 }

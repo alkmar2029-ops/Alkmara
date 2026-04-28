@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import { ClipboardList, History, User, LogOut, Menu, X, MessageSquarePlus, FileText, Mail, Sun, Moon } from 'lucide-react';
 import UnreadBadge from '@/components/ui/UnreadBadge';
+import InstallPrompt from '@/components/pwa/InstallPrompt';
 import { useTheme } from '@/lib/hooks/useTheme';
 
 const navItems = [
@@ -55,11 +56,30 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     };
   }, []);
 
-  // Register the service worker once — only in production-ish contexts.
+  // Register the service worker and prompt the user when a new version is
+  // ready. Without this, browsers serve the old SW until every tab is closed.
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {/* ignore */});
-    }
+    if (!('serviceWorker' in navigator)) return;
+    let registration: ServiceWorkerRegistration | null = null;
+
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      registration = reg;
+      // Check for updates every 30 minutes
+      setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // A new SW is waiting — quietly activate on next page navigation,
+            // no jarring reload prompts. The active tab keeps the old version
+            // until the user navigates.
+            newWorker.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    }).catch(() => { /* ignore */ });
   }, []);
 
   const logout = async () => {
@@ -163,6 +183,9 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
       {/* Main */}
       <main className="max-w-3xl mx-auto px-4 py-4">{children}</main>
+
+      {/* PWA install banner — auto-hides when installed */}
+      <InstallPrompt />
     </div>
   );
 }
