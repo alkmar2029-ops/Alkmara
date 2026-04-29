@@ -24,6 +24,25 @@ const nextConfig = {
           { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co;" },
         ],
       },
+      // Landing page is a standalone marketing HTML that loads Tailwind + Cairo
+      // from public CDNs. Override the strict app CSP for this single path so
+      // those CDNs are allowed. Next.js merges matching `headers()` entries —
+      // a later match for the same key replaces the earlier one.
+      {
+        source: '/landing.html',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value:
+              "default-src 'self'; " +
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.tailwindcss.com; " +
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+              "img-src 'self' data: blob:; " +
+              "font-src 'self' https://fonts.gstatic.com data:; " +
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co;",
+          },
+        ],
+      },
     ];
   },
 };
