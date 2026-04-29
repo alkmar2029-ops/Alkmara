@@ -40,7 +40,17 @@ export async function getAuthContext(): Promise<AuthContext | null> {
 
 /**
  * Returns the AuthContext if the user has one of the allowed roles,
- * otherwise returns a NextResponse error to be returned from the API route.
+ * otherwise returns a NextResponse error.
+ *
+ * super_admin is the highest privilege in the system (the principal) and
+ * is implicitly allowed on every role check — same semantics as a Unix
+ * root account. This means we don't have to add 'super_admin' to every
+ * `requireRole(['admin'])` call across the codebase; super_admin always
+ * passes through.
+ *
+ * If you ever need to gate something to *exactly* super_admin, check
+ * `ctx.role === 'super_admin'` directly inside the route instead of
+ * relying on requireRole.
  */
 export async function requireRole(
   allowed: UserRole[],
@@ -49,6 +59,8 @@ export async function requireRole(
   if (!ctx) {
     return { ok: false, res: NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 }) };
   }
+  // super_admin overrides every role gate — they're the school's root.
+  if (ctx.role === 'super_admin') return { ok: true, ctx };
   if (!allowed.includes(ctx.role)) {
     return {
       ok: false,
