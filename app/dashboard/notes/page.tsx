@@ -50,7 +50,9 @@ export default function NotesPage() {
   // Using a Map (not a Set of ids) is what makes cross-grade/cross-section
   // multi-select work without re-fetching every selected student.
   const [selectedMap, setSelectedMap] = useState<Map<number, Student>>(new Map());
-  const [showSelectedPanel, setShowSelectedPanel] = useState(false);
+  // Panel is open by default — admins should see exactly who they're about
+  // to message before they save. We collapse it only on explicit user action.
+  const [showSelectedPanel, setShowSelectedPanel] = useState(true);
 
   // Note input state
   const [noteType, setNoteType] = useState<NoteType>('positive');
@@ -343,70 +345,98 @@ export default function NotesPage() {
         </div>
       </div>
 
-      {/* Cross-grade/section selection summary — only shown when there's
-          something to manage. Lets the admin keep adding students from
-          different grades+sections, then send a note to all of them at once. */}
+      {/* Cross-grade/section selection summary. Open by default so admins
+          see exactly who they're about to message before saving. Each
+          group is its own bordered block so it's easy to scan: which
+          section, how many, and the names. */}
       {selectedMap.size > 0 && (
-        <div className="card border-blue-200 dark:border-blue-500/30 bg-blue-50/50 dark:bg-blue-500/5">
-          <button
-            onClick={() => setShowSelectedPanel((v) => !v)}
-            className="w-full flex items-center justify-between gap-2 text-right"
-          >
-            <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              <span className="font-semibold text-blue-900 dark:text-blue-200">
-                المختارون عبر الصفوف: {selectedMap.size} طالب
-              </span>
-              <span className="text-xs text-blue-700 dark:text-blue-300">
-                ({groupedSelected.length} {groupedSelected.length === 1 ? 'شعبة' : 'شعب'})
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm(`مسح اختيار ${selectedMap.size} طالب؟`)) clearAllSelected();
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault(); e.stopPropagation();
-                    if (confirm(`مسح اختيار ${selectedMap.size} طالب؟`)) clearAllSelected();
-                  }
-                }}
-                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" /> مسح الكل
-              </span>
-              {showSelectedPanel ? <ChevronUp className="w-4 h-4 text-blue-600 dark:text-blue-400" /> : <ChevronDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
-            </div>
-          </button>
+        <div className="card border-2 border-blue-300 dark:border-blue-500/40 bg-blue-50/70 dark:bg-blue-500/5">
+          {/* Header bar — kept as a button so it can collapse if the list gets huge */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <button
+              onClick={() => setShowSelectedPanel((v) => !v)}
+              className="flex items-center gap-2 text-right hover:opacity-80 transition-opacity"
+            >
+              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+                <Users className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="font-semibold text-blue-900 dark:text-blue-200">
+                  المختارون عبر الصفوف
+                  <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full ms-2">
+                    {selectedMap.size} طالب
+                  </span>
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  من {groupedSelected.length} {groupedSelected.length === 1 ? 'شعبة' : 'شعب'} مختلفة
+                </p>
+              </div>
+              {showSelectedPanel
+                ? <ChevronUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                : <ChevronDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+            </button>
+            <button
+              onClick={() => {
+                if (confirm(`مسح اختيار ${selectedMap.size} طالب؟`)) clearAllSelected();
+              }}
+              className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg bg-white dark:bg-gray-900 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 hover:bg-red-50 dark:hover:bg-red-500/10"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> مسح الكل
+            </button>
+          </div>
 
           {showSelectedPanel && (
-            <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-500/30 space-y-3 max-h-72 overflow-y-auto">
+            <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-500/30 space-y-3 max-h-[400px] overflow-y-auto">
               {groupedSelected.map((g) => (
-                <div key={g.label}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <h4 className="text-xs font-semibold text-blue-900 dark:text-blue-200">
-                      {g.label} <span className="text-blue-600 dark:text-blue-400">({g.students.length})</span>
+                <div
+                  key={g.label}
+                  className="bg-white dark:bg-gray-900 border border-blue-100 dark:border-blue-500/20 rounded-lg p-3"
+                >
+                  {/* Group header */}
+                  <div className="flex items-center justify-between mb-2 pb-2 border-b border-blue-100 dark:border-blue-500/20">
+                    <h4 className="text-sm font-bold text-blue-900 dark:text-blue-200 inline-flex items-center gap-1.5">
+                      📚 {g.label}
+                      <span className="bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 text-xs px-2 py-0.5 rounded-full">
+                        {g.students.length}
+                      </span>
                     </h4>
+                    <button
+                      onClick={() => {
+                        setSelectedMap((prev) => {
+                          const next = new Map(prev);
+                          for (const s of g.students) next.delete(s.id);
+                          return next;
+                        });
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                      title="إزالة كل طلاب هذه الشعبة"
+                    >
+                      إزالة الشعبة
+                    </button>
                   </div>
-                  <ul className="flex flex-wrap gap-1.5">
+
+                  {/* Student rows — name + ID + remove button */}
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {g.students.map((s) => {
                       const fullName = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
                       return (
                         <li
                           key={s.id}
-                          className="inline-flex items-center gap-1 bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-500/30 rounded-full px-2 py-0.5 text-xs"
+                          className="group inline-flex items-center gap-2 bg-gray-50 dark:bg-gray-800/60 hover:bg-blue-50 dark:hover:bg-blue-500/10 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-xs"
                         >
-                          <span className="text-gray-800 dark:text-gray-200 truncate max-w-[160px]">{fullName}</span>
+                          <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                            {fullName.charAt(0)}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{fullName}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-mono" dir="ltr">{s.student_id}</p>
+                          </div>
                           <button
                             onClick={() => removeSelected(s.id)}
-                            className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 shrink-0"
+                            className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity"
                             title="إزالة من الاختيار"
                           >
-                            <X className="w-3 h-3" />
+                            <X className="w-4 h-4" />
                           </button>
                         </li>
                       );
@@ -417,8 +447,11 @@ export default function NotesPage() {
             </div>
           )}
 
-          <p className="text-xs text-blue-700 dark:text-blue-300 mt-2 leading-relaxed">
-            💡 يمكنك تغيير الصف/الشعبة من الفلتر أعلاه — اختياراتك تبقى محفوظة. عند الحفظ ستُسجّل الملاحظة لكل المختارين دفعة واحدة.
+          <p className="text-xs text-blue-700 dark:text-blue-300 mt-3 leading-relaxed flex items-start gap-1">
+            <span>💡</span>
+            <span>
+              يمكنك تغيير الصف/الشعبة أو البحث — اختياراتك تبقى محفوظة. عند الحفظ ستُسجّل الملاحظة لكل المختارين دفعة واحدة.
+            </span>
           </p>
         </div>
       )}
