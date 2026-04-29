@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
+import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
 import { normalizePhone } from './credentials';
 
 interface ConfirmationParams {
@@ -90,6 +91,12 @@ function buildRegistrationConfirmation(p: ConfirmationParams): string {
 export async function sendRegistrationConfirmation(
   params: ConfirmationParams,
 ): Promise<{ ok: boolean; error?: string }> {
+  // Honor the master toggle. The thank-you message is non-critical —
+  // skipping it silently is fine when the school has WhatsApp muted.
+  if (!(await isTeacherWhatsappEnabled(params.supabase))) {
+    return { ok: false, error: TEACHER_WHATSAPP_DISABLED_ERROR };
+  }
+
   const { data: ws } = await params.supabase
     .from('whatsapp_settings')
     .select('api_key')

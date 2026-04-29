@@ -2,6 +2,7 @@ import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
+import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,12 @@ export async function POST(request: NextRequest) {
   const v = parsed.data;
 
   const admin = createAdminSupabaseClient();
+
+  // Reject upfront if the master toggle is off — better UX than enqueueing
+  // a job and surfacing the error on the progress page only.
+  if (!(await isTeacherWhatsappEnabled(admin))) {
+    return NextResponse.json({ error: TEACHER_WHATSAPP_DISABLED_ERROR }, { status: 400 });
+  }
 
   // 1. Resolve target teacher list. We resolve them once now (rather than
   // at worker time) so the recipient set is locked at creation — admins

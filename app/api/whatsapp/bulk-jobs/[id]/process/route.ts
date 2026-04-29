@@ -1,6 +1,7 @@
 import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
+import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
 import { renderTemplate } from '@/lib/whatsapp/template';
 import { normalizePhone } from '@/lib/teachers/credentials';
 
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   // 4. Pull WhatsApp creds + school settings (one round trip each).
   const [{ data: ws }, { data: settings }] = await Promise.all([
-    admin.from('whatsapp_settings').select('api_key').eq('id', 1).maybeSingle(),
+    admin.from('whatsapp_settings').select('api_key, teachers_enabled').eq('id', 1).maybeSingle(),
     admin.from('school_settings').select('school_name, principal_name').eq('id', 1).maybeSingle(),
   ]);
   if (!ws?.api_key) {
@@ -70,6 +71,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       completed_at: new Date().toISOString(),
     }).eq('id', jobId);
     return NextResponse.json({ error: 'whatsapp api key missing' }, { status: 400 });
+  }
+  // Master toggle — fail the whole job loud-and-clear so the admin sees it.
+  // Bulk reminders are intentional broadcasts; silently sending nothing
+  // would be the wrong default.
+  if (ws.teachers_enabled === false) {
+    await admin.from('bulk_send_jobs').update({
+      status: 'failed',
+      error_message: TEACHER_WHATSAPP_DISABLED_ERROR,
+      completed_at: new Date().toISOString(),
+    }).eq('id', jobId);
+    return NextResponse.json({ error: 'teacher whatsapp disabled' }, { status: 400 });
   }
 
   const today = (() => {

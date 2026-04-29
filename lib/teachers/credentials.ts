@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
+import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -128,6 +129,13 @@ export async function sendCredentialsViaWhatsapp(
   params: SendCredentialsParams,
 ): Promise<{ ok: boolean; error?: string }> {
   const { supabase, fullName, email, phone, password, portalUrl, isReset, schoolName, teacherUserId, sentBy } = params;
+
+  // Master toggle — admin may have silenced teacher WhatsApp. Returning a
+  // not-ok with this message lets the caller surface the password manually
+  // (the existing fallback flow already handles WhatsApp failure gracefully).
+  if (!(await isTeacherWhatsappEnabled(supabase))) {
+    return { ok: false, error: TEACHER_WHATSAPP_DISABLED_ERROR };
+  }
 
   const { data: ws } = await supabase
     .from('whatsapp_settings')

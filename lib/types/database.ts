@@ -240,6 +240,7 @@ export interface WhatsappSettings {
   status: WhatsappStatus;
   last_checked_at: string | null;
   updated_at: string;
+  teachers_enabled: boolean;
 }
 
 export interface DeviceSyncLog {

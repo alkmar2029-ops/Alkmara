@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { MessageCircle, Save, RefreshCw, Eye, EyeOff, CheckCircle2, XCircle, Loader2, QrCode, AlertTriangle } from 'lucide-react';
+import { MessageCircle, Save, RefreshCw, Eye, EyeOff, CheckCircle2, XCircle, Loader2, QrCode, AlertTriangle, GraduationCap, BellOff, Bell } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 import type { WhatsappSettings, WhatsappStatus } from '@/lib/types/database';
 import MessageTemplatesEditor from '@/components/whatsapp/MessageTemplatesEditor';
@@ -47,7 +47,7 @@ export default function WhatsappSettingsPage() {
   }, [settings, form]);
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { api_key?: string; session_id?: string }) => {
+    mutationFn: async (data: { api_key?: string; session_id?: string; teachers_enabled?: boolean }) => {
       const res = await fetch('/api/whatsapp/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -64,6 +64,27 @@ export default function WhatsappSettingsPage() {
       toast.success('تم حفظ الإعدادات');
     },
     onError: (err: any) => toast.error(err.message || 'حدث خطأ أثناء الحفظ'),
+  });
+
+  // Dedicated toggle mutation — flips the master switch with a one-click
+  // optimistic-feeling response. Reuses the same PUT endpoint.
+  const teachersToggleMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await fetch('/api/whatsapp/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teachers_enabled: enabled }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'فشل التغيير');
+      return enabled;
+    },
+    onSuccess: (enabled) => {
+      qc.invalidateQueries({ queryKey: ['whatsapp-settings'] });
+      toast.success(enabled
+        ? '✓ تم تفعيل رسائل الواتساب للمعلمين'
+        : '🔕 تم إيقاف رسائل الواتساب للمعلمين');
+    },
+    onError: (err: any) => toast.error(err.message || 'فشل التغيير'),
   });
 
   const checkMutation = useMutation({
@@ -211,6 +232,64 @@ export default function WhatsappSettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Master toggle — silence ALL teacher-bound WhatsApp messages */}
+      {settings && (
+        <div className={`card ${
+          settings.teachers_enabled
+            ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/30'
+            : 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30'
+        }`}>
+          <div className="flex items-start gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              settings.teachers_enabled ? 'bg-green-500' : 'bg-amber-500'
+            }`}>
+              <GraduationCap className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className={`font-semibold ${
+                settings.teachers_enabled
+                  ? 'text-green-900 dark:text-green-200'
+                  : 'text-amber-900 dark:text-amber-200'
+              }`}>
+                رسائل الواتساب للمعلمين
+              </h3>
+              <p className={`text-sm mt-1 ${
+                settings.teachers_enabled
+                  ? 'text-green-800 dark:text-green-300'
+                  : 'text-amber-800 dark:text-amber-300'
+              }`}>
+                {settings.teachers_enabled
+                  ? '✓ مفعّل — يستلم المعلمون: بيانات الدخول، تذكيرات الحضور، الرسائل الجماعية.'
+                  : '🔕 موقوف — لن تُرسَل أي رسالة واتساب للمعلمين (الرسائل الداخلية تعمل عادةً).'}
+              </p>
+              {!settings.teachers_enabled && (
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+                  ⚠️ عند اعتماد معلم جديد ستظهر بيانات الدخول للنسخ اليدوي بدل الإرسال التلقائي.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => teachersToggleMutation.mutate(!settings.teachers_enabled)}
+              disabled={teachersToggleMutation.isPending}
+              className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                settings.teachers_enabled
+                  ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/30'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              } ${teachersToggleMutation.isPending ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+              {teachersToggleMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : settings.teachers_enabled ? (
+                <BellOff className="w-4 h-4" />
+              ) : (
+                <Bell className="w-4 h-4" />
+              )}
+              {settings.teachers_enabled ? 'إيقاف' : 'تفعيل'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="card bg-blue-50 dark:bg-blue-500/10 border-blue-100 dark:border-blue-500/30">
         <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2 text-sm">كيفية الحصول على مفتاح API</h3>

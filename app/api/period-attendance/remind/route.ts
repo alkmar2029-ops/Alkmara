@@ -2,6 +2,7 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/sup
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
+import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
 import { normalizePhone } from '@/lib/teachers/credentials';
 import { z } from 'zod';
 
@@ -118,10 +119,14 @@ ${schoolName ? `\n— ${schoolName}` : ''}`;
     console.error('reminder internal message failed:', msgErr.message);
   }
 
-  // 2. WhatsApp — best-effort. Skip if the teacher has no phone on file.
+  // 2. WhatsApp — best-effort. Skip if the teacher has no phone on file or
+  // if the master toggle is off. Internal message still goes through above.
   let whatsappSent = false;
   let whatsappError: string | null = null;
-  if (teacher.phone) {
+  const teacherWaEnabled = await isTeacherWhatsappEnabled(admin);
+  if (!teacherWaEnabled) {
+    whatsappError = TEACHER_WHATSAPP_DISABLED_ERROR;
+  } else if (teacher.phone) {
     const { data: ws } = await admin
       .from('whatsapp_settings')
       .select('api_key')

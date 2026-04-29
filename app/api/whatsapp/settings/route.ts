@@ -17,7 +17,7 @@ export async function GET() {
   const { data, error } = await supabase.from('whatsapp_settings').select('*').eq('id', 1).maybeSingle();
   if (error) return NextResponse.json({ error: 'حدث خطأ في جلب الإعدادات' }, { status: 400 });
 
-  const row = data || { id: 1, api_key: null, session_id: null, phone_number: null, status: 'disconnected', last_checked_at: null, updated_at: null };
+  const row = data || { id: 1, api_key: null, session_id: null, phone_number: null, status: 'disconnected', last_checked_at: null, updated_at: null, teachers_enabled: true };
   return NextResponse.json({
     data: {
       id: row.id,
@@ -28,6 +28,8 @@ export async function GET() {
       status: row.status,
       last_checked_at: row.last_checked_at,
       updated_at: row.updated_at,
+      // Default true if the column is missing (pre-migration databases).
+      teachers_enabled: row.teachers_enabled !== false,
     },
   }, { headers: NO_STORE });
 }
@@ -54,6 +56,9 @@ export async function PUT(request: NextRequest) {
     updated_at: new Date().toISOString(),
   };
   if (incomingKey && !isMasked) update.api_key = incomingKey;
+  if (typeof validation.data.teachers_enabled === 'boolean') {
+    update.teachers_enabled = validation.data.teachers_enabled;
+  }
 
   // Ensure singleton row exists (id=1) — tolerate first run on databases that
   // were migrated before the seed insert in schema.sql.
@@ -63,7 +68,7 @@ export async function PUT(request: NextRequest) {
     .from('whatsapp_settings')
     .update(update)
     .eq('id', 1)
-    .select('id, session_id, phone_number, status, last_checked_at, updated_at, api_key')
+    .select('id, session_id, phone_number, status, last_checked_at, updated_at, api_key, teachers_enabled')
     .single();
 
   if (error) return NextResponse.json({ error: 'حدث خطأ في حفظ الإعدادات' }, { status: 400 });
@@ -87,6 +92,7 @@ export async function PUT(request: NextRequest) {
       status: data.status,
       last_checked_at: data.last_checked_at,
       updated_at: data.updated_at,
+      teachers_enabled: data.teachers_enabled !== false,
     },
   }, { headers: NO_STORE });
 }

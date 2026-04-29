@@ -299,6 +299,8 @@ export const updateWhatsappSettingsSchema = z.object({
   // Allow either a fresh key or the masked sentinel meaning "keep existing".
   api_key: z.string().min(10, 'مفتاح API يجب أن يكون 10 أحرف على الأقل').max(500).optional(),
   session_id: z.string().max(100).optional().or(z.literal('')),
+  // Master switch for teacher-bound messages — credentials, reminders, bulk.
+  teachers_enabled: z.boolean().optional(),
 });
 
 // Device action schema
