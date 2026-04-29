@@ -10,36 +10,48 @@ import {
   LayoutDashboard, Users, BookOpen, Fingerprint, ClipboardList, BarChart3,
   Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
   Sun, Moon, Bell, Download, MessageSquarePlus, UserCog, ClipboardCheck, Mail,
-  AlertTriangle, UserPlus, LogOut as ExitIcon,
+  AlertTriangle, UserPlus, LogOut as ExitIcon, Shield, KeyRound, Crown,
 } from 'lucide-react';
 import UnreadBadge from '@/components/ui/UnreadBadge';
 import PendingRegistrationsBadge from '@/components/ui/PendingRegistrationsBadge';
 import { useTheme } from '@/lib/hooks/useTheme';
+import { useQuery } from '@tanstack/react-query';
 
+// `superAdminOnly: true` hides the entry for plain admins. The header
+// fetches /api/admin-assignments/me to know the current role; the list
+// is then filtered before rendering.
 const navItems = [
   { path: '/dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
   { path: '/dashboard/students', label: 'الطلاب', icon: Users },
-  { path: '/dashboard/grades', label: 'الصفوف والشعب', icon: BookOpen },
-  { path: '/dashboard/devices', label: 'أجهزة البصمة', icon: Fingerprint },
-  { path: '/dashboard/sync', label: 'سحب البيانات', icon: Download },
+  { path: '/dashboard/grades', label: 'الصفوف والشعب', icon: BookOpen, superAdminOnly: true },
+  { path: '/dashboard/devices', label: 'أجهزة البصمة', icon: Fingerprint, superAdminOnly: true },
+  { path: '/dashboard/sync', label: 'سحب البيانات', icon: Download, superAdminOnly: true },
   { path: '/dashboard/attendance', label: 'سجل الحضور', icon: ClipboardList },
   { path: '/dashboard/late-notifications', label: 'إشعارات التأخير', icon: Bell },
   { path: '/dashboard/notes', label: 'الملاحظات', icon: MessageSquarePlus },
-  { path: '/dashboard/teachers', label: 'المعلمون', icon: UserCog },
-  { path: '/dashboard/teacher-assignments', label: 'تعيين الشعب للمعلمين', icon: UserCog },
-  { path: '/dashboard/teacher-registrations', label: 'طلبات انضمام المعلمين', icon: UserPlus },
+  { path: '/dashboard/teachers', label: 'المعلمون', icon: UserCog, superAdminOnly: true },
+  { path: '/dashboard/teacher-assignments', label: 'تعيين الشعب للمعلمين', icon: UserCog, superAdminOnly: true },
+  { path: '/dashboard/teacher-registrations', label: 'طلبات انضمام المعلمين', icon: UserPlus, superAdminOnly: true },
+  { path: '/dashboard/admin-assignments', label: 'تعيين الإداريين', icon: Shield, superAdminOnly: true },
+  { path: '/dashboard/admin-invite-codes', label: 'رموز دعوة الإداريين', icon: KeyRound, superAdminOnly: true },
+  { path: '/dashboard/admin-registrations', label: 'طلبات الإداريين', icon: UserPlus, superAdminOnly: true },
   { path: '/dashboard/messages', label: 'الرسائل الداخلية', icon: Mail },
   { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
   { path: '/dashboard/daily-attendance', label: 'كشف الغياب والهروب', icon: AlertTriangle },
   { path: '/dashboard/dismissals', label: 'استئذان الطلاب', icon: ExitIcon },
   { path: '/dashboard/reports/builder', label: 'التقارير', icon: BarChart3 },
-  { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap },
-  { path: '/dashboard/whatsapp', label: 'إعدادات WhatsApp', icon: MessageCircle },
-  { path: '/dashboard/whatsapp-bulk-teachers', label: 'تذكير جماعي للمعلمين', icon: MessageCircle },
-  { path: '/dashboard/whatsapp-log', label: 'سجل المحادثات', icon: MessageCircle },
-  { path: '/dashboard/whatsapp-issues', label: 'أرقام تحتاج تحديث', icon: AlertTriangle },
-  { path: '/dashboard/settings', label: 'إعدادات المدرسة', icon: Settings },
+  { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap, superAdminOnly: true },
+  { path: '/dashboard/whatsapp', label: 'إعدادات WhatsApp', icon: MessageCircle, superAdminOnly: true },
+  { path: '/dashboard/whatsapp-bulk-teachers', label: 'تذكير جماعي للمعلمين', icon: MessageCircle, superAdminOnly: true },
+  { path: '/dashboard/whatsapp-log', label: 'سجل المحادثات', icon: MessageCircle, superAdminOnly: true },
+  { path: '/dashboard/whatsapp-issues', label: 'أرقام تحتاج تحديث', icon: AlertTriangle, superAdminOnly: true },
+  { path: '/dashboard/settings', label: 'إعدادات المدرسة', icon: Settings, superAdminOnly: true },
 ];
+
+interface AdminPolicy {
+  is_super_admin: boolean;
+  sections: { id: number; name: string; grade_id: number; grade_name: string }[];
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Default closed on small screens; open on desktop. lg: utilities still open on desktop layouts.
@@ -49,6 +61,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const { theme, toggle, mounted } = useTheme();
+
+  // Fetch the current admin's scope. Drives:
+  //   • Scope banner under the header for non-super admins.
+  //   • Sidebar filtering — superAdminOnly entries hide for plain admins.
+  // We use a 5-minute staleTime since assignments change rarely.
+  const { data: policy } = useQuery<AdminPolicy>({
+    queryKey: ['admin-policy-me'],
+    queryFn: async () => (await (await fetch('/api/admin-assignments/me')).json()).data,
+    staleTime: 5 * 60_000,
+  });
+
+  // Distinct grades with section counts for the scope banner.
+  const scopeGrades = useMemo(() => {
+    if (!policy || policy.is_super_admin) return [];
+    const map = new Map<number, { name: string; count: number }>();
+    for (const s of policy.sections) {
+      const cur = map.get(s.grade_id);
+      if (cur) cur.count++;
+      else map.set(s.grade_id, { name: s.grade_name, count: 1 });
+    }
+    return Array.from(map.values());
+  }, [policy]);
+
+  // Filter the sidebar based on role. Super admin sees everything; plain
+  // admins lose the superAdminOnly entries (school setup, teacher mgmt,
+  // etc). When policy hasn't loaded yet, show the full menu — assuming
+  // super_admin avoids a flash-of-narrow-menu for the principal.
+  const visibleNavItems = useMemo(() => {
+    const isSuper = !policy || policy.is_super_admin;
+    return navItems.filter((item) => {
+      if ((item as any).superAdminOnly && !isSuper) return false;
+      return true;
+    });
+  }, [policy]);
 
   // Register the service worker and check for updates periodically. Without
   // this, admins who installed the dashboard PWA never see new versions
@@ -113,7 +159,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <nav aria-label="القائمة الرئيسية" className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = pathname === item.path || (item.path !== '/dashboard' && pathname.startsWith(item.path));
             const Icon = item.icon;
             return (
@@ -175,6 +221,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {mounted && (theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />)}
           </button>
         </header>
+
+        {/* Scope banner — super_admin: gold "Crown" badge; plain admin:
+            blue scope summary; both let the user know their privilege level
+            at a glance. Hidden until policy loads to avoid layout flicker. */}
+        {policy && (
+          policy.is_super_admin ? (
+            <div className="bg-gradient-to-l from-yellow-100 to-amber-50 dark:from-yellow-500/10 dark:to-amber-500/5 border-b border-yellow-200 dark:border-yellow-500/30 px-4 py-1.5">
+              <div className="flex items-center gap-2 text-xs">
+                <Crown className="w-3.5 h-3.5 text-yellow-700 dark:text-yellow-400" />
+                <span className="font-semibold text-yellow-900 dark:text-yellow-200">المدير العام (Super Admin)</span>
+                <span className="text-yellow-700 dark:text-yellow-400">— ترى كل بيانات المدرسة</span>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-purple-50 dark:bg-purple-500/10 border-b border-purple-200 dark:border-purple-500/30 px-4 py-1.5">
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <Shield className="w-3.5 h-3.5 text-purple-700 dark:text-purple-400" />
+                <span className="font-semibold text-purple-900 dark:text-purple-200">إداري</span>
+                {scopeGrades.length === 0 ? (
+                  <span className="text-amber-700 dark:text-amber-400 font-medium">
+                    ⚠️ لم يتم تعيينك على شعب — تواصل مع المدير
+                  </span>
+                ) : (
+                  <span className="text-purple-700 dark:text-purple-300">
+                    تُشرف على: {scopeGrades.map((g) => `${g.name} (${g.count})`).join(' • ')}
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        )}
+
         <main className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
       </div>
 

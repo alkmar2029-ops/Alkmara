@@ -82,6 +82,9 @@ export async function middleware(request: NextRequest) {
     // the middleware auth check is safe. Each handler under this prefix
     // also runs its own auth (requireRole or secret check).
     '/api/whatsapp/bulk-jobs',
+    // Admin self-registration: validate code (public probe) + submit form.
+    '/api/admin-registrations',
+    '/api/admin-invites/validate',
   ];
   const isPublicApi = publicApis.some((p) => path === p || path.startsWith(p + '/'));
 

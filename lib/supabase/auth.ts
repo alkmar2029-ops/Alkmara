@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from './server';
 
-export type UserRole = 'admin' | 'staff' | 'viewer' | 'teacher';
+export type UserRole = 'super_admin' | 'admin' | 'staff' | 'viewer' | 'teacher';
 
 export interface AuthContext {
   userId: string;
@@ -20,7 +20,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
 
   const metaRole = (user.app_metadata as { role?: string } | null)?.role;
   const isValidRole = (r: unknown): r is UserRole =>
-    r === 'admin' || r === 'staff' || r === 'viewer' || r === 'teacher';
+    r === 'super_admin' || r === 'admin' || r === 'staff' || r === 'viewer' || r === 'teacher';
 
   let role: UserRole = isValidRole(metaRole) ? metaRole : 'viewer';
 
