@@ -327,7 +327,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           .select('id, student_id, first_name, father_name, last_name, device_uid')
           .eq('section_id', device.section_id)
           .eq('is_active', true)
-          .order('first_name');
+          .order('first_name', { ascending: true })
+          .order('father_name', { ascending: true, nullsFirst: false })
+          .order('last_name', { ascending: true });
 
         // Get attendance records for the date
         const { data: records } = await supabase

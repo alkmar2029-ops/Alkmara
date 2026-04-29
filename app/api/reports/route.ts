@@ -69,7 +69,10 @@ export async function GET(request: NextRequest) {
         .from('students')
         .select('id, student_id, first_name, last_name, father_name')
         .eq('section_id', section_id)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .order('first_name', { ascending: true })
+        .order('father_name', { ascending: true, nullsFirst: false })
+        .order('last_name', { ascending: true });
 
       const { data: records } = await supabase
         .from('attendance_records')
@@ -78,15 +81,20 @@ export async function GET(request: NextRequest) {
         .gte('attendance_date', from)
         .lte('attendance_date', to);
 
-      const studentMap: any = {};
+      // Use Map (not a plain object) to preserve the alphabetical insertion
+      // order from the SELECT above. Plain `{}` keyed by integer IDs returns
+      // values in numeric order from Object.values — silently breaking the
+      // alphabetical ordering the teacher expects.
+      const studentMap = new Map<number, any>();
       (students || []).forEach((s: any) => {
-        studentMap[s.id] = { ...s, summary: { present: 0, late: 0, absent: 0, excused: 0 } };
+        studentMap.set(s.id, { ...s, summary: { present: 0, late: 0, absent: 0, excused: 0 } });
       });
       (records || []).forEach((r: any) => {
-        if (studentMap[r.student_id] && r.status in studentMap[r.student_id].summary) studentMap[r.student_id].summary[r.status]++;
+        const entry = studentMap.get(r.student_id);
+        if (entry && r.status in entry.summary) entry.summary[r.status]++;
       });
 
-      return NextResponse.json({ data: Object.values(studentMap) });
+      return NextResponse.json({ data: Array.from(studentMap.values()) });
     }
 
     return NextResponse.json({ data: [] });

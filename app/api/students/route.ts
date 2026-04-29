@@ -24,11 +24,17 @@ export async function GET(request: NextRequest) {
   );
   const offset = (page - 1) * limit;
 
+  // Alphabetical by full name: first → father → last. Postgres' default
+  // text ordering is alphabetical for Arabic letters; the three-key sort
+  // gives stable, predictable order when first names match (very common
+  // for "محمد", "أحمد", etc.).
   let query = supabase
     .from('students')
     .select('*, grades(name, stage), sections(name)', { count: 'exact' })
     .eq('is_active', true)
-    .order('created_at', { ascending: false })
+    .order('first_name', { ascending: true })
+    .order('father_name', { ascending: true, nullsFirst: false })
+    .order('last_name', { ascending: true })
     .range(offset, offset + limit - 1);
 
   if (rawSearch) {

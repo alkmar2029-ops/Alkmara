@@ -49,13 +49,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     teacherName = (profile?.full_name as string) || null;
   }
 
-  // 3. All active students in this section.
+  // 3. All active students in this section. Alphabetical order matches the
+  // attendance-sheet display the teacher sees, with tiebreakers for repeat
+  // first names ("محمد", "أحمد"...).
   const { data: students } = await supabase
     .from('students')
     .select('id, student_id, first_name, father_name, last_name, phone')
     .eq('section_id', session.section_id)
     .eq('is_active', true)
-    .order('first_name');
+    .order('first_name', { ascending: true })
+    .order('father_name', { ascending: true, nullsFirst: false })
+    .order('last_name', { ascending: true });
 
   // 4. Absence rows for this session.
   const { data: absences } = await supabase
