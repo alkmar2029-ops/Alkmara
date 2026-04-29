@@ -17,6 +17,9 @@ export default function TeacherSelfRegisterPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  // Honeypot — invisible to humans (display:none), filled by naive bots.
+  // We send it on submit; the API rejects any non-empty value.
+  const [website, setWebsite] = useState('');
 
   // Public school info — used for the welcome banner so the teacher knows
   // exactly which school they're applying to. Falls back gracefully if the
@@ -43,6 +46,7 @@ export default function TeacherSelfRegisterPage() {
           full_name: fullName.trim(),
           email: email.trim().toLowerCase(),
           phone: phone.trim(),
+          website,  // honeypot — humans never see this field
         }),
       });
       const d = await r.json();
@@ -204,6 +208,22 @@ export default function TeacherSelfRegisterPage() {
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 📲 يجب أن يكون مفعّلاً في الواتساب لاستلام بياناتك
               </p>
+            </div>
+
+            {/* Honeypot — visually hidden but still focusable so bots can find it.
+                aria-hidden + tabIndex=-1 keeps it out of screen-reader / keyboard
+                flows for real users. autoComplete=off prevents browser fillers. */}
+            <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', top: 'auto', width: '1px', height: '1px', overflow: 'hidden' }}>
+              <label htmlFor="website-field">Leave this empty</label>
+              <input
+                id="website-field"
+                type="text"
+                name="website"
+                tabIndex={-1}
+                autoComplete="off"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+              />
             </div>
 
             {submitMut.isError && (

@@ -9,6 +9,7 @@ import { User, Mail, Phone, Lock, Save, Eye, EyeOff } from 'lucide-react';
 export default function TeacherProfilePage() {
   const supabase = createClient();
   const [profile, setProfile] = useState<{ full_name: string; email: string; phone: string } | null>(null);
+  const [currentPw, setCurrentPw] = useState('');
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -32,19 +33,20 @@ export default function TeacherProfilePage() {
 
   const changePwMut = useMutation({
     mutationFn: async () => {
+      if (!currentPw) throw new Error('أدخل كلمة السر الحالية');
       if (pw.length < 8) throw new Error('كلمة السر يجب أن تكون 8 أحرف فأكثر');
       if (pw !== pw2) throw new Error('كلمتا السر غير متطابقتين');
       const r = await fetch('/api/me/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ new_password: pw }),
+        body: JSON.stringify({ current_password: currentPw, new_password: pw }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'فشل التغيير');
     },
     onSuccess: () => {
       toast.success('تم تغيير كلمة السر');
-      setPw(''); setPw2('');
+      setCurrentPw(''); setPw(''); setPw2('');
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -90,6 +92,17 @@ export default function TeacherProfilePage() {
         </h3>
         <div className="space-y-3">
           <div>
+            <label className="label">كلمة السر الحالية</label>
+            <input
+              type={showPw ? 'text' : 'password'}
+              value={currentPw}
+              onChange={(e) => setCurrentPw(e.target.value)}
+              className="input"
+              placeholder="كلمة السر التي تستخدمها الآن"
+              autoComplete="current-password"
+            />
+          </div>
+          <div>
             <label className="label">كلمة السر الجديدة</label>
             <div className="relative">
               <input
@@ -120,7 +133,7 @@ export default function TeacherProfilePage() {
           )}
           <button
             onClick={() => changePwMut.mutate()}
-            disabled={changePwMut.isPending || !pw || pw !== pw2 || pw.length < 8}
+            disabled={changePwMut.isPending || !currentPw || !pw || pw !== pw2 || pw.length < 8}
             className="btn-primary w-full inline-flex items-center justify-center gap-2"
           >
             <Save className="w-4 h-4" />

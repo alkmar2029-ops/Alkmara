@@ -104,8 +104,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     user_metadata: { full_name: reg.full_name },
   });
   if (createErr || !created.user) {
+    // Log the underlying error server-side; surface a generic message to
+    // the client so we don't leak Supabase internals.
+    console.error('createUser failed for teacher registration:', createErr?.message);
     return NextResponse.json(
-      { error: createErr?.message || 'فشل إنشاء حساب المعلم' },
+      { error: 'فشل إنشاء حساب المعلم، حاول لاحقاً' },
       { status: 500 },
     );
   }
@@ -124,8 +127,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (profileErr) {
     // Rollback auth user — keep the system clean.
     await admin.auth.admin.deleteUser(userId).catch(() => {});
+    console.error('user_profiles upsert failed:', profileErr.message);
     return NextResponse.json(
-      { error: 'فشل إنشاء ملف المعلم: ' + profileErr.message },
+      { error: 'تعذّر إنشاء ملف المعلم، حاول لاحقاً' },
       { status: 500 },
     );
   }

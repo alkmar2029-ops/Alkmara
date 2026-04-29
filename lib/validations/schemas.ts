@@ -154,10 +154,13 @@ export const createTeacherSchema = z.object({
 });
 
 // Public teacher self-registration (no auth required).
+// `website` is a honeypot — invisible to humans, irresistible to bots. Any
+// non-empty value means automated submission; we silently drop those.
 export const teacherRegistrationSchema = z.object({
   full_name: z.string().min(3, 'الاسم الكامل مطلوب (٣ أحرف على الأقل)').max(200),
-  email: z.string().email('بريد إلكتروني غير صالح'),
+  email: z.string().email('بريد إلكتروني غير صالح').max(255),
   phone: z.string().regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح (مثال: 0555555555)'),
+  website: z.string().max(0).optional(),  // honeypot: must be empty
 });
 
 export const updateRegistrationSchema = z.object({
@@ -172,6 +175,7 @@ export const updateTeacherSchema = z.object({
 });
 
 export const changePasswordSchema = z.object({
+  current_password: z.string().min(1, 'كلمة السر الحالية مطلوبة').max(72),
   new_password: z.string().min(8, 'كلمة السر يجب أن تكون 8 أحرف فأكثر').max(72),
 });
 
