@@ -7,29 +7,63 @@ import toast from 'react-hot-toast';
 import {
   ClipboardCheck, Loader2, Calendar, RefreshCw, Filter, Printer, Send,
   X, CheckCircle2, XCircle, Clock as ClockIcon, BadgeCheck, User, ChevronLeft, AlertCircle,
-  Trash2,
+  Trash2, Bell, MessageCircle, EyeOff,
 } from 'lucide-react';
 
-interface SessionRow {
+interface SectionRow {
   id: number;
-  attendance_date: string;
-  recorded_at: string;
-  recorded_by: string | null;
-  teacher_name: string | null;
-  section_id: number;
-  period_id: number;
-  section_name: string | null;
-  grade_name: string | null;
-  period_number: number | null;
-  period_name: string | null;
+  grade_id: number;
+  grade_name: string;
+  grade_sort: number;
+  section_name: string;
+  sort_order: number;
+}
+interface PeriodRow {
+  id: number;
+  number: number;
+  name: string | null;
+  start_time: string | null;
+  end_time: string | null;
+}
+interface RecordedCell {
+  session_id: number;
   absent_count: number;
   late_count: number;
   excused_count: number;
   total_count: number;
+  recorded_at: string;
+  recorded_by: string | null;
+  teacher_name: string | null;
+}
+interface MonitorData {
+  date: string;
+  sections: SectionRow[];
+  periods: PeriodRow[];
+  recorded: Record<string, RecordedCell>;
+  stats: {
+    total_expected: number;
+    total_recorded: number;
+    total_missing: number;
+    coverage_percent: number;
+  };
 }
 
+// Inline shape returned by GET /api/period-attendance/session/[id].
 interface SessionDetail {
-  session: SessionRow & { notes: string | null };
+  session: {
+    id: number;
+    section_id: number;
+    period_id: number;
+    attendance_date: string;
+    recorded_at: string;
+    recorded_by: string | null;
+    teacher_name: string | null;
+    section_name: string | null;
+    grade_name: string | null;
+    period_number: number | null;
+    period_name: string | null;
+    notes: string | null;
+  };
   summary: { total: number; present: number; absent: number; late: number; excused: number };
   students: Array<{
     id: number;
@@ -62,11 +96,18 @@ export default function PeriodAttendancePage() {
   const [date, setDate] = useState(todayStr());
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [openSessionId, setOpenSessionId] = useState<number | null>(null);
+  const [missingTarget, setMissingTarget] = useState<{
+    section: SectionRow; period: PeriodRow; date: string;
+  } | null>(null);
+  const [showMissingOnly, setShowMissingOnly] = useState(false);
   const qc = useQueryClient();
 
-  const { data: sessions = [], isLoading, refetch, isFetching, dataUpdatedAt } = useQuery<SessionRow[]>({
-    queryKey: ['period-attendance-day', date],
-    queryFn: async () => (await (await fetch(`/api/period-attendance/history?date=${date}&limit=200`)).json()).data,
+  // Full sections × periods grid for the date — every expected cell, with
+  // a sparse map of which ones are recorded. Drives both the heatmap and
+  // the "missing" badges/clicks.
+  const { data: monitor, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery<MonitorData>({
+    queryKey: ['period-monitor', date],
+    queryFn: async () => (await (await fetch(`/api/period-attendance/missing?date=${date}`)).json()).data,
     refetchInterval: 60_000,  // auto-refresh each minute (only on this tab)
   });
 
@@ -82,46 +123,46 @@ export default function PeriodAttendancePage() {
     },
     onSuccess: (count) => {
       toast.success(`تم حذف ${count} جلسة من تاريخ ${date}`);
-      qc.invalidateQueries({ queryKey: ['period-attendance-day'] });
+      qc.invalidateQueries({ queryKey: ['period-monitor'] });
       qc.invalidateQueries({ queryKey: ['period-history'] });
     },
     onError: (e: any) => toast.error(e.message),
   });
 
-  // Build the matrix (grade/section × period)
-  const sectionsMap = useMemo(() => {
-    const m = new Map<string, { grade: string; section: string; periods: Map<number, SessionRow> }>();
-    for (const s of sessions) {
-      if (gradeFilter !== 'all' && s.grade_name !== gradeFilter) continue;
-      const key = `${s.grade_name}__${s.section_name}`;
-      if (!m.has(key)) {
-        m.set(key, { grade: s.grade_name || '—', section: s.section_name || '—', periods: new Map() });
+  // Filter sections by grade selector. Also support "show missing only"
+  // — hides any section row that has every period recorded (cleans the view
+  // when only a handful of cells are missing).
+  const visibleSections = useMemo(() => {
+    if (!monitor) return [];
+    return monitor.sections.filter((s) => {
+      if (gradeFilter !== 'all' && s.grade_name !== gradeFilter) return false;
+      if (showMissingOnly) {
+        const allRecorded = monitor.periods.every(
+          (p) => monitor.recorded[`${s.id}:${p.id}`],
+        );
+        if (allRecorded) return false;
       }
-      m.get(key)!.periods.set(s.period_number || 0, s);
-    }
-    return m;
-  }, [sessions, gradeFilter]);
+      return true;
+    });
+  }, [monitor, gradeFilter, showMissingOnly]);
 
   const gradesAvailable = useMemo(() => {
+    if (!monitor) return [];
     const s = new Set<string>();
-    sessions.forEach((x) => x.grade_name && s.add(x.grade_name));
+    monitor.sections.forEach((x) => s.add(x.grade_name));
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'ar'));
-  }, [sessions]);
+  }, [monitor]);
 
-  const periodNumbers = useMemo(() => {
-    const s = new Set<number>();
-    sessions.forEach((x) => { if (x.period_number) s.add(x.period_number); });
-    return Array.from(s).sort((a, b) => a - b);
-  }, [sessions]);
-
+  // Aggregate counts across recorded cells (visible scope respects filters).
   const totals = useMemo(() => {
-    return sessions.reduce((acc, s) => ({
+    if (!monitor) return { sessions: 0, absent: 0, late: 0, excused: 0 };
+    return Object.values(monitor.recorded).reduce((acc, s) => ({
       sessions: acc.sessions + 1,
       absent: acc.absent + s.absent_count,
       late: acc.late + s.late_count,
       excused: acc.excused + s.excused_count,
     }), { sessions: 0, absent: 0, late: 0, excused: 0 });
-  }, [sessions]);
+  }, [monitor]);
 
   const lastUpdated = useMemo(() => {
     if (!dataUpdatedAt) return '';
@@ -157,10 +198,10 @@ export default function PeriodAttendancePage() {
             {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             تحديث
           </button>
-          {sessions.length > 0 && (
+          {monitor && monitor.stats.total_recorded > 0 && (
             <button
               onClick={() => {
-                const msg = `سيتم حذف ${sessions.length} جلسة بتاريخ ${date} نهائياً.\n\nهذا الإجراء لا يمكن التراجع عنه.\n\nهل أنت متأكد؟`;
+                const msg = `سيتم حذف ${monitor.stats.total_recorded} جلسة بتاريخ ${date} نهائياً.\n\nهذا الإجراء لا يمكن التراجع عنه.\n\nهل أنت متأكد؟`;
                 if (confirm(msg)) bulkDeleteMut.mutate();
               }}
               disabled={bulkDeleteMut.isPending}
@@ -169,7 +210,7 @@ export default function PeriodAttendancePage() {
             >
               {bulkDeleteMut.isPending
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الحذف...</>
-                : <><Trash2 className="w-4 h-4" /> حذف جلسات اليوم ({sessions.length})</>
+                : <><Trash2 className="w-4 h-4" /> حذف جلسات اليوم ({monitor.stats.total_recorded})</>
               }
             </button>
           )}
@@ -178,7 +219,7 @@ export default function PeriodAttendancePage() {
 
       {/* Filters */}
       <div className="card">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="label flex items-center gap-1"><Calendar className="w-3 h-3" /> التاريخ</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" max={todayStr()} />
@@ -190,8 +231,55 @@ export default function PeriodAttendancePage() {
               {gradesAvailable.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
+          <div>
+            <label className="label flex items-center gap-1"><EyeOff className="w-3 h-3" /> العرض</label>
+            <button
+              onClick={() => setShowMissingOnly((v) => !v)}
+              className={`input w-full text-right inline-flex items-center justify-between ${showMissingOnly ? 'bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-500/15 dark:border-amber-500/30 dark:text-amber-300' : ''}`}
+            >
+              <span>{showMissingOnly ? 'الناقص فقط ✓' : 'الكل'}</span>
+              <span className="text-xs opacity-70">اضغط للتبديل</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Coverage banner — the key new metric */}
+      {monitor && (
+        <div className={`card p-4 ${
+          monitor.stats.coverage_percent === 100 ? 'bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30' :
+          monitor.stats.coverage_percent >= 80 ? 'bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30' :
+          monitor.stats.coverage_percent >= 50 ? 'bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30' :
+          'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30'
+        }`}>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wider opacity-70">نسبة الالتزام</p>
+              <p className="text-3xl font-bold mt-1">{monitor.stats.coverage_percent}%</p>
+              <p className="text-sm mt-1">
+                تم تسجيل <strong>{monitor.stats.total_recorded}</strong> من
+                {' '}<strong>{monitor.stats.total_expected}</strong> جلسة متوقّعة
+                {monitor.stats.total_missing > 0 && (
+                  <> • <strong className="text-red-600 dark:text-red-400">{monitor.stats.total_missing}</strong> ناقصة ⚠️</>
+                )}
+              </p>
+            </div>
+            <div className="flex-1 max-w-xs">
+              <div className="w-full bg-white/60 dark:bg-black/30 rounded-full h-3 overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${
+                    monitor.stats.coverage_percent === 100 ? 'bg-green-500' :
+                    monitor.stats.coverage_percent >= 80 ? 'bg-blue-500' :
+                    monitor.stats.coverage_percent >= 50 ? 'bg-amber-500' :
+                    'bg-red-500'
+                  }`}
+                  style={{ width: `${monitor.stats.coverage_percent}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -205,12 +293,16 @@ export default function PeriodAttendancePage() {
       <div className="card">
         {isLoading ? (
           <div className="text-center py-12"><Loader2 className="w-6 h-6 animate-spin inline text-gray-400" /></div>
-        ) : sessions.length === 0 ? (
+        ) : !monitor || monitor.sections.length === 0 ? (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400 text-sm">
-            لم يسجّل أي معلم حضور حصة في هذا اليوم بعد.
+            لا توجد شُعب مسجَّلة في النظام بعد. أضف الصفوف والشعب أولاً.
           </div>
-        ) : sectionsMap.size === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">لا توجد نتائج للفلتر المحدّد.</div>
+        ) : visibleSections.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
+            {showMissingOnly
+              ? '✓ ممتاز! كل الجلسات في النطاق المعروض مُسجَّلة.'
+              : 'لا توجد نتائج للفلتر المحدّد.'}
+          </div>
         ) : (
           <>
             <div className="overflow-x-auto -mx-4 sm:mx-0">
@@ -218,34 +310,40 @@ export default function PeriodAttendancePage() {
                 <thead className="bg-gray-50 dark:bg-gray-900">
                   <tr className="text-right">
                     <th className="px-3 py-2 font-medium sticky right-0 bg-gray-50 dark:bg-gray-900">الصف / الشعبة</th>
-                    {periodNumbers.map((n) => (
-                      <th key={n} className="px-2 py-2 font-medium text-center">حصة {n}</th>
+                    {monitor.periods.map((p) => (
+                      <th key={p.id} className="px-2 py-2 font-medium text-center">حصة {p.number}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {Array.from(sectionsMap.values()).map((row) => (
-                    <tr key={`${row.grade}-${row.section}`} className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
+                  {visibleSections.map((sec) => (
+                    <tr key={sec.id} className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
                       <td className="px-3 py-2 font-medium whitespace-nowrap sticky right-0 bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800">
-                        {row.grade} / {row.section}
+                        {sec.grade_name} / {sec.section_name}
                       </td>
-                      {periodNumbers.map((n) => {
-                        const s = row.periods.get(n);
+                      {monitor.periods.map((p) => {
+                        const s = monitor.recorded[`${sec.id}:${p.id}`];
                         if (!s) {
+                          // Missing cell — clickable, opens reminder modal.
                           return (
-                            <td key={n} className="px-1 py-1 text-center" title="لم تُسجّل بعد">
-                              <div className="rounded-md border border-dashed border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-600 py-2 text-xs">
-                                —
-                              </div>
+                            <td key={p.id} className="px-1 py-1 text-center">
+                              <button
+                                onClick={() => setMissingTarget({ section: sec, period: p, date })}
+                                className="w-full rounded-md border-2 border-dashed border-red-300 dark:border-red-500/40 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 py-2 text-xs transition-colors group"
+                                title={`جلسة ناقصة — اضغط لتذكير المعلم`}
+                              >
+                                <Bell className="w-3.5 h-3.5 mx-auto mb-0.5 group-hover:animate-pulse" />
+                                <div className="text-[10px] font-medium">لم تُسجَّل</div>
+                              </button>
                             </td>
                           );
                         }
                         const tone = cellTone(s.absent_count, s.late_count, s.excused_count, s.total_count);
                         const present = s.total_count - s.absent_count - s.late_count - s.excused_count;
                         return (
-                          <td key={n} className="px-1 py-1 text-center">
+                          <td key={p.id} className="px-1 py-1 text-center">
                             <button
-                              onClick={() => setOpenSessionId(s.id)}
+                              onClick={() => setOpenSessionId(s.session_id)}
                               className={`w-full rounded-md border ${tone.bg} ${tone.border} ${tone.text} px-1.5 py-1.5 transition-transform hover:scale-105 hover:shadow-sm text-right`}
                               title={`${s.teacher_name ?? '—'} • ${present}/${s.total_count}`}
                             >
@@ -275,6 +373,10 @@ export default function PeriodAttendancePage() {
             {/* Legend */}
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-3 flex flex-wrap gap-x-4 gap-y-1 px-3">
               <span className="inline-flex items-center gap-1">
+                <span className="w-3 h-3 rounded border-2 border-dashed border-red-400 dark:border-red-500/50 inline-block" />
+                لم تُسجَّل (اضغط للتذكير)
+              </span>
+              <span className="inline-flex items-center gap-1">
                 <span className="w-3 h-3 rounded bg-green-100 border border-green-300 dark:bg-green-500/20 dark:border-green-500/40 inline-block" />
                 الكل حاضر
               </span>
@@ -290,10 +392,6 @@ export default function PeriodAttendancePage() {
                 <span className="w-3 h-3 rounded bg-red-100 border border-red-300 dark:bg-red-500/20 dark:border-red-500/40 inline-block" />
                 غياب شديد (&gt;25%)
               </span>
-              <span className="inline-flex items-center gap-1">
-                <span className="w-3 h-3 rounded border-2 border-dashed border-gray-300 dark:border-gray-700 inline-block" />
-                لم تُسجّل
-              </span>
               <span className="ms-auto">غ = غائب • ت = متأخر • س = مستأذن</span>
             </div>
           </>
@@ -303,6 +401,16 @@ export default function PeriodAttendancePage() {
       {/* Detail modal */}
       {openSessionId !== null && (
         <SessionDetailModal sessionId={openSessionId} onClose={() => setOpenSessionId(null)} />
+      )}
+
+      {/* Missing-session reminder modal */}
+      {missingTarget && (
+        <MissingSessionReminderModal
+          section={missingTarget.section}
+          period={missingTarget.period}
+          date={missingTarget.date}
+          onClose={() => setMissingTarget(null)}
+        />
       )}
     </div>
   );
@@ -344,6 +452,7 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
     },
     onSuccess: () => {
       toast.success('تم حذف الجلسة');
+      qc.invalidateQueries({ queryKey: ['period-monitor'] });
       qc.invalidateQueries({ queryKey: ['period-history'] });
       onClose();
     },
@@ -519,6 +628,178 @@ function Stat({ label, value, tone = 'gray' }: { label: string; value: number; t
     <div className="card text-center py-3">
       <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
       <p className={`text-2xl font-bold ${cls}`}>{value}</p>
+    </div>
+  );
+}
+
+// =================== Missing-session reminder modal ===================
+// Opens when admin clicks an unrecorded cell in the heatmap. Lets them pick
+// a teacher and fire a dual reminder (in-app message + WhatsApp). Pre-fills
+// a sensible Arabic body the admin can edit before sending.
+function MissingSessionReminderModal({
+  section, period, date, onClose,
+}: {
+  section: SectionRow; period: PeriodRow; date: string; onClose: () => void;
+}) {
+  const [teacherId, setTeacherId] = useState<string>('');
+  const [customMessage, setCustomMessage] = useState<string>('');
+
+  // Load all active teachers for the picker.
+  const { data: teachers = [], isLoading: loadingTeachers } = useQuery<Array<{
+    user_id: string; full_name: string; phone: string | null; email: string | null;
+  }>>({
+    queryKey: ['teachers-for-reminder'],
+    queryFn: async () => {
+      const r = await fetch('/api/teachers');
+      if (!r.ok) return [];
+      const d = await r.json();
+      return (d.data || []).filter((t: any) => t.is_active !== false);
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const sendMut = useMutation({
+    mutationFn: async () => {
+      if (!teacherId) throw new Error('اختر المعلم أولاً');
+      const r = await fetch('/api/period-attendance/remind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teacher_user_id: teacherId,
+          section_id: section.id,
+          period_id: period.id,
+          attendance_date: date,
+          custom_message: customMessage.trim() || undefined,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'فشل الإرسال');
+      return d.data as {
+        internal_sent: boolean;
+        whatsapp_sent: boolean;
+        whatsapp_error: string | null;
+        teacher_name: string;
+      };
+    },
+    onSuccess: (d) => {
+      if (d.internal_sent && d.whatsapp_sent) {
+        toast.success(`✓ تم إرسال التذكير لـ${d.teacher_name} (داخلياً + واتساب)`);
+      } else if (d.internal_sent) {
+        toast(`أُرسل داخلياً • فشل واتساب: ${d.whatsapp_error}`, { icon: '⚠️', duration: 5000 });
+      } else if (d.whatsapp_sent) {
+        toast(`أُرسل واتساب • فشل الإرسال الداخلي`, { icon: '⚠️', duration: 5000 });
+      } else {
+        toast.error(`لم يصل التذكير. ${d.whatsapp_error || ''}`);
+      }
+      onClose();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 bg-amber-50 dark:bg-amber-500/10">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 bg-amber-500 rounded-full flex items-center justify-center">
+              <Bell className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="font-bold text-lg">تذكير بتسجيل الحضور</h2>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {section.grade_name} / {section.section_name} • حصة {period.number}
+                {period.name && ` (${period.name})`}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-amber-100 dark:hover:bg-amber-500/20">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div>
+            <label className="label flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5" />
+              المعلم المُراد تذكيره *
+            </label>
+            <select
+              value={teacherId}
+              onChange={(e) => setTeacherId(e.target.value)}
+              className="input"
+              disabled={loadingTeachers || sendMut.isPending}
+            >
+              <option value="">— اختر معلماً —</option>
+              {teachers.map((t) => (
+                <option key={t.user_id} value={t.user_id}>
+                  {t.full_name} {t.phone ? `(${t.phone})` : '(بدون جوال)'}
+                </option>
+              ))}
+            </select>
+            {teachers.length === 0 && !loadingTeachers && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                لا يوجد معلمون مسجَّلون بعد.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="label flex items-center gap-1.5">
+              <MessageCircle className="w-3.5 h-3.5" />
+              رسالة مخصّصة (اختيارياً)
+            </label>
+            <textarea
+              value={customMessage}
+              onChange={(e) => setCustomMessage(e.target.value)}
+              className="input"
+              rows={4}
+              placeholder="اتركها فارغة لاستخدام الرسالة الافتراضية المهذّبة..."
+              maxLength={2000}
+              disabled={sendMut.isPending}
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              لو تركتها فارغة، سترسل رسالة افتراضية تذكيرية تتضمّن الشعبة والحصة والتاريخ.
+            </p>
+          </div>
+
+          {/* Info banner */}
+          <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-200 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium mb-0.5">سيُرسَل التذكير عبر قناتين:</p>
+              <ul className="list-disc ps-5 space-y-0.5">
+                <li>📨 <strong>رسالة داخلية</strong> تظهر في صندوق وارد المعلم</li>
+                <li>📱 <strong>واتساب</strong> على رقم المعلم المسجَّل</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={() => sendMut.mutate()}
+            disabled={!teacherId || sendMut.isPending}
+            className="btn-primary inline-flex items-center gap-1 text-sm"
+          >
+            {sendMut.isPending
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال...</>
+              : <><Send className="w-4 h-4" /> إرسال التذكير</>
+            }
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
