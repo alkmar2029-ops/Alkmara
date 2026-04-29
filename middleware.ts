@@ -65,7 +65,19 @@ export async function middleware(request: NextRequest) {
   }
 
   // Public APIs (no auth required) — kept narrow for safety.
-  const publicApis = ['/api/teacher-registrations', '/api/public/'];
+  // The bulk-send worker is "public" only in the sense that the middleware
+  // doesn't block it — it enforces its own auth via x-worker-secret inside
+  // the route, and the secret is derived from SUPABASE_SERVICE_ROLE_KEY so
+  // only server-side code that already has DB-admin power can call it.
+  const publicApis = [
+    '/api/teacher-registrations',
+    '/api/public/',
+    // Bulk-send worker is invoked internally without a session cookie. We
+    // still gate it on a shared secret inside the route, so routing it past
+    // the middleware auth check is safe. Each handler under this prefix
+    // also runs its own auth (requireRole or secret check).
+    '/api/whatsapp/bulk-jobs',
+  ];
   const isPublicApi = publicApis.some((p) => path === p || path.startsWith(p + '/'));
 
   if (!user && path.startsWith('/api/') && !isPublicApi) {

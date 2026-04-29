@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Send, Loader2, MessageCircle, Users, AlertCircle, CheckCircle2,
-  XCircle, Eye, Bell, Mail, Sparkles,
+  Send, Loader2, MessageCircle, Users, AlertCircle,
+  Eye, Mail, Sparkles, History,
 } from 'lucide-react';
 
 interface TeacherRow {
@@ -16,17 +18,11 @@ interface TeacherRow {
   is_active?: boolean;
 }
 
-interface SendResult {
+interface EnqueueResult {
+  job_id: number;
   total: number;
-  sent: number;
-  failed: number;
-  outcomes: Array<{
-    user_id: string;
-    teacher_name: string;
-    phone: string | null;
-    ok: boolean;
-    error: string | null;
-  }>;
+  queued: number;
+  skipped: number;
 }
 
 const PLACEHOLDERS = [
@@ -47,13 +43,12 @@ const DEFAULT_TEMPLATE = `🌹 السلام عليكم أ. {{teacher_name}}
 — {{school_name}}`;
 
 export default function BulkRemindTeachersPage() {
-  const qc = useQueryClient();
+  const router = useRouter();
   const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
   const [scope, setScope] = useState<'all' | 'specific'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [alsoInternal, setAlsoInternal] = useState(true);
   const [internalSubject, setInternalSubject] = useState('تذكير من الإدارة');
-  const [showResult, setShowResult] = useState<SendResult | null>(null);
 
   // Pull teacher list with phones for the picker + count display.
   const { data: teachers = [], isLoading: loadingTeachers } = useQuery<TeacherRow[]>({
@@ -88,7 +83,9 @@ export default function BulkRemindTeachersPage() {
       .replaceAll('{{date}}', today);
   }, [template, teachers]);
 
-  const sendMut = useMutation({
+  // Enqueue the job and redirect to its live progress page. The actual
+  // WhatsApp sends happen in the background — admin can leave or come back.
+  const enqueueMut = useMutation({
     mutationFn: async () => {
       const r = await fetch('/api/whatsapp/bulk-remind-teachers', {
         method: 'POST',
@@ -103,16 +100,11 @@ export default function BulkRemindTeachersPage() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'فشل الإرسال');
-      return d.data as SendResult;
+      return d.data as EnqueueResult;
     },
     onSuccess: (result) => {
-      setShowResult(result);
-      if (result.failed === 0) {
-        toast.success(`✓ أُرسلت ${result.sent} رسالة بنجاح`);
-      } else {
-        toast(`أُرسلت ${result.sent} • فشلت ${result.failed}`, { icon: '⚠️', duration: 5000 });
-      }
-      qc.invalidateQueries({ queryKey: ['whatsapp-messages'] });
+      toast.success(`🚀 بدأ الإرسال — ${result.queued} رسالة في الطابور. يمكنك مغادرة الصفحة.`, { duration: 6000 });
+      router.push(`/dashboard/whatsapp-bulk-teachers/jobs/${result.job_id}`);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -134,7 +126,7 @@ export default function BulkRemindTeachersPage() {
     setSelectedIds(new Set(ids));
   };
 
-  const canSend = template.trim().length >= 10 && targetCount > 0 && !sendMut.isPending;
+  const canSend = template.trim().length >= 10 && targetCount > 0 && !enqueueMut.isPending;
 
   return (
     <div className="space-y-4 max-w-5xl">
@@ -147,10 +139,16 @@ export default function BulkRemindTeachersPage() {
           <div>
             <h1 className="text-2xl font-bold">تذكير جماعي للمعلمين</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              رسالة واتساب موحّدة تُرسَل لكل معلم باسمه
+              رسالة واتساب موحّدة تُرسَل لكل معلم باسمه — تشتغل في الخلفية
             </p>
           </div>
         </div>
+        <Link
+          href="/dashboard/whatsapp-bulk-teachers/jobs"
+          className="btn-secondary inline-flex items-center gap-1 text-sm"
+        >
+          <History className="w-4 h-4" /> سجل المهام السابقة
+        </Link>
       </div>
 
       {/* Stats banner */}
@@ -281,7 +279,7 @@ export default function BulkRemindTeachersPage() {
               rows={12}
               placeholder="اكتب نص الرسالة هنا..."
               maxLength={2000}
-              disabled={sendMut.isPending}
+              disabled={enqueueMut.isPending}
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-right">
               {template.length} / 2000 حرف
@@ -353,85 +351,24 @@ export default function BulkRemindTeachersPage() {
           <div className="card">
             <button
               onClick={() => {
-                const msg = `سيتم إرسال ${targetCount} رسالة عبر واتساب.\nالوقت المتوقّع: ${estimatedMinutes > 0 ? estimatedMinutes + ' دقيقة و ' : ''}${estimatedRemainder} ثانية.\n\nهل تريد المتابعة؟`;
-                if (confirm(msg)) sendMut.mutate();
+                const msg = `سيتم إرسال ${targetCount} رسالة عبر واتساب في الخلفية.\nالوقت المتوقّع: ${estimatedMinutes > 0 ? estimatedMinutes + ' دقيقة و ' : ''}${estimatedRemainder} ثانية.\n\nستظهر شاشة التقدّم اللحظي بعد الإرسال — يمكنك مغادرتها والعودة لاحقاً دون توقف العملية.\n\nهل تريد المتابعة؟`;
+                if (confirm(msg)) enqueueMut.mutate();
               }}
               disabled={!canSend}
               className="btn-primary w-full inline-flex items-center justify-center gap-2 py-3 text-base"
             >
-              {sendMut.isPending
-                ? <><Loader2 className="w-5 h-5 animate-spin" /> جارٍ الإرسال... ({targetCount} رسالة)</>
-                : <><Send className="w-5 h-5" /> إرسال لـ {targetCount} معلم</>
+              {enqueueMut.isPending
+                ? <><Loader2 className="w-5 h-5 animate-spin" /> جارٍ بدء المهمة...</>
+                : <><Send className="w-5 h-5" /> بدء إرسال {targetCount} رسالة</>
               }
             </button>
-            {sendMut.isPending && (
-              <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">
-                لا تُغلق الصفحة — العملية ستأخذ ~{estimatedMinutes > 0 ? estimatedMinutes + ' دقيقة' : estimatedRemainder + ' ثانية'}
-              </p>
-            )}
+            <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
+              ⚡ الإرسال يعمل في الخلفية — يمكنك إغلاق الصفحة بعد الضغط
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Result modal */}
-      {showResult && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowResult(null)}>
-          <div
-            className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className={`p-4 ${showResult.failed === 0 ? 'bg-green-50 dark:bg-green-500/10' : 'bg-amber-50 dark:bg-amber-500/10'}`}>
-              <div className="flex items-center gap-3">
-                {showResult.failed === 0 ? (
-                  <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
-                ) : (
-                  <AlertCircle className="w-8 h-8 text-amber-600 dark:text-amber-400" />
-                )}
-                <div>
-                  <h3 className="font-bold text-lg">نتيجة الإرسال</h3>
-                  <p className="text-sm">
-                    تم الإرسال بنجاح: <strong className="text-green-700 dark:text-green-400">{showResult.sent}</strong>
-                    {' '}من <strong>{showResult.total}</strong>
-                    {showResult.failed > 0 && (
-                      <> • فشل: <strong className="text-red-700 dark:text-red-400">{showResult.failed}</strong></>
-                    )}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Outcomes list */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <ul className="divide-y divide-gray-200 dark:divide-gray-800">
-                {showResult.outcomes.map((o) => (
-                  <li key={o.user_id} className="py-2 flex items-center gap-2">
-                    {o.ok ? (
-                      <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{o.teacher_name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 font-mono" dir="ltr">{o.phone || '—'}</p>
-                    </div>
-                    {o.error && (
-                      <span className="text-xs text-red-600 dark:text-red-400 truncate max-w-[40%]" title={o.error}>
-                        {o.error}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Footer */}
-            <div className="p-3 border-t border-gray-200 dark:border-gray-800 flex justify-end">
-              <button onClick={() => setShowResult(null)} className="btn-primary text-sm">إغلاق</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

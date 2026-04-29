@@ -1,50 +1,29 @@
-import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
-import { sendTextAndLog } from '@/lib/whatsapp/log';
-import { renderTemplate } from '@/lib/whatsapp/template';
-import { normalizePhone } from '@/lib/teachers/credentials';
 
 export const dynamic = 'force-dynamic';
-// Wasender enforces 1 message per 5 seconds. 30 teachers × 5.5s ≈ 165s.
-// Default Vercel timeout is 10s (Hobby) / 60s (Pro). 300s extends to the
-// Pro maximum so this route can complete a typical school's roster in
-// one shot. Hobby plans will still hit their 10s wall — schools running
-// on Hobby should chunk via the dashboard (one section at a time).
-export const maxDuration = 300;
 
 const schema = z.object({
   message_template: z.string().min(10, 'الرسالة قصيرة جداً').max(2000),
-  // 'all' (default) sends to every active teacher with a phone on file.
-  // 'specific' takes an explicit list of teacher user_ids.
   scope: z.enum(['all', 'specific']).default('all'),
   teacher_user_ids: z.array(z.string().uuid()).optional(),
-  // Mirror to the in-app inbox so teachers see the reminder there too.
   also_internal: z.boolean().optional().default(false),
-  // Subject for the optional internal message (templates with {{teacher_name}}
-  // are NOT supported in subjects — keep it generic).
   internal_subject: z.string().max(200).optional(),
 });
 
-interface Outcome {
-  user_id: string;
-  teacher_name: string;
-  phone: string | null;
-  ok: boolean;
-  error: string | null;
-}
-
-// POST — send a personalized WhatsApp reminder to a batch of teachers.
+// POST — enqueue a bulk-reminder job and return immediately.
 //
-// Each message is rendered through the existing template engine using the
-// recipient's full_name as {{teacher_name}}, so admins can write one body
-// and the loop produces N personalized messages.
+// The actual WhatsApp sending happens in a separate background worker
+// (POST /api/whatsapp/bulk-jobs/[id]/process) so the admin can leave
+// the page right after clicking send. The worker is triggered via an
+// internal fire-and-forget fetch — Vercel spins up a fresh function
+// instance for it, runs up to maxDuration=300, then self-triggers if
+// the queue isn't drained.
 //
-// Sequenced sends with 5.5s spacing — same pacing the rest of the system
-// uses for Wasender. Internal messages are mirrored optionally; their
-// inserts run in parallel batches because the DB doesn't have the same
-// rate limit.
+// Returns: { job_id, total } — UI should redirect to a live progress
+// page that polls GET /api/whatsapp/bulk-jobs/[id].
 export async function POST(request: NextRequest) {
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
@@ -59,10 +38,11 @@ export async function POST(request: NextRequest) {
   }
   const v = parsed.data;
 
-  const supabase = await createServerSupabaseClient();
   const admin = createAdminSupabaseClient();
 
-  // 1. Resolve target teacher list.
+  // 1. Resolve target teacher list. We resolve them once now (rather than
+  // at worker time) so the recipient set is locked at creation — admins
+  // can deactivate teachers later without affecting an in-flight job.
   let teachersQuery = admin
     .from('user_profiles')
     .select('user_id, full_name, phone, is_active')
@@ -75,121 +55,80 @@ export async function POST(request: NextRequest) {
     teachersQuery = teachersQuery.in('user_id', v.teacher_user_ids);
   }
   const { data: teachers, error: tErr } = await teachersQuery;
-  if (tErr || !teachers) {
-    return NextResponse.json({ error: 'فشل جلب قائمة المعلمين' }, { status: 500 });
-  }
-  if (teachers.length === 0) {
+  if (tErr || !teachers || teachers.length === 0) {
     return NextResponse.json({ error: 'لا يوجد معلمون مستهدفون' }, { status: 404 });
   }
 
-  // 2. Pull WhatsApp creds + school settings (one round trip each).
-  const [{ data: ws }, { data: settings }] = await Promise.all([
-    supabase.from('whatsapp_settings').select('api_key').eq('id', 1).maybeSingle(),
-    supabase.from('school_settings').select('school_name, principal_name').eq('id', 1).maybeSingle(),
-  ]);
-  if (!ws?.api_key) {
-    return NextResponse.json(
-      { error: 'مفتاح API للواتساب غير مضبوط — يجب حفظه في إعدادات WhatsApp أولاً' },
-      { status: 400 },
-    );
+  // 2. Create the job row.
+  const { data: job, error: jobErr } = await admin
+    .from('bulk_send_jobs')
+    .insert({
+      template: v.message_template,
+      also_internal: v.also_internal ?? false,
+      internal_subject: v.internal_subject || null,
+      status: 'pending',
+      total: teachers.length,
+      created_by: auth.ctx.userId,
+    })
+    .select('id')
+    .single();
+  if (jobErr || !job) {
+    console.error('bulk-remind enqueue job failed:', jobErr?.message);
+    return NextResponse.json({ error: 'تعذّر إنشاء المهمة' }, { status: 500 });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const dateStr = (() => {
-    try { return new Date().toLocaleDateString('ar-SA-u-ca-gregory'); }
-    catch { return today; }
-  })();
-
-  // 3. Sequential WhatsApp send with rate-limit pacing.
-  const outcomes: Outcome[] = [];
-  let success = 0;
-  let fail = 0;
-
-  for (let i = 0; i < teachers.length; i++) {
-    const t = teachers[i] as { user_id: string; full_name: string | null; phone: string | null };
-    const teacherName = t.full_name || 'الأستاذ الفاضل';
-
-    const out: Outcome = {
-      user_id: t.user_id,
-      teacher_name: teacherName,
-      phone: t.phone || null,
-      ok: false,
-      error: null,
-    };
-
-    if (!t.phone) {
-      out.error = 'رقم الجوال غير متوفر';
-      fail++;
-      outcomes.push(out);
-      continue;
-    }
-
-    const message = renderTemplate(v.message_template, {
-      teacher_name: teacherName,
-      school_name: (settings?.school_name as string) || '',
-      principal_name: (settings?.principal_name as string) || '',
-      date: dateStr,
-    });
-
-    const result = await sendTextAndLog({
-      supabase: admin,
-      apiKey: ws.api_key as string,
-      phone: normalizePhone(t.phone),
-      message,
-      recipientName: teacherName,
-      recipientType: 'teacher',
-      templateName: 'teacher_bulk_reminder',
-      contextType: 'manual',
-      contextId: null,
-      sentBy: auth.ctx.userId,
-    });
-
-    out.ok = result.ok;
-    out.error = result.error || null;
-    if (result.ok) success++; else fail++;
-    outcomes.push(out);
-
-    // Rate-limit pacing — skip after the last send.
-    if (i < teachers.length - 1) {
-      await new Promise((res) => setTimeout(res, 5500));
-    }
+  // 3. Insert recipients. Mark teachers without a phone as 'skipped' up
+  // front so the worker doesn't have to check; counts stay accurate.
+  const recipientRows = teachers.map((t: any) => ({
+    job_id: job.id,
+    user_id: t.user_id,
+    teacher_name: t.full_name || null,
+    phone: t.phone || null,
+    status: t.phone ? 'queued' : 'skipped',
+    error: t.phone ? null : 'رقم الجوال غير متوفر',
+  }));
+  const { error: recErr } = await admin.from('bulk_send_recipients').insert(recipientRows);
+  if (recErr) {
+    console.error('bulk-remind insert recipients failed:', recErr.message);
+    // Try to clean up the orphan job so the dashboard isn't littered.
+    await admin.from('bulk_send_jobs').delete().eq('id', job.id);
+    return NextResponse.json({ error: 'تعذّر إعداد قائمة المستقبلين' }, { status: 500 });
   }
 
-  // 4. Mirror to in-app inbox if requested. These are cheap DB inserts; do
-  // them after the WhatsApp loop so the slow path isn't blocked by them.
-  if (v.also_internal) {
-    const subject = v.internal_subject?.trim() || 'تذكير من الإدارة';
-    const internalRows = teachers.map((t: any) => {
-      const teacherName = t.full_name || 'الأستاذ الفاضل';
-      const messageBody = renderTemplate(v.message_template, {
-        teacher_name: teacherName,
-        school_name: (settings?.school_name as string) || '',
-        principal_name: (settings?.principal_name as string) || '',
-        date: dateStr,
-      });
-      return {
-        type: 'general',
-        sender_id: auth.ctx.userId,
-        recipient_id: t.user_id,
-        subject,
-        body: messageBody,
-      };
-    });
-    // Best-effort — don't fail the whole call if the mirror insert fails.
-    const { error: mirrorErr } = await supabase.from('internal_messages').insert(internalRows);
-    if (mirrorErr) console.error('bulk-remind internal mirror failed:', mirrorErr.message);
+  // Pre-count the skipped (no-phone) ones so the job summary is accurate
+  // even if the worker hasn't started yet.
+  const skippedCount = recipientRows.filter((r) => r.status === 'skipped').length;
+  if (skippedCount > 0) {
+    await admin
+      .from('bulk_send_jobs')
+      .update({ failed: skippedCount })
+      .eq('id', job.id);
   }
+
+  // 4. Fire-and-forget trigger to the worker. The worker authenticates
+  // via a shared secret derived from the Supabase service-role key — no
+  // new env var needed. We don't await: if Vercel cancels the in-flight
+  // request, the cron sweeper (added separately) will pick up the stuck
+  // job within a minute.
+  const workerUrl = `${request.nextUrl.origin}/api/whatsapp/bulk-jobs/${job.id}/process`;
+  const workerSecret = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').slice(0, 32);
+  fetch(workerUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-worker-secret': workerSecret,
+    },
+  }).catch((e) => console.error('worker trigger failed:', e));
 
   await writeAuditLog({
     ctx: auth.ctx,
     action: 'whatsapp.bulk_remind_teachers',
-    targetType: 'teachers',
-    targetId: null,
+    targetType: 'bulk_send_job',
+    targetId: job.id,
     details: {
       scope: v.scope,
-      requested: teachers.length,
-      sent: success,
-      failed: fail,
+      total: teachers.length,
+      skipped: skippedCount,
       also_internal: !!v.also_internal,
     },
     request,
@@ -197,10 +136,10 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     data: {
+      job_id: job.id,
       total: teachers.length,
-      sent: success,
-      failed: fail,
-      outcomes,
+      queued: teachers.length - skippedCount,
+      skipped: skippedCount,
     },
-  });
+  }, { status: 202 });  // 202 Accepted — work scheduled, not yet done
 }
