@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>نظام الحضور المدرسي الذكي — حلٌّ متكامل</title>
+  <meta name="description" content="نظام إدارة الحضور والمتابعة المدرسية: تسجيل ذكي للحضور، كشف الهروب، ملاحظات الطلاب، تكامل واتساب، تطبيق PWA، خصوصية محكمة." />
+
+  <!-- Cairo: clean modern Arabic typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind via CDN — keeps the file standalone, modern design system out of the box -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Cairo', 'system-ui', 'sans-serif'] },
+          colors: {
+            primary: '#2563eb',
+            gold: '#f59e0b',
+            purple: '#8b5cf6',
+            success: '#10b981',
+          },
+          animation: {
+            'fade-up': 'fadeUp 0.7s ease-out',
+            'fade-in': 'fadeIn 1s ease-out',
+            'pulse-soft': 'pulseSoft 3s ease-in-out infinite',
+          },
+          keyframes: {
+            fadeUp: { '0%': { opacity: 0, transform: 'translateY(20px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+            fadeIn: { '0%': { opacity: 0 }, '100%': { opacity: 1 } },
+            pulseSoft: { '0%, 100%': { opacity: 0.6 }, '50%': { opacity: 1 } },
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    * { -webkit-font-smoothing: antialiased; }
+    body { font-family: 'Cairo', system-ui, sans-serif; }
+    html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+
+    /* Soft gradient background — adds modern feel without overwhelming content */
+    .bg-gradient-soft {
+      background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 50%, #f0f9ff 100%);
+    }
+
+    /* Hero gradient — deeper for maximum impact */
+    .bg-hero {
+      background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .bg-hero::before {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(circle at 80% 20%, rgba(245, 158, 11, 0.15), transparent 50%),
+                  radial-gradient(circle at 20% 80%, rgba(139, 92, 246, 0.15), transparent 50%);
+      pointer-events: none;
+    }
+
+    /* Card hover lift */
+    .card-lift { transition: transform 0.3s ease, box-shadow 0.3s ease; }
+    .card-lift:hover { transform: translateY(-4px); box-shadow: 0 20px 40px -15px rgba(0,0,0,0.12); }
+
+    /* Subtle reveal on scroll — controlled by IntersectionObserver in JS */
+    .reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.6s, transform 0.6s; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    /* Animated chevron in section dividers */
+    .section-chevron::after {
+      content: ''; display: block; width: 4rem; height: 4px;
+      background: linear-gradient(to left, #2563eb, #8b5cf6);
+      margin: 1rem auto 0; border-radius: 2px;
+    }
+
+    /* Phone mockup */
+    .phone-mockup {
+      width: 280px; height: 560px; border-radius: 40px;
+      background: #0f172a; padding: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+      position: relative;
+    }
+    .phone-mockup::before {
+      content: ''; position: absolute;
+      top: 14px; left: 50%; transform: translateX(-50%);
+      width: 100px; height: 22px; border-radius: 14px; background: #0f172a;
+      z-index: 2;
+    }
+    .phone-screen {
+      width: 100%; height: 100%; border-radius: 32px;
+      background: linear-gradient(180deg, #f8fafc 0%, #eff6ff 100%);
+      overflow: hidden; padding: 32px 16px 16px;
+    }
+
+    /* Workflow timeline */
+    .timeline-item {
+      position: relative; padding-right: 2rem;
+    }
+    .timeline-item::before {
+      content: ''; position: absolute; right: 0.5rem; top: 0.5rem;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: white; border: 3px solid #2563eb;
+      z-index: 2;
+    }
+    .timeline-item::after {
+      content: ''; position: absolute; right: 0.875rem; top: 1.5rem; bottom: -1rem;
+      width: 2px; background: linear-gradient(to bottom, #2563eb, #8b5cf6);
+    }
+    .timeline-item:last-child::after { display: none; }
+
+    /* Stat counter */
+    .stat-counter { font-variant-numeric: tabular-nums; }
+
+    /* Print friendly */
+    @media print {
+      .no-print { display: none !important; }
+      body { background: white !important; }
+      section { page-break-inside: avoid; }
+    }
+
+    /* Mobile menu */
+    @media (max-width: 768px) {
+      .nav-link { font-size: 0.875rem; padding: 0.25rem 0.5rem; }
+    }
+  </style>
+</head>
+
+<body class="bg-white text-slate-800 antialiased">
+
+<!-- ════════════════ Sticky Navigation ════════════════ -->
+<nav class="no-print fixed top-0 right-0 left-0 z-50 backdrop-blur-md bg-white/85 border-b border-slate-200/60">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+    <a href="#hero" class="flex items-center gap-2 font-bold">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
+        </svg>
+      </div>
+      <span>نظام الحضور</span>
+    </a>
+    <div class="hidden lg:flex items-center gap-1 text-sm">
+      <a href="#stats" class="nav-link px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700">إحصاءات</a>
+      <a href="#roles" class="nav-link px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700">الأدوار</a>
+      <a href="#features" class="nav-link px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700">المميزات</a>
+      <a href="#registration" class="nav-link px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700">التسجيل</a>
+      <a href="#whatsapp" class="nav-link px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700">واتساب</a>
+      <a href="#security" class="nav-link px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700">الأمان</a>
+      <a href="#faq" class="nav-link px-3 py-2 rounded-lg hover:bg-slate-100 text-slate-700">أسئلة</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ════════════════ 1. HERO ════════════════ -->
+<section id="hero" class="bg-hero pt-32 pb-20 lg:pt-40 lg:pb-28 text-white relative">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
+    <div class="grid lg:grid-cols-2 gap-12 items-center">
+      <div class="animate-fade-up">
+        <div class="inline-flex items-center gap-2 bg-white/10 backdrop-blur px-4 py-1.5 rounded-full text-sm mb-6 border border-white/20">
+          <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse-soft"></span>
+          <span>نظام متكامل • جاهز للاستخدام</span>
+        </div>
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-black leading-tight mb-6">
+          نظام إدارة الحضور
+          <span class="block bg-gradient-to-l from-amber-300 to-yellow-200 bg-clip-text text-transparent">
+            والمتابعة المدرسية الذكي
+          </span>
+        </h1>
+        <p class="text-xl text-blue-100 leading-relaxed mb-8 max-w-xl">
+          حلٌّ متكامل يجمع تسجيل الحضور، كشف الهروب، ملاحظات الطلاب،
+          والتواصل الفوري مع أولياء الأمور — في منصة واحدة احترافية.
+        </p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div class="bg-white/10 backdrop-blur rounded-xl p-3 border border-white/20">
+            <div class="text-2xl mb-1">🎓</div>
+            <div class="text-xs text-blue-100">إدارة شاملة</div>
+          </div>
+          <div class="bg-white/10 backdrop-blur rounded-xl p-3 border border-white/20">
+            <div class="text-2xl mb-1">📲</div>
+            <div class="text-xs text-blue-100">واتساب آلي</div>
+          </div>
+          <div class="bg-white/10 backdrop-blur rounded-xl p-3 border border-white/20">
+            <div class="text-2xl mb-1">🔐</div>
+            <div class="text-xs text-blue-100">خصوصية محكمة</div>
+          </div>
+          <div class="bg-white/10 backdrop-blur rounded-xl p-3 border border-white/20">
+            <div class="text-2xl mb-1">📱</div>
+            <div class="text-xs text-blue-100">تطبيق جوّال</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone mockup -->
+      <div class="hidden lg:flex justify-center animate-fade-in">
+        <div class="phone-mockup transform rotate-3 hover:rotate-0 transition-transform duration-700">
+          <div class="phone-screen">
+            <div class="bg-blue-600 rounded-2xl p-4 text-white text-center mb-3">
+              <div class="text-xs opacity-80 mb-1">الحصة الثالثة • 09:30</div>
+              <div class="text-base font-bold">الأول / أ</div>
+              <div class="text-2xl font-black mt-2">28 طالب</div>
+            </div>
+            <div class="space-y-2">
+              <div class="bg-white rounded-xl p-3 flex items-center justify-between border border-slate-200">
+                <span class="text-xs">محمد أحمد</span>
+                <span class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">حاضر</span>
+              </div>
+              <div class="bg-white rounded-xl p-3 flex items-center justify-between border border-slate-200">
+                <span class="text-xs">خالد سعد</span>
+                <span class="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full">غائب</span>
+              </div>
+              <div class="bg-white rounded-xl p-3 flex items-center justify-between border border-slate-200">
+                <span class="text-xs">فهد ناصر</span>
+                <span class="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">متأخر</span>
+              </div>
+              <div class="bg-white rounded-xl p-3 flex items-center justify-between border border-slate-200">
+                <span class="text-xs">سعد عبدالله</span>
+                <span class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">حاضر</span>
+              </div>
+            </div>
+            <div class="mt-3 bg-blue-600 text-white text-center py-3 rounded-xl text-sm font-bold">
+              💾 حفظ الحضور
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Decorative wave bottom -->
+  <svg class="absolute bottom-0 left-0 w-full" viewBox="0 0 1440 80" preserveAspectRatio="none" style="height: 60px;">
+    <path d="M0,40 C320,80 720,0 1440,40 L1440,80 L0,80 Z" fill="white"/>
+  </svg>
+</section>
+
+<!-- ════════════════ 2. STATS ════════════════ -->
+<section id="stats" class="py-20 bg-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-12 reveal">
+      <h2 class="text-3xl sm:text-4xl font-black mb-3 section-chevron">أرقام تتحدّث عن النظام</h2>
+      <p class="text-slate-600 text-lg">قدرات النظام المُختبَرة في بيئة مدرسية حقيقية</p>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+      <div class="text-center bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 reveal">
+        <div class="text-5xl font-black text-blue-600 stat-counter" data-target="700">0</div>
+        <div class="text-sm text-slate-700 mt-2 font-semibold">طالب يستطيع النظام إدارته بسلاسة</div>
+      </div>
+      <div class="text-center bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 reveal">
+        <div class="text-5xl font-black text-purple-600 stat-counter" data-target="40">0</div>
+        <div class="text-sm text-slate-700 mt-2 font-semibold">معلم يعملون متزامناً بدون تعارض</div>
+      </div>
+      <div class="text-center bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 reveal">
+        <div class="text-5xl font-black text-green-600 stat-counter" data-target="28">0</div>
+        <div class="text-sm text-slate-700 mt-2 font-semibold">شعبة بإدارة منظَّمة لكل إداري</div>
+      </div>
+      <div class="text-center bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-6 reveal">
+        <div class="text-5xl font-black text-amber-600 stat-counter" data-target="100">0</div>
+        <div class="text-sm text-slate-700 mt-2 font-semibold">% خصوصية بيانات الطلاب</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 3. ROLES OVERVIEW ════════════════ -->
+<section id="roles" class="py-24 bg-gradient-soft">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-16 reveal">
+      <div class="inline-block px-4 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-bold mb-4">الأدوار الثلاثة</div>
+      <h2 class="text-3xl sm:text-4xl font-black mb-3 section-chevron">بنية إدارية احترافية</h2>
+      <p class="text-slate-600 text-lg max-w-2xl mx-auto">
+        ثلاثة أدوار مُحكمة الصلاحيات تضمن الخصوصية وتُنظِّم المسؤوليات
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6">
+      <!-- Super Admin -->
+      <div class="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-3xl p-8 border-2 border-amber-200 card-lift reveal">
+        <div class="w-16 h-16 bg-gradient-to-br from-amber-500 to-yellow-500 rounded-2xl flex items-center justify-center text-3xl mb-5 shadow-lg shadow-amber-200">
+          👑
+        </div>
+        <h3 class="text-2xl font-black text-amber-900 mb-2">المدير العام</h3>
+        <p class="text-sm text-amber-700 mb-5">Super Admin — أعلى صلاحية</p>
+        <ul class="space-y-3 text-slate-700">
+          <li class="flex items-start gap-2"><span class="text-amber-600 font-bold">✓</span><span>يرى كل بيانات المدرسة بدون قيود</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-600 font-bold">✓</span><span>يولِّد رموز دعوة للإداريين الجدد</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-600 font-bold">✓</span><span>يعتمد طلبات تسجيل المعلمين والإداريين</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-600 font-bold">✓</span><span>يُعيّن الإداريين على الصفوف والشعب</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-600 font-bold">✓</span><span>يدير إعدادات المدرسة والواتساب</span></li>
+          <li class="flex items-start gap-2"><span class="text-amber-600 font-bold">✓</span><span>يفعّل/يوقف الميزات حسب احتياج المدرسة</span></li>
+        </ul>
+      </div>
+
+      <!-- Admin -->
+      <div class="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-3xl p-8 border-2 border-purple-200 card-lift reveal">
+        <div class="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center text-3xl mb-5 shadow-lg shadow-purple-200">
+          🛡️
+        </div>
+        <h3 class="text-2xl font-black text-purple-900 mb-2">الإداري</h3>
+        <p class="text-sm text-purple-700 mb-5">Admin — صلاحية مُنظَّمة</p>
+        <ul class="space-y-3 text-slate-700">
+          <li class="flex items-start gap-2"><span class="text-purple-600 font-bold">✓</span><span>يرى فقط الصفوف المُعيَّن لها</span></li>
+          <li class="flex items-start gap-2"><span class="text-purple-600 font-bold">✓</span><span>يُسجّل استئذانات الطلاب</span></li>
+          <li class="flex items-start gap-2"><span class="text-purple-600 font-bold">✓</span><span>يتابع الحضور والغياب اليومي</span></li>
+          <li class="flex items-start gap-2"><span class="text-purple-600 font-bold">✓</span><span>يُرسل إشعارات لأولياء الأمور</span></li>
+          <li class="flex items-start gap-2"><span class="text-purple-600 font-bold">✓</span><span>يُولّد تقارير لطلابه</span></li>
+          <li class="flex items-start gap-2"><span class="text-purple-600 font-bold">✓</span><span>يكتشف الغياب والهروب آلياً</span></li>
+        </ul>
+      </div>
+
+      <!-- Teacher -->
+      <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-3xl p-8 border-2 border-green-200 card-lift reveal">
+        <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center text-3xl mb-5 shadow-lg shadow-green-200">
+          👨‍🏫
+        </div>
+        <h3 class="text-2xl font-black text-green-900 mb-2">المعلم</h3>
+        <p class="text-sm text-green-700 mb-5">Teacher — تركيز على الفصل</p>
+        <ul class="space-y-3 text-slate-700">
+          <li class="flex items-start gap-2"><span class="text-green-600 font-bold">✓</span><span>بوابة بسيطة سريعة الاستخدام</span></li>
+          <li class="flex items-start gap-2"><span class="text-green-600 font-bold">✓</span><span>يسجّل الحضور بنقرات قليلة</span></li>
+          <li class="flex items-start gap-2"><span class="text-green-600 font-bold">✓</span><span>ملاحظات صوتية ونصية للطلاب</span></li>
+          <li class="flex items-start gap-2"><span class="text-green-600 font-bold">✓</span><span>قوالب جاهزة للاستخدام السريع</span></li>
+          <li class="flex items-start gap-2"><span class="text-green-600 font-bold">✓</span><span>يرى فقط طلاب شعبه المُعيَّنة</span></li>
+          <li class="flex items-start gap-2"><span class="text-green-600 font-bold">✓</span><span>تطبيق PWA على الجوّال</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 4. SUPER ADMIN DETAIL ════════════════ -->
+<section class="py-24 bg-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="grid lg:grid-cols-2 gap-12 items-center">
+      <div class="reveal">
+        <div class="inline-block px-4 py-1.5 bg-amber-100 text-amber-700 rounded-full text-sm font-bold mb-4">👑 المدير العام</div>
+        <h2 class="text-4xl font-black mb-5">رؤية شاملة لكل تفاصيل المدرسة</h2>
+        <p class="text-lg text-slate-600 mb-8 leading-relaxed">
+          المدير العام (مدير المدرسة) لديه التحكم الكامل في النظام —
+          من إعدادات المدرسة إلى صلاحيات الإداريين، مع شفافية تامة في كل البيانات.
+        </p>
+
+        <div class="space-y-4">
+          <div class="flex gap-3 bg-amber-50 p-4 rounded-xl border-r-4 border-amber-500">
+            <div class="text-2xl shrink-0">📊</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">لوحة تحكم شاملة</h4>
+              <p class="text-sm text-slate-600">إحصائيات لحظية + كشف الغياب والهروب لكل المدرسة في صفحة واحدة</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-amber-50 p-4 rounded-xl border-r-4 border-amber-500">
+            <div class="text-2xl shrink-0">👥</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">إدارة الإداريين</h4>
+              <p class="text-sm text-slate-600">إنشاء، تعيين، اعتماد، تعديل صلاحيات كل إداري بنقرات بسيطة</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-amber-50 p-4 rounded-xl border-r-4 border-amber-500">
+            <div class="text-2xl shrink-0">🔑</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">رموز دعوة آمنة</h4>
+              <p class="text-sm text-slate-600">رموز شخصية لكل إداري — صالحة 48 ساعة، تُستخدم مرة واحدة</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-amber-50 p-4 rounded-xl border-r-4 border-amber-500">
+            <div class="text-2xl shrink-0">⚙️</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">إعدادات شاملة</h4>
+              <p class="text-sm text-slate-600">قوالب الواتساب، إعدادات المدرسة، تفعيل/إيقاف الميزات حسب الحاجة</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Illustration -->
+      <div class="reveal">
+        <div class="bg-gradient-to-br from-amber-100 via-yellow-50 to-orange-50 rounded-3xl p-8 shadow-xl">
+          <div class="bg-white rounded-2xl p-6 shadow-lg">
+            <div class="flex items-center gap-3 pb-4 border-b border-slate-200 mb-4">
+              <div class="w-10 h-10 bg-gradient-to-br from-amber-500 to-yellow-500 rounded-xl flex items-center justify-center text-white text-lg">👑</div>
+              <div>
+                <div class="font-bold text-slate-900">لوحة المدير العام</div>
+                <div class="text-xs text-slate-500">يرى كل شيء</div>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-slate-600">📚 الصفوف والشعب</span>
+                <span class="font-bold text-slate-900">28</span>
+              </div>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-slate-600">👨‍🏫 المعلمون</span>
+                <span class="font-bold text-slate-900">39</span>
+              </div>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-slate-600">🛡️ الإداريون</span>
+                <span class="font-bold text-slate-900">5</span>
+              </div>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-slate-600">🎓 الطلاب</span>
+                <span class="font-bold text-slate-900">698</span>
+              </div>
+              <div class="h-2 bg-slate-100 rounded-full overflow-hidden mt-4">
+                <div class="h-full bg-gradient-to-l from-amber-500 to-yellow-500 rounded-full" style="width: 89%"></div>
+              </div>
+              <div class="text-xs text-slate-500">الالتزام اليومي: 89%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 5. ADMIN DETAIL ════════════════ -->
+<section class="py-24 bg-gradient-soft">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="grid lg:grid-cols-2 gap-12 items-center">
+      <!-- Illustration -->
+      <div class="reveal lg:order-2">
+        <div class="bg-gradient-to-br from-purple-100 via-indigo-50 to-purple-50 rounded-3xl p-8 shadow-xl">
+          <div class="bg-white rounded-2xl p-6 shadow-lg">
+            <div class="flex items-center gap-3 pb-4 border-b border-slate-200 mb-4">
+              <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-lg">🛡️</div>
+              <div>
+                <div class="font-bold text-slate-900">الوكيل: أ. خالد</div>
+                <div class="text-xs text-purple-700">يُشرف على الأول والثاني</div>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <div class="bg-purple-50 rounded-lg p-3 border-r-4 border-purple-500">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="font-medium">🚪 استئذان جديد</span>
+                  <span class="text-xs text-purple-700">قبل دقيقة</span>
+                </div>
+                <div class="text-xs text-slate-600 mt-1">محمد السهلي — الأول/أ</div>
+              </div>
+              <div class="bg-red-50 rounded-lg p-3 border-r-4 border-red-500">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="font-medium">🔴 غياب كامل</span>
+                  <span class="text-xs text-red-700">3 طلاب</span>
+                </div>
+              </div>
+              <div class="bg-orange-50 rounded-lg p-3 border-r-4 border-orange-500">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="font-medium">🟠 هروب من حصص</span>
+                  <span class="text-xs text-orange-700">2 طلاب</span>
+                </div>
+                <div class="text-xs text-slate-600 mt-1">حصص: 3, 5</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal lg:order-1">
+        <div class="inline-block px-4 py-1.5 bg-purple-100 text-purple-700 rounded-full text-sm font-bold mb-4">🛡️ الإداري</div>
+        <h2 class="text-4xl font-black mb-5">صلاحيات منظَّمة وفق المسؤولية</h2>
+        <p class="text-lg text-slate-600 mb-8 leading-relaxed">
+          الإداري (الوكيل، المرشد، السكرتير...) يرى ويدير فقط الصفوف المُعيَّن لها —
+          خصوصية تامة وتركيز على المسؤوليات الفعلية.
+        </p>
+
+        <div class="space-y-4">
+          <div class="flex gap-3 bg-purple-50 p-4 rounded-xl border-r-4 border-purple-500">
+            <div class="text-2xl shrink-0">🚪</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">استئذان الطلاب</h4>
+              <p class="text-sm text-slate-600">تسجيل خروج الطالب + طباعة تصريح + واتساب لولي الأمر + تحديث الحصص تلقائياً</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-purple-50 p-4 rounded-xl border-r-4 border-purple-500">
+            <div class="text-2xl shrink-0">📋</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">كشف الغياب والهروب</h4>
+              <p class="text-sm text-slate-600">تحليل ذكي لتصنيف الطلاب: حضور / غياب كامل / هروب جزئي / استئذان</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-purple-50 p-4 rounded-xl border-r-4 border-purple-500">
+            <div class="text-2xl shrink-0">📲</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">رسائل جماعية ذكية</h4>
+              <p class="text-sm text-slate-600">إرسال إشعارات الغياب لأولياء الأمور بضغطة + متابعة حالة كل رسالة</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-purple-50 p-4 rounded-xl border-r-4 border-purple-500">
+            <div class="text-2xl shrink-0">📊</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">تقارير شاملة</h4>
+              <p class="text-sm text-slate-600">تقارير حضور وملاحظات + مقارنة بين الحصص + إحصاءات شهرية وفصلية</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 6. TEACHER DETAIL ════════════════ -->
+<section class="py-24 bg-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="grid lg:grid-cols-2 gap-12 items-center">
+      <div class="reveal">
+        <div class="inline-block px-4 py-1.5 bg-green-100 text-green-700 rounded-full text-sm font-bold mb-4">👨‍🏫 المعلم</div>
+        <h2 class="text-4xl font-black mb-5">بوابة المعلم — بسيطة. سريعة. ذكية.</h2>
+        <p class="text-lg text-slate-600 mb-8 leading-relaxed">
+          مصمَّمة لتسجيل الحضور والملاحظات في أقل من دقيقة لكل حصة،
+          مع تكامل مع أولياء الأمور تلقائياً.
+        </p>
+
+        <div class="space-y-4">
+          <div class="flex gap-3 bg-green-50 p-4 rounded-xl border-r-4 border-green-500">
+            <div class="text-2xl shrink-0">⚡</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">حضور بنقرات قليلة</h4>
+              <p class="text-sm text-slate-600">اختر الشعبة → ضع علامة على الغائبين والمتأخّرين → احفظ. كل ذلك في أقل من 30 ثانية</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-green-50 p-4 rounded-xl border-r-4 border-green-500">
+            <div class="text-2xl shrink-0">🎙️</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">ملاحظات صوتية</h4>
+              <p class="text-sm text-slate-600">اضغط الميكروفون وتحدّث — يحوِّل النظام صوتك إلى نص باللغة العربية</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-green-50 p-4 rounded-xl border-r-4 border-green-500">
+            <div class="text-2xl shrink-0">📋</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">قوالب جاهزة</h4>
+              <p class="text-sm text-slate-600">قوالب ملاحظات إيجابية وسلبية مُعَدَّة من الإدارة — اضغط واحفظ</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-green-50 p-4 rounded-xl border-r-4 border-green-500">
+            <div class="text-2xl shrink-0">📱</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">تطبيق PWA</h4>
+              <p class="text-sm text-slate-600">يعمل كتطبيق مستقل على الجوّال — وضع داكن، يعمل بدون إنترنت أحياناً</p>
+            </div>
+          </div>
+          <div class="flex gap-3 bg-green-50 p-4 rounded-xl border-r-4 border-green-500">
+            <div class="text-2xl shrink-0">📚</div>
+            <div>
+              <h4 class="font-bold text-slate-900 mb-1">شعب محدّدة فقط</h4>
+              <p class="text-sm text-slate-600">يرى فقط الشعب التي يدرّسها — لا فوضى ولا ضياع وقت</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone illustration -->
+      <div class="reveal flex justify-center">
+        <div class="phone-mockup transform -rotate-3 hover:rotate-0 transition-transform duration-700">
+          <div class="phone-screen">
+            <div class="bg-green-600 rounded-2xl p-3 text-white text-center mb-3">
+              <div class="text-xs opacity-80">بوابة المعلم</div>
+              <div class="text-sm font-bold mt-1">أ. باسم محمد الحجري</div>
+            </div>
+            <div class="space-y-2">
+              <div class="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                <div class="text-xs text-blue-700 font-bold">🎯 شعبتك اليوم</div>
+                <div class="text-base font-bold mt-1">الأول/أ • حصة 3</div>
+              </div>
+              <div class="bg-white rounded-lg p-2 border border-slate-200 text-xs flex justify-between">
+                <span>محمد أحمد</span><span class="text-green-600">✓</span>
+              </div>
+              <div class="bg-white rounded-lg p-2 border border-slate-200 text-xs flex justify-between">
+                <span>سعد فهد</span><span class="text-red-600">✗</span>
+              </div>
+              <div class="bg-white rounded-lg p-2 border border-slate-200 text-xs flex justify-between">
+                <span>خالد ناصر</span><span class="text-amber-600">⏰</span>
+              </div>
+              <div class="bg-purple-50 rounded-lg p-2 border border-purple-200 text-xs">
+                <div class="font-bold text-purple-700 mb-1">🎙️ ملاحظة صوتية</div>
+                <div class="text-slate-600">"محمد متفوق في..."</div>
+              </div>
+              <div class="mt-3 bg-green-600 text-white text-center py-2 rounded-lg text-sm font-bold">
+                💾 حفظ + إرسال
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 7. REGISTRATION FLOW ════════════════ -->
+<section id="registration" class="py-24 bg-gradient-soft">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-16 reveal">
+      <div class="inline-block px-4 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-bold mb-4">📝 سير التسجيل</div>
+      <h2 class="text-3xl sm:text-4xl font-black mb-3 section-chevron">طريقة تسجيل الإداريين والمعلمين</h2>
+      <p class="text-slate-600 text-lg">سهلة • آمنة • تلقائية بالكامل</p>
+    </div>
+
+    <!-- Admin Registration -->
+    <div class="bg-white rounded-3xl p-8 shadow-lg mb-8 reveal">
+      <h3 class="text-2xl font-black mb-2 text-purple-900">🛡️ تسجيل الإداريين الجدد</h3>
+      <p class="text-slate-600 mb-8">عبر رمز دعوة شخصي يولِّده المدير العام</p>
+
+      <div class="grid md:grid-cols-5 gap-4">
+        <!-- Step 1 -->
+        <div class="text-center">
+          <div class="w-16 h-16 bg-purple-600 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-black shadow-lg shadow-purple-300">1</div>
+          <h4 class="font-bold mb-2 text-sm">المدير يولِّد رمز</h4>
+          <p class="text-xs text-slate-600">رمز فريد لكل إداري متوقع — صالح 48 ساعة</p>
+        </div>
+        <div class="hidden md:flex items-center justify-center text-purple-300 text-3xl">←</div>
+
+        <!-- Step 2 -->
+        <div class="text-center">
+          <div class="w-16 h-16 bg-purple-600 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-black shadow-lg shadow-purple-300">2</div>
+          <h4 class="font-bold mb-2 text-sm">إرسال عبر واتساب</h4>
+          <p class="text-xs text-slate-600">رابط شخصي يصل للإداري بضغطة</p>
+        </div>
+        <div class="hidden md:flex items-center justify-center text-purple-300 text-3xl">←</div>
+
+        <!-- Step 3 -->
+        <div class="text-center">
+          <div class="w-16 h-16 bg-purple-600 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-black shadow-lg shadow-purple-300">3</div>
+          <h4 class="font-bold mb-2 text-sm">يملأ بياناته</h4>
+          <p class="text-xs text-slate-600">اسم، إيميل، جوال — يستلم تأكيد فوري</p>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-5 gap-4 mt-4">
+        <div class="md:col-start-2 text-center">
+          <div class="w-16 h-16 bg-purple-600 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-black shadow-lg shadow-purple-300">4</div>
+          <h4 class="font-bold mb-2 text-sm">المدير يعتمد</h4>
+          <p class="text-xs text-slate-600">يراجع البيانات ويُعيِّنه على الشعب</p>
+        </div>
+        <div class="hidden md:flex items-center justify-center text-purple-300 text-3xl">←</div>
+        <div class="text-center">
+          <div class="w-16 h-16 bg-green-500 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-black shadow-lg shadow-green-300">✓</div>
+          <h4 class="font-bold mb-2 text-sm">يستلم بيانات الدخول</h4>
+          <p class="text-xs text-slate-600">3 رسائل واتساب: ترحيب + بريد + باسوورد</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teacher Registration -->
+    <div class="bg-white rounded-3xl p-8 shadow-lg reveal">
+      <h3 class="text-2xl font-black mb-2 text-green-900">👨‍🏫 تسجيل المعلمين الجدد</h3>
+      <p class="text-slate-600 mb-8">صفحة تسجيل عامة + اعتماد من الإدارة</p>
+
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="text-center">
+          <div class="w-16 h-16 bg-green-600 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-black shadow-lg shadow-green-300">1</div>
+          <h4 class="font-bold mb-2 text-sm">المعلم يفتح الرابط</h4>
+          <p class="text-xs text-slate-600">صفحة تسجيل عامة للمعلمين الجدد</p>
+        </div>
+        <div class="text-center">
+          <div class="w-16 h-16 bg-green-600 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-black shadow-lg shadow-green-300">2</div>
+          <h4 class="font-bold mb-2 text-sm">يملأ بياناته</h4>
+          <p class="text-xs text-slate-600">اسم + إيميل + جوال — يستلم رسالة شكر</p>
+        </div>
+        <div class="text-center">
+          <div class="w-16 h-16 bg-green-600 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-black shadow-lg shadow-green-300">3</div>
+          <h4 class="font-bold mb-2 text-sm">الإدارة تعتمد</h4>
+          <p class="text-xs text-slate-600">مراجعة وتعيين الشعب التي يدرّسها</p>
+        </div>
+        <div class="text-center">
+          <div class="w-16 h-16 bg-green-500 text-white rounded-full mx-auto mb-3 flex items-center justify-center text-2xl font-black shadow-lg shadow-green-300">✓</div>
+          <h4 class="font-bold mb-2 text-sm">يستلم بياناته</h4>
+          <p class="text-xs text-slate-600">3 رسائل واتساب + يدخل بحسابه</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 8. DAILY ATTENDANCE & ESCAPE DETECTION ════════════════ -->
+<section id="features" class="py-24 bg-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-16 reveal">
+      <div class="inline-block px-4 py-1.5 bg-red-100 text-red-700 rounded-full text-sm font-bold mb-4">🎯 ميزة فريدة</div>
+      <h2 class="text-3xl sm:text-4xl font-black mb-3 section-chevron">كشف الغياب والهروب الذكي</h2>
+      <p class="text-slate-600 text-lg max-w-2xl mx-auto">
+        تحليل ذكي يكتشف الفرق بين الغياب الكامل والهروب الجزئي — لا حساب يدوي بعد اليوم
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6">
+      <div class="bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-6 border-2 border-red-200 reveal">
+        <div class="text-5xl mb-4">🔴</div>
+        <h3 class="text-xl font-bold mb-2 text-red-900">غياب كامل</h3>
+        <p class="text-sm text-slate-700 mb-4">الطالب غاب عن كل حصص اليوم</p>
+        <div class="bg-white rounded-lg p-3 text-xs">
+          <div class="text-slate-500 mb-1">مثال:</div>
+          <div class="font-mono">حصص [1,2,3,4,5,6,7] = غائب</div>
+          <div class="mt-2 text-red-700 font-bold">→ غياب يومي + إشعار للأهل</div>
+        </div>
+      </div>
+
+      <div class="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-6 border-2 border-orange-200 reveal">
+        <div class="text-5xl mb-4">🟠</div>
+        <h3 class="text-xl font-bold mb-2 text-orange-900">هروب جزئي</h3>
+        <p class="text-sm text-slate-700 mb-4">حضر للمدرسة لكن غاب عن حصص محددة</p>
+        <div class="bg-white rounded-lg p-3 text-xs">
+          <div class="text-slate-500 mb-1">مثال:</div>
+          <div class="font-mono">حصة 1: حاضر • حصة 3: غائب • حصة 5: غائب</div>
+          <div class="mt-2 text-orange-700 font-bold">→ هروب من الحصص [3, 5]</div>
+        </div>
+      </div>
+
+      <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border-2 border-blue-200 reveal">
+        <div class="text-5xl mb-4">🔵</div>
+        <h3 class="text-xl font-bold mb-2 text-blue-900">استئذان</h3>
+        <p class="text-sm text-slate-700 mb-4">طلب استئذان رسمي من الوكيل</p>
+        <div class="bg-white rounded-lg p-3 text-xs">
+          <div class="text-slate-500 mb-1">مثال:</div>
+          <div class="font-mono">11:30 → استئذان لمراجعة طبية</div>
+          <div class="mt-2 text-blue-700 font-bold">→ تحديث تلقائي للحصص المتبقية</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-8 mt-12 text-white reveal">
+      <div class="grid md:grid-cols-2 gap-8 items-center">
+        <div>
+          <h3 class="text-2xl font-bold mb-4">🤖 الذكاء التلقائي للنظام</h3>
+          <ul class="space-y-3 text-slate-200">
+            <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span><span>يأخذ النطاق الذي تحدّده (1-5 أو 1-7 أو حسب اليوم)</span></li>
+            <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span><span>يحلّل كل طالب ويُصنّفه تلقائياً</span></li>
+            <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span><span>المستأذنون لا يُحتسبون غياباً ولا هروباً</span></li>
+            <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span><span>يكتشف الشعب التي لم تُسجَّل بعد</span></li>
+            <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span><span>إرسال جماعي مفلتر — كل ولي أمر يستلم الرسالة المناسبة</span></li>
+          </ul>
+        </div>
+        <div class="bg-slate-700/50 rounded-xl p-5 backdrop-blur">
+          <div class="text-xs text-slate-400 mb-3">📊 تقرير يومي تلقائي:</div>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span>إجمالي الطلاب</span><span class="font-bold">698</span></div>
+            <div class="flex justify-between text-green-400"><span>✅ حضور كامل</span><span class="font-bold">521</span></div>
+            <div class="flex justify-between text-red-400"><span>🔴 غياب كامل</span><span class="font-bold">18</span></div>
+            <div class="flex justify-between text-orange-400"><span>🟠 هروب</span><span class="font-bold">12</span></div>
+            <div class="flex justify-between text-blue-400"><span>🔵 استئذان</span><span class="font-bold">7</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 9. WHATSAPP INTEGRATION ════════════════ -->
+<section id="whatsapp" class="py-24 bg-gradient-to-br from-green-50 to-emerald-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-16 reveal">
+      <div class="inline-block px-4 py-1.5 bg-green-100 text-green-700 rounded-full text-sm font-bold mb-4">📲 تكامل واتساب</div>
+      <h2 class="text-3xl sm:text-4xl font-black mb-3 section-chevron">تواصل آلي مع أولياء الأمور</h2>
+      <p class="text-slate-600 text-lg">رسائل ذكية تُرسَل تلقائياً في اللحظات المهمة</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-green-100 card-lift reveal">
+        <div class="text-3xl mb-3">⏰</div>
+        <h4 class="font-bold mb-2">إشعارات التأخر</h4>
+        <p class="text-xs text-slate-600">تُرسَل تلقائياً عند وصول الطالب متأخراً عبر البصمة</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-green-100 card-lift reveal">
+        <div class="text-3xl mb-3">📚</div>
+        <h4 class="font-bold mb-2">ملاحظات الطلاب</h4>
+        <p class="text-xs text-slate-600">المعلم يكتب ملاحظة → ولي الأمر يستلمها على واتساب</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-green-100 card-lift reveal">
+        <div class="text-3xl mb-3">🚪</div>
+        <h4 class="font-bold mb-2">تأكيد الاستئذان</h4>
+        <p class="text-xs text-slate-600">عند خروج الطالب، رسالة فورية بالوقت والمستلِم</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-green-100 card-lift reveal">
+        <div class="text-3xl mb-3">🚨</div>
+        <h4 class="font-bold mb-2">الغياب والهروب</h4>
+        <p class="text-xs text-slate-600">إشعارات يومية مفصلة + تحديد الحصص الناقصة</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-green-100 card-lift reveal">
+        <div class="text-3xl mb-3">📨</div>
+        <h4 class="font-bold mb-2">رسائل جماعية</h4>
+        <p class="text-xs text-slate-600">إرسال جماعي للمعلمين أو الأهالي بقالب موحَّد</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-green-100 card-lift reveal">
+        <div class="text-3xl mb-3">🔐</div>
+        <h4 class="font-bold mb-2">بيانات دخول جديدة</h4>
+        <p class="text-xs text-slate-600">رسائل آمنة بكلمة السر للنسخ المباشر</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-green-100 card-lift reveal">
+        <div class="text-3xl mb-3">📊</div>
+        <h4 class="font-bold mb-2">سجل كامل</h4>
+        <p class="text-xs text-slate-600">كل رسالة مُسجَّلة + إعادة إرسال يدوي عند الحاجة</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-green-100 card-lift reveal">
+        <div class="text-3xl mb-3">🎯</div>
+        <h4 class="font-bold mb-2">إرسال شخصي</h4>
+        <p class="text-xs text-slate-600">كل رسالة تحمل اسم الطالب والمعلم — لمسة احترافية</p>
+      </div>
+    </div>
+
+    <!-- WhatsApp message preview -->
+    <div class="grid md:grid-cols-3 gap-6 mt-12">
+      <div class="bg-white rounded-2xl p-5 border border-green-200 reveal">
+        <div class="bg-green-600 text-white text-xs font-bold p-3 rounded-t-lg">🔴 إشعار غياب يومي</div>
+        <div class="bg-green-50 p-4 rounded-b-lg text-sm">
+          <p class="mb-2"><strong>السلام عليكم،</strong></p>
+          <p class="mb-2">نُعلمكم أن ابنكم <strong>محمد السهلي</strong> غاب اليوم...</p>
+          <p class="text-xs text-slate-600 mt-3">— متوسطة الخمرة الأولى</p>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl p-5 border border-orange-200 reveal">
+        <div class="bg-orange-600 text-white text-xs font-bold p-3 rounded-t-lg">⚠️ إشعار هروب</div>
+        <div class="bg-orange-50 p-4 rounded-b-lg text-sm">
+          <p class="mb-2"><strong>السلام عليكم،</strong></p>
+          <p class="mb-2">حضر <strong>فهد المطيري</strong> اليوم لكنه غاب عن الحصص: <strong>3 • 5 • 6</strong></p>
+          <p class="text-xs text-slate-600 mt-3">— الإدارة</p>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl p-5 border border-blue-200 reveal">
+        <div class="bg-blue-600 text-white text-xs font-bold p-3 rounded-t-lg">🚪 إشعار استئذان</div>
+        <div class="bg-blue-50 p-4 rounded-b-lg text-sm">
+          <p class="mb-2">تم استئذان <strong>محمد السهلي</strong></p>
+          <p class="text-xs">⏰ 11:30 ص</p>
+          <p class="text-xs">👨 المُستلِم: الوالد محمد السهلي</p>
+          <p class="text-xs text-slate-600 mt-3">— الوكيل</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 10. PWA & MOBILE ════════════════ -->
+<section class="py-24 bg-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="grid lg:grid-cols-2 gap-12 items-center">
+      <div class="reveal">
+        <div class="inline-block px-4 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-bold mb-4">📱 تطبيق على الجوّال</div>
+        <h2 class="text-4xl font-black mb-5">يعمل كتطبيق حقيقي بدون متجر</h2>
+        <p class="text-lg text-slate-600 mb-8 leading-relaxed">
+          النظام مبني كـPWA (Progressive Web App) — يُثبَّت على الجوّال بضغطة،
+          ويعمل بسرعة التطبيقات الأصلية بدون الحاجة لمتجر أو تحديثات يدوية.
+        </p>
+        <div class="space-y-4">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-xl shrink-0">⚡</div>
+            <div>
+              <h4 class="font-bold mb-1">سريع كالتطبيقات الأصلية</h4>
+              <p class="text-sm text-slate-600">يفتح فوراً، ينتقل بين الصفحات بدون انتظار</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-xl shrink-0">🌙</div>
+            <div>
+              <h4 class="font-bold mb-1">وضع داكن مريح</h4>
+              <p class="text-sm text-slate-600">يحفظ بطارية الجوّال ويريح العين في الليل</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-xl shrink-0">📶</div>
+            <div>
+              <h4 class="font-bold mb-1">يعمل بدون إنترنت أحياناً</h4>
+              <p class="text-sm text-slate-600">صفحات الحضور تتحمَّل مسبقاً — استخدم بسلاسة</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-xl shrink-0">🔔</div>
+            <div>
+              <h4 class="font-bold mb-1">أيقونات اختصار</h4>
+              <p class="text-sm text-slate-600">تسجيل حضور / ملاحظات / استئذان — اختصار من الشاشة الرئيسية</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-xl shrink-0">🔄</div>
+            <div>
+              <h4 class="font-bold mb-1">تحديث تلقائي</h4>
+              <p class="text-sm text-slate-600">إصدارات جديدة تُطبَّق تلقائياً — لا تحديث يدوي</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal flex justify-center">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="phone-mockup transform rotate-2 hover:rotate-0 transition-transform" style="width: 200px; height: 400px;">
+            <div class="phone-screen" style="padding: 24px 8px 8px;">
+              <div class="bg-purple-600 rounded-xl p-3 text-white text-center">
+                <div class="text-xs">إدارة</div>
+              </div>
+              <div class="space-y-1.5 mt-3">
+                <div class="bg-white rounded p-2 text-[9px] flex items-center gap-1 border border-slate-200"><span>🚪</span><span>استئذان</span></div>
+                <div class="bg-white rounded p-2 text-[9px] flex items-center gap-1 border border-slate-200"><span>📊</span><span>تقارير</span></div>
+                <div class="bg-white rounded p-2 text-[9px] flex items-center gap-1 border border-slate-200"><span>📲</span><span>إشعارات</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-mockup transform -rotate-2 hover:rotate-0 transition-transform mt-12" style="width: 200px; height: 400px;">
+            <div class="phone-screen" style="padding: 24px 8px 8px;">
+              <div class="bg-green-600 rounded-xl p-3 text-white text-center">
+                <div class="text-xs">معلم</div>
+              </div>
+              <div class="space-y-1.5 mt-3">
+                <div class="bg-white rounded p-2 text-[9px] flex items-center gap-1 border border-slate-200"><span>📋</span><span>حضور</span></div>
+                <div class="bg-white rounded p-2 text-[9px] flex items-center gap-1 border border-slate-200"><span>📝</span><span>ملاحظات</span></div>
+                <div class="bg-white rounded p-2 text-[9px] flex items-center gap-1 border border-slate-200"><span>🎙️</span><span>صوتي</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 11. PRIVACY & SECURITY ════════════════ -->
+<section id="security" class="py-24 bg-slate-900 text-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-16 reveal">
+      <div class="inline-block px-4 py-1.5 bg-emerald-500/20 text-emerald-300 rounded-full text-sm font-bold mb-4 border border-emerald-500/30">🔐 الأمان والخصوصية</div>
+      <h2 class="text-3xl sm:text-4xl font-black mb-3">حماية محكمة لبيانات الطلاب</h2>
+      <div class="w-16 h-1 bg-gradient-to-l from-emerald-400 to-blue-400 mx-auto mt-4 rounded"></div>
+      <p class="text-slate-400 text-lg mt-6">9 طبقات أمان متكاملة من قاعدة البيانات حتى المتصفح</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6">
+      <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700 reveal">
+        <div class="text-3xl mb-3">🛡️</div>
+        <h4 class="font-bold mb-2">Row-Level Security</h4>
+        <p class="text-sm text-slate-400">قاعدة البيانات نفسها ترفض البيانات خارج صلاحية المستخدم — حماية على أعمق مستوى</p>
+      </div>
+      <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700 reveal">
+        <div class="text-3xl mb-3">🔑</div>
+        <h4 class="font-bold mb-2">رموز دعوة محدودة</h4>
+        <p class="text-sm text-slate-400">كل رمز يُستخدَم مرة واحدة، صالح 48 ساعة، ومرتبط بشخص محدد</p>
+      </div>
+      <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700 reveal">
+        <div class="text-3xl mb-3">📋</div>
+        <h4 class="font-bold mb-2">سجل تدقيق كامل</h4>
+        <p class="text-sm text-slate-400">كل عملية مهمة مُسجَّلة: من فعلها، متى، على ماذا، والنتيجة</p>
+      </div>
+      <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700 reveal">
+        <div class="text-3xl mb-3">🔒</div>
+        <h4 class="font-bold mb-2">كلمات سر قوية</h4>
+        <p class="text-sm text-slate-400">12 حرفاً عشوائية، لا أحرف ملتبسة (0/O، 1/L)، تتغيّر بسهولة</p>
+      </div>
+      <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700 reveal">
+        <div class="text-3xl mb-3">🚫</div>
+        <h4 class="font-bold mb-2">منع التزوير</h4>
+        <p class="text-sm text-slate-400">المعلم لا يستطيع توقيع باسم آخر، الإداري لا يصل لشعب غيره</p>
+      </div>
+      <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700 reveal">
+        <div class="text-3xl mb-3">🔐</div>
+        <h4 class="font-bold mb-2">تغيير كلمة السر آمن</h4>
+        <p class="text-sm text-slate-400">يتطلّب كلمة السر الحالية — حماية من سرقة الجلسات</p>
+      </div>
+      <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700 reveal">
+        <div class="text-3xl mb-3">⏱️</div>
+        <h4 class="font-bold mb-2">حدود الاستخدام</h4>
+        <p class="text-sm text-slate-400">حماية ضد البوتات والاستخدام المُفرط — لا تجاوزات</p>
+      </div>
+      <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700 reveal">
+        <div class="text-3xl mb-3">🎯</div>
+        <h4 class="font-bold mb-2">منع التعداد</h4>
+        <p class="text-sm text-slate-400">ردود موحَّدة تمنع المهاجمين من استكشاف الإيميلات المسجَّلة</p>
+      </div>
+      <div class="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700 reveal">
+        <div class="text-3xl mb-3">🛂</div>
+        <h4 class="font-bold mb-2">صلاحيات حسب الدور</h4>
+        <p class="text-sm text-slate-400">5 مستويات: Super Admin، Admin، Staff، Viewer، Teacher — كلٌّ بنطاقه</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 12. REPORTS & ANALYTICS ════════════════ -->
+<section class="py-24 bg-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-16 reveal">
+      <div class="inline-block px-4 py-1.5 bg-indigo-100 text-indigo-700 rounded-full text-sm font-bold mb-4">📊 التقارير والإحصاءات</div>
+      <h2 class="text-3xl sm:text-4xl font-black mb-3 section-chevron">تقارير احترافية بضغطة زر</h2>
+      <p class="text-slate-600 text-lg">من بيانات الحضور إلى تحليلات شاملة جاهزة للطباعة</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl p-6 reveal">
+        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+          <span class="text-2xl">📅</span>
+          <span>تقارير زمنية</span>
+        </h3>
+        <ul class="space-y-2 text-sm text-slate-700">
+          <li class="flex items-start gap-2"><span class="text-indigo-500 mt-1">▸</span><span>تقرير يومي شامل لكل المدرسة</span></li>
+          <li class="flex items-start gap-2"><span class="text-indigo-500 mt-1">▸</span><span>تقرير أسبوعي للصف أو الشعبة</span></li>
+          <li class="flex items-start gap-2"><span class="text-indigo-500 mt-1">▸</span><span>تقرير شهري للأهالي</span></li>
+          <li class="flex items-start gap-2"><span class="text-indigo-500 mt-1">▸</span><span>تقرير فصلي رسمي للجنة الإدارية</span></li>
+        </ul>
+      </div>
+      <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 reveal">
+        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+          <span class="text-2xl">🎯</span>
+          <span>تقارير مُخصَّصة</span>
+        </h3>
+        <ul class="space-y-2 text-sm text-slate-700">
+          <li class="flex items-start gap-2"><span class="text-purple-500 mt-1">▸</span><span>تقرير حصة محدّدة (مثلاً الحصة 3)</span></li>
+          <li class="flex items-start gap-2"><span class="text-purple-500 mt-1">▸</span><span>مقارنة بين حصتين (1 vs 5)</span></li>
+          <li class="flex items-start gap-2"><span class="text-purple-500 mt-1">▸</span><span>تقرير شامل لطالب واحد</span></li>
+          <li class="flex items-start gap-2"><span class="text-purple-500 mt-1">▸</span><span>تقرير الملاحظات السلبية للمتابعة</span></li>
+        </ul>
+      </div>
+      <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 reveal">
+        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+          <span class="text-2xl">📈</span>
+          <span>تحليلات بصرية</span>
+        </h3>
+        <ul class="space-y-2 text-sm text-slate-700">
+          <li class="flex items-start gap-2"><span class="text-green-500 mt-1">▸</span><span>رسومات بيانية للمقارنات</span></li>
+          <li class="flex items-start gap-2"><span class="text-green-500 mt-1">▸</span><span>خارطة حرارية لأداء الشعب</span></li>
+          <li class="flex items-start gap-2"><span class="text-green-500 mt-1">▸</span><span>نسبة الالتزام مع تدرّج لوني</span></li>
+          <li class="flex items-start gap-2"><span class="text-green-500 mt-1">▸</span><span>قائمة الطلاب المُحتاجين للمتابعة</span></li>
+        </ul>
+      </div>
+      <div class="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-6 reveal">
+        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+          <span class="text-2xl">🖨️</span>
+          <span>طباعة احترافية</span>
+        </h3>
+        <ul class="space-y-2 text-sm text-slate-700">
+          <li class="flex items-start gap-2"><span class="text-orange-500 mt-1">▸</span><span>تنسيق A4 جاهز للطابعة</span></li>
+          <li class="flex items-start gap-2"><span class="text-orange-500 mt-1">▸</span><span>شعار المدرسة + توقيعات</span></li>
+          <li class="flex items-start gap-2"><span class="text-orange-500 mt-1">▸</span><span>تصاريح خروج للحارس</span></li>
+          <li class="flex items-start gap-2"><span class="text-orange-500 mt-1">▸</span><span>حفظ كـPDF بضغطة</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 13. BEFORE / AFTER ════════════════ -->
+<section class="py-24 bg-gradient-soft">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-16 reveal">
+      <h2 class="text-3xl sm:text-4xl font-black mb-3 section-chevron">قبل النظام... وبعده</h2>
+      <p class="text-slate-600 text-lg">الفرق العملي في يومٍ مدرسي حقيقي</p>
+    </div>
+
+    <div class="bg-white rounded-3xl shadow-xl overflow-hidden reveal">
+      <div class="grid md:grid-cols-2">
+        <!-- Before -->
+        <div class="bg-gradient-to-br from-red-50 to-pink-50 p-8">
+          <div class="text-center mb-6">
+            <div class="inline-block bg-red-100 text-red-700 px-4 py-1 rounded-full text-sm font-bold">❌ قبل النظام</div>
+          </div>
+          <ul class="space-y-4">
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-red-700 block mb-1">⏰ تسجيل الحضور</strong>
+              <span class="text-sm text-slate-700">دفاتر ورقية، أخطاء، فقدان</span>
+            </li>
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-red-700 block mb-1">📞 إخبار الأهالي</strong>
+              <span class="text-sm text-slate-700">مكالمات يدوية تستغرق ساعات</span>
+            </li>
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-red-700 block mb-1">🚪 استئذان الطالب</strong>
+              <span class="text-sm text-slate-700">ورقة تُسلَّم، صعوبة المتابعة</span>
+            </li>
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-red-700 block mb-1">📊 التقارير الشهرية</strong>
+              <span class="text-sm text-slate-700">جمع يدوي يستغرق أياماً</span>
+            </li>
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-red-700 block mb-1">🔍 كشف الهروب</strong>
+              <span class="text-sm text-slate-700">مراجعة يدوية للسجلات</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- After -->
+        <div class="bg-gradient-to-br from-green-50 to-emerald-50 p-8">
+          <div class="text-center mb-6">
+            <div class="inline-block bg-green-100 text-green-700 px-4 py-1 rounded-full text-sm font-bold">✅ بعد النظام</div>
+          </div>
+          <ul class="space-y-4">
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-green-700 block mb-1">⚡ تسجيل الحضور</strong>
+              <span class="text-sm text-slate-700">نقرات قليلة، حفظ آلي، لا أخطاء</span>
+            </li>
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-green-700 block mb-1">📲 إشعار الأهالي</strong>
+              <span class="text-sm text-slate-700">واتساب فوري وآلي بضغطة</span>
+            </li>
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-green-700 block mb-1">🚪 استئذان رقمي</strong>
+              <span class="text-sm text-slate-700">تسجيل + تصريح + إشعار خلال ثواني</span>
+            </li>
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-green-700 block mb-1">📊 تقارير فورية</strong>
+              <span class="text-sm text-slate-700">PDF جاهز للطباعة بضغطة</span>
+            </li>
+            <li class="bg-white/60 rounded-lg p-4">
+              <strong class="text-green-700 block mb-1">🤖 كشف ذكي</strong>
+              <span class="text-sm text-slate-700">تصنيف تلقائي للغياب والهروب</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 14. WORKFLOW TIMELINE ════════════════ -->
+<section class="py-24 bg-white">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-16 reveal">
+      <h2 class="text-3xl sm:text-4xl font-black mb-3 section-chevron">يومٌ مدرسي مع النظام</h2>
+      <p class="text-slate-600 text-lg">سير العمل الفعلي بالساعة والدقيقة</p>
+    </div>
+
+    <div class="space-y-6">
+      <div class="timeline-item bg-gradient-to-l from-blue-50 to-indigo-50 rounded-xl p-6 reveal">
+        <div class="text-xs font-bold text-blue-700 mb-1">🌅 الساعة 06:30 صباحاً</div>
+        <h4 class="font-bold mb-1">المعلم يفتح التطبيق</h4>
+        <p class="text-sm text-slate-600">يفتح PWA على جوّاله، يرى شعبه المُعيَّنة فقط</p>
+      </div>
+
+      <div class="timeline-item bg-gradient-to-l from-blue-50 to-indigo-50 rounded-xl p-6 reveal">
+        <div class="text-xs font-bold text-blue-700 mb-1">⏰ الساعة 07:15</div>
+        <h4 class="font-bold mb-1">تسجيل حضور الحصة الأولى</h4>
+        <p class="text-sm text-slate-600">يفتح الشعبة، يضع علامة على الغائبين، يحفظ — 30 ثانية</p>
+      </div>
+
+      <div class="timeline-item bg-gradient-to-l from-blue-50 to-indigo-50 rounded-xl p-6 reveal">
+        <div class="text-xs font-bold text-blue-700 mb-1">📲 الساعة 07:16</div>
+        <h4 class="font-bold mb-1">إشعارات واتساب تنطلق</h4>
+        <p class="text-sm text-slate-600">أولياء الأمور يستلمون رسائل غياب أبنائهم تلقائياً</p>
+      </div>
+
+      <div class="timeline-item bg-gradient-to-l from-blue-50 to-indigo-50 rounded-xl p-6 reveal">
+        <div class="text-xs font-bold text-blue-700 mb-1">📞 الساعة 09:00</div>
+        <h4 class="font-bold mb-1">ولي أمر يصل لاستئذان طالب</h4>
+        <p class="text-sm text-slate-600">يأتي للمدرسة، الوكيل يفتح صفحة الاستئذان</p>
+      </div>
+
+      <div class="timeline-item bg-gradient-to-l from-blue-50 to-indigo-50 rounded-xl p-6 reveal">
+        <div class="text-xs font-bold text-blue-700 mb-1">⚡ الساعة 09:02</div>
+        <h4 class="font-bold mb-1">تسجيل + طباعة + واتساب — كل ذلك بنقرتين</h4>
+        <p class="text-sm text-slate-600">تصريح خروج للحارس + إشعار للأم + تحديث الحصص المتبقية</p>
+      </div>
+
+      <div class="timeline-item bg-gradient-to-l from-blue-50 to-indigo-50 rounded-xl p-6 reveal">
+        <div class="text-xs font-bold text-blue-700 mb-1">📋 الساعة 12:45</div>
+        <h4 class="font-bold mb-1">الوكيل يفتح كشف الغياب اليومي</h4>
+        <p class="text-sm text-slate-600">تصنيف تلقائي: 18 غياب كامل، 12 هروب، 7 استئذان</p>
+      </div>
+
+      <div class="timeline-item bg-gradient-to-l from-blue-50 to-indigo-50 rounded-xl p-6 reveal">
+        <div class="text-xs font-bold text-blue-700 mb-1">📨 الساعة 12:50</div>
+        <h4 class="font-bold mb-1">إرسال جماعي لأولياء الأمور</h4>
+        <p class="text-sm text-slate-600">رسائل مختلفة حسب الحالة: الغائبون يستلمون رسالة، الهاربون رسالة أخرى</p>
+      </div>
+
+      <div class="timeline-item bg-gradient-to-l from-blue-50 to-indigo-50 rounded-xl p-6 reveal">
+        <div class="text-xs font-bold text-blue-700 mb-1">📊 نهاية اليوم</div>
+        <h4 class="font-bold mb-1">المدير يطّلع على لوحة التحكم</h4>
+        <p class="text-sm text-slate-600">إحصائيات شاملة، نسبة الالتزام، طلاب يحتاجون متابعة</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 15. TECH STACK ════════════════ -->
+<section class="py-20 bg-slate-50">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-12 reveal">
+      <h2 class="text-3xl font-black mb-3">التقنيات المُستخدَمة</h2>
+      <p class="text-slate-600">بنية احترافية مبنية على أفضل الممارسات الحديثة</p>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-white rounded-xl p-5 shadow-sm text-center card-lift reveal">
+        <div class="text-3xl mb-2">⚛️</div>
+        <h4 class="font-bold text-sm">Next.js 14</h4>
+        <p class="text-xs text-slate-500">إطار عمل عصري</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm text-center card-lift reveal">
+        <div class="text-3xl mb-2">🗄️</div>
+        <h4 class="font-bold text-sm">PostgreSQL</h4>
+        <p class="text-xs text-slate-500">قاعدة بيانات قوية</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm text-center card-lift reveal">
+        <div class="text-3xl mb-2">🔐</div>
+        <h4 class="font-bold text-sm">Supabase</h4>
+        <p class="text-xs text-slate-500">مصادقة وأمان</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm text-center card-lift reveal">
+        <div class="text-3xl mb-2">📲</div>
+        <h4 class="font-bold text-sm">WasenderAPI</h4>
+        <p class="text-xs text-slate-500">إرسال واتساب</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm text-center card-lift reveal">
+        <div class="text-3xl mb-2">☁️</div>
+        <h4 class="font-bold text-sm">Vercel</h4>
+        <p class="text-xs text-slate-500">استضافة سحابية</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm text-center card-lift reveal">
+        <div class="text-3xl mb-2">🎨</div>
+        <h4 class="font-bold text-sm">Tailwind CSS</h4>
+        <p class="text-xs text-slate-500">تصميم عصري</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm text-center card-lift reveal">
+        <div class="text-3xl mb-2">📱</div>
+        <h4 class="font-bold text-sm">PWA</h4>
+        <p class="text-xs text-slate-500">تطبيق ويب متقدم</p>
+      </div>
+      <div class="bg-white rounded-xl p-5 shadow-sm text-center card-lift reveal">
+        <div class="text-3xl mb-2">🇸🇦</div>
+        <h4 class="font-bold text-sm">عربي بالكامل</h4>
+        <p class="text-xs text-slate-500">RTL + خطوط عربية</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 16. FAQ ════════════════ -->
+<section id="faq" class="py-24 bg-white">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6">
+    <div class="text-center mb-12 reveal">
+      <h2 class="text-3xl sm:text-4xl font-black mb-3 section-chevron">الأسئلة الشائعة</h2>
+      <p class="text-slate-600 text-lg">إجابات لأكثر الأسئلة تكراراً</p>
+    </div>
+
+    <div class="space-y-3">
+      <details class="bg-slate-50 rounded-xl p-5 group cursor-pointer reveal">
+        <summary class="font-bold text-slate-900 flex items-center justify-between">
+          <span>هل يحتاج المعلم تثبيت تطبيق على جوّاله؟</span>
+          <span class="text-2xl transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <p class="mt-3 text-slate-600 text-sm leading-relaxed">
+          لا. النظام مبني كـPWA (تطبيق ويب متقدّم) — يفتح من أيّ متصفح،
+          وعند الرغبة يُثبَّت بضغطة "إضافة إلى الشاشة الرئيسية" ليعمل كتطبيق مستقل.
+          لا حاجة لمتجر أو تحديثات يدوية.
+        </p>
+      </details>
+
+      <details class="bg-slate-50 rounded-xl p-5 group cursor-pointer reveal">
+        <summary class="font-bold text-slate-900 flex items-center justify-between">
+          <span>هل يعمل النظام بدون إنترنت؟</span>
+          <span class="text-2xl transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <p class="mt-3 text-slate-600 text-sm leading-relaxed">
+          الصفحات الأساسية (مثل تسجيل الحضور) تتحمَّل مسبقاً، فيمكن استعراضها بدون إنترنت.
+          أمّا الحفظ والمزامنة فيحتاجان اتصالاً للوصول لقاعدة البيانات.
+        </p>
+      </details>
+
+      <details class="bg-slate-50 rounded-xl p-5 group cursor-pointer reveal">
+        <summary class="font-bold text-slate-900 flex items-center justify-between">
+          <span>كيف نضمن خصوصية بيانات الطلاب؟</span>
+          <span class="text-2xl transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <p class="mt-3 text-slate-600 text-sm leading-relaxed">
+          ٩ طبقات أمان متكاملة: من Row-Level Security على قاعدة البيانات،
+          إلى تعيين الإداريين على شعب محدّدة، إلى سجل تدقيق لكل عملية.
+          المعلم لا يرى إلا طلابه، والإداري لا يرى إلا صفوفه المُعيَّنة، والمدير العام يرى كل شيء.
+        </p>
+      </details>
+
+      <details class="bg-slate-50 rounded-xl p-5 group cursor-pointer reveal">
+        <summary class="font-bold text-slate-900 flex items-center justify-between">
+          <span>هل يدعم النظام أكثر من معلم على نفس الشعبة؟</span>
+          <span class="text-2xl transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <p class="mt-3 text-slate-600 text-sm leading-relaxed">
+          نعم. تستطيع تعيين عدة معلمين على نفس الشعبة، كل منهم يسجّل حضور حصصه فقط،
+          ولا يرى تسجيلات الزملاء — حماية للخصوصية والمسؤوليات.
+        </p>
+      </details>
+
+      <details class="bg-slate-50 rounded-xl p-5 group cursor-pointer reveal">
+        <summary class="font-bold text-slate-900 flex items-center justify-between">
+          <span>هل يمكن إيقاف الواتساب مؤقتاً (في الإجازات مثلاً)؟</span>
+          <span class="text-2xl transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <p class="mt-3 text-slate-600 text-sm leading-relaxed">
+          نعم. المدير العام يستطيع إيقاف الواتساب بضغطة من الإعدادات،
+          ويعيد تفعيله متى شاء. توقيف الواتساب لا يعطّل بقية النظام.
+        </p>
+      </details>
+
+      <details class="bg-slate-50 rounded-xl p-5 group cursor-pointer reveal">
+        <summary class="font-bold text-slate-900 flex items-center justify-between">
+          <span>هل يمكن للمعلم رؤية بيانات الطلاب الذين لا يدرّسهم؟</span>
+          <span class="text-2xl transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <p class="mt-3 text-slate-600 text-sm leading-relaxed">
+          لا. النظام يفرض قاعدة صارمة: المعلم يرى فقط طلاب الشعب المُعيَّن لها.
+          حتى لو حاول الوصول لرابط مباشر، الـRLS يرفض الطلب من قاعدة البيانات نفسها.
+        </p>
+      </details>
+
+      <details class="bg-slate-50 rounded-xl p-5 group cursor-pointer reveal">
+        <summary class="font-bold text-slate-900 flex items-center justify-between">
+          <span>كم يستغرق تدريب الإداريين والمعلمين على النظام؟</span>
+          <span class="text-2xl transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <p class="mt-3 text-slate-600 text-sm leading-relaxed">
+          النظام مصمَّم بواجهة بديهية. المعلم يُتقن تسجيل الحضور في 5 دقائق،
+          والإداري يحتاج جلسة تدريبية قصيرة (~30 دقيقة) لاستيعاب كل الميزات.
+        </p>
+      </details>
+
+      <details class="bg-slate-50 rounded-xl p-5 group cursor-pointer reveal">
+        <summary class="font-bold text-slate-900 flex items-center justify-between">
+          <span>ماذا لو نسي المعلم/الإداري كلمة السر؟</span>
+          <span class="text-2xl transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <p class="mt-3 text-slate-600 text-sm leading-relaxed">
+          المدير العام يستطيع إعادة تعيين كلمة السر بضغطة، وتصل الجديدة لجوّال المستخدم تلقائياً عبر الواتساب.
+        </p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ 17. FOOTER ════════════════ -->
+<footer class="bg-gradient-to-br from-slate-900 to-slate-800 text-white py-16">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="text-center">
+      <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white mx-auto mb-6 shadow-2xl">
+        <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 14l9-5-9-5-9 5 9 5z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
+        </svg>
+      </div>
+
+      <h3 class="text-3xl font-black mb-2">نظام الحضور المدرسي الذكي</h3>
+      <p class="text-slate-400 mb-8">منظومة متكاملة لإدارة الحضور والمتابعة المدرسية</p>
+
+      <div class="bg-gradient-to-br from-amber-500/10 to-yellow-500/10 border-2 border-amber-500/30 rounded-2xl p-8 max-w-2xl mx-auto backdrop-blur">
+        <div class="text-amber-400 text-3xl mb-3">⭐</div>
+        <p class="text-slate-300 mb-2 text-sm">تم إنجاز هذا العمل من قِبَل</p>
+        <h4 class="text-2xl font-black bg-gradient-to-l from-amber-300 to-yellow-200 bg-clip-text text-transparent mb-2">
+          المعلم أ. باسم محمد الحجري
+        </h4>
+        <p class="text-slate-400 text-sm">
+          تطوير شخصي بهدف تطوير العملية التعليمية في المدرسة
+        </p>
+      </div>
+
+      <div class="mt-12 pt-8 border-t border-slate-700">
+        <p class="text-slate-500 text-sm">
+          🌹 جميع الحقوق محفوظة © 2026 — نظام الحضور المدرسي
+        </p>
+        <p class="text-slate-600 text-xs mt-2">
+          مبني بشغف لخدمة التعليم
+        </p>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ════════════════ JS — counters + reveal animation ════════════════ -->
+<script>
+// === Reveal on scroll ===
+// Replaces a heavy library with a tiny IntersectionObserver — zero deps,
+// negligible perf cost, animates only when the element enters the viewport.
+const observer = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      observer.unobserve(entry.target);
+    }
+  }
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
+
+// === Animated counters ===
+// Eases linearly to the target over 1.4s. Triggered when the counter
+// scrolls into view, then disconnected so it doesn't re-run.
+const counterObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    const el = entry.target;
+    const target = parseInt(el.dataset.target || '0', 10);
+    const duration = 1400;
+    const startTime = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      el.textContent = Math.floor(target * t).toString();
+      if (t < 1) requestAnimationFrame(tick);
+      else el.textContent = target.toString();
+    };
+    requestAnimationFrame(tick);
+    counterObserver.unobserve(el);
+  }
+}, { threshold: 0.5 });
+document.querySelectorAll('.stat-counter').forEach((el) => counterObserver.observe(el));
+
+// === Smooth-scroll offset for sticky nav ===
+// Using scroll-padding-top in CSS handles modern browsers; this is a fallback
+// for taps on anchor links from the same page.
+document.querySelectorAll('a[href^="#"]').forEach((a) => {
+  a.addEventListener('click', (e) => {
+    const id = a.getAttribute('href');
+    if (!id || id === '#') return;
+    const el = document.querySelector(id);
+    if (!el) return;
+    e.preventDefault();
+    const y = el.getBoundingClientRect().top + window.scrollY - 80;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+  });
+});
+</script>
+
+</body>
+</html>
