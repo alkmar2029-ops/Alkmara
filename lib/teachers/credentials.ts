@@ -58,6 +58,11 @@ interface MessageParams {
  */
 function buildWelcomeMessage(p: MessageParams): string {
   const school = p.schoolName ? ` في ${p.schoolName}` : '';
+  // Triple-backtick wrapping renders as a monospace block in WhatsApp,
+  // making the password visually distinct AND giving the recipient a clean
+  // tap target to select. Combined with the standalone follow-up message
+  // sent right after, the teacher can long-press → Copy → paste with a
+  // single gesture.
   return `🌟 أهلاً وسهلاً بك أستاذنا الفاضل ${p.fullName} 🌹
 
 🎉 يسعدنا أن نُعلمكم باعتماد طلب انضمامكم لأسرة المعلمين${school}،
@@ -72,10 +77,13 @@ function buildWelcomeMessage(p: MessageParams): string {
 ${p.portalUrl}
 
 📧 البريد:
-${p.email}
+\`\`\`${p.email}\`\`\`
 
 🔐 كلمة السر:
-${p.password}
+\`\`\`${p.password}\`\`\`
+
+💡 ستصلك رسالتان قصيرتان بعد قليل تحويان البريد وكلمة السر منفصلين —
+اضغط مطوَّلاً على أيٍّ منهما ثم اختر "نسخ" للصقه مباشرة في صفحة الدخول.
 
 📱 لتجربة أفضل:
 • افتح الرابط من المتصفح ثم اضغط «إضافة إلى الشاشة الرئيسية» ليعمل كتطبيق.
@@ -100,10 +108,13 @@ function buildResetMessage(p: MessageParams): string {
 ${p.portalUrl}
 
 📧 البريد:
-${p.email}
+\`\`\`${p.email}\`\`\`
 
 🔑 كلمة السر الجديدة:
-${p.password}
+\`\`\`${p.password}\`\`\`
+
+💡 ستصلك رسالتان قصيرتان بعد قليل تحويان البريد وكلمة السر منفصلين —
+اضغط مطوَّلاً على أيٍّ منهما ثم اختر "نسخ" للصقه مباشرة في صفحة الدخول.
 
 يمكنك تغيير كلمة السر من صفحة «ملفي» بعد الدخول.`;
 }
@@ -176,6 +187,53 @@ export async function sendCredentialsViaWhatsapp(
     await new Promise((r) => setTimeout(r, 6000));
     result = await send();
   }
+
+  // Best-effort: send the email and password each in a SEPARATE one-line
+  // message. WhatsApp lets the recipient long-press a single message and
+  // copy its full body cleanly — but you can't easily select just one line
+  // inside a multi-line message. So we follow up with two single-token
+  // messages to give the teacher a perfect "long-press → Copy" target for
+  // each credential. Both are paced 5.5s apart to respect Wasender's
+  // account-protection limit.
+  if (result.ok) {
+    try {
+      await new Promise((r) => setTimeout(r, 5500));
+      await sendTextAndLog({
+        supabase,
+        apiKey: ws.api_key!,
+        phone: normalizePhone(phone),
+        // Bare email — no labels, no emojis. Long-press copies exactly the
+        // login string the teacher needs.
+        message: email,
+        recipientName: fullName,
+        recipientType: 'teacher',
+        templateName: 'teacher_email_only',
+        contextType: 'teacher_credentials',
+        contextId: teacherUserId ?? null,
+        sentBy: sentBy ?? null,
+      });
+
+      await new Promise((r) => setTimeout(r, 5500));
+      await sendTextAndLog({
+        supabase,
+        apiKey: ws.api_key!,
+        phone: normalizePhone(phone),
+        // Bare password — same idea: a clean copy target.
+        message: password,
+        recipientName: fullName,
+        recipientType: 'teacher',
+        templateName: 'teacher_password_only',
+        contextType: 'teacher_credentials',
+        contextId: teacherUserId ?? null,
+        sentBy: sentBy ?? null,
+      });
+    } catch (e) {
+      // Follow-ups are bonus polish; silently swallow if anything goes wrong.
+      // The main credentials message has already been delivered.
+      console.error('credentials follow-up send failed:', e);
+    }
+  }
+
   return { ok: result.ok, error: result.error };
 }
 
