@@ -67,7 +67,18 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold">التقارير</h2>
+      {/* Legacy-page banner: this view reads the old fingerprint-device
+          attendance_records table. Schools that switched to period-based
+          attendance won't see data here. Steer them to the new builder. */}
+      <div className="card bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30">
+        <p className="text-sm text-amber-900 dark:text-amber-200 leading-relaxed">
+          ⚠️ <strong>هذه الصفحة قديمة</strong> — تعرض بيانات الحضور من أجهزة البصمة فقط.
+          {' '}للتقارير الكاملة (حضور الحصص، الملاحظات، التقارير الشاملة)
+          {' '}استخدم{' '}
+          <a href="/dashboard/reports/builder" className="font-bold underline">صفحة التقارير الجديدة</a>.
+        </p>
+      </div>
+      <h2 className="text-2xl font-bold">التقارير (إصدار قديم)</h2>
       <div className="flex gap-2 border-b dark:border-gray-800 overflow-x-auto">
         <button onClick={() => setTab('daily')} className={`px-4 py-2 -mb-px text-sm font-medium border-b-2 whitespace-nowrap ${tab === 'daily' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400'}`}>تقرير يومي</button>
         <button onClick={() => setTab('section')} className={`px-4 py-2 -mb-px text-sm font-medium border-b-2 whitespace-nowrap ${tab === 'section' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400'}`}>تقرير بالشعبة</button>
