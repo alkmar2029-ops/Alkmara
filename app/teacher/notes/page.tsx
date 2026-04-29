@@ -115,6 +115,19 @@ export default function TeacherNotesPage() {
     queryFn: async () => (await (await fetch('/api/note-templates?active=1&for_role=teacher')).json()).data,
   });
 
+  // Teacher policy — controls whether the free-text + mic UI is exposed.
+  // We default to "templates only" while the request is in flight so the
+  // textbox doesn't flash up and disappear once the policy arrives.
+  const { data: policy } = useQuery<{
+    teachers_notes_templates_only: boolean;
+    teachers_can_send_whatsapp: boolean;
+  }>({
+    queryKey: ['teacher-policy'],
+    queryFn: async () => (await (await fetch('/api/whatsapp/teacher-policy')).json()).data,
+    staleTime: 60_000,
+  });
+  const templatesOnly = policy?.teachers_notes_templates_only !== false;
+
   const gradeChangeSeen = useMemo(() => ({ count: 0 }), []);
   useEffect(() => {
     gradeChangeSeen.count++;
@@ -202,6 +215,10 @@ export default function TeacherNotesPage() {
   const canSave =
     selected.size > 0 &&
     noteText.trim().length >= 2 &&
+    // In templates-only mode the picked template id must be set — pickTemplate
+    // sets both noteText and pickedTemplateId, so this also blocks any sneaky
+    // way to bypass the textarea hide.
+    (!templatesOnly || pickedTemplateId !== null) &&
     !saveMut.isPending;
 
   // Step gates
@@ -262,6 +279,7 @@ export default function TeacherNotesPage() {
             clearNote={clearNote}
             speech={speech}
             selectedCount={selected.size}
+            templatesOnly={templatesOnly}
           />
         )}
 
@@ -426,6 +444,7 @@ export default function TeacherNotesPage() {
               pickTemplate={pickTemplate}
               clearNote={clearNote}
               speech={speech}
+              templatesOnly={templatesOnly}
             />
             <button
               onClick={() => saveMut.mutate()}
@@ -610,13 +629,13 @@ function Step2SelectStudents({ students, studentsLoading, sectionId, search, set
 function Step3Note({
   noteType, setNoteType, noteCategory, setNoteCategory,
   noteText, setNoteText, pickedTemplateId, setPickedTemplateId,
-  visibleTemplates, pickTemplate, clearNote, speech, selectedCount,
+  visibleTemplates, pickTemplate, clearNote, speech, selectedCount, templatesOnly,
 }: any) {
   return (
     <div className="card">
       <h2 className="font-semibold mb-2 inline-flex items-center gap-2">
         <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-        ٣. اكتب الملاحظة
+        {templatesOnly ? '٣. اختر الملاحظة' : '٣. اكتب الملاحظة'}
         {selectedCount > 0 && (
           <span className="text-xs font-normal text-blue-600 dark:text-blue-400 ms-1">
             (لـ {selectedCount} طالب)
@@ -632,6 +651,7 @@ function Step3Note({
         pickTemplate={pickTemplate}
         clearNote={clearNote}
         speech={speech}
+        templatesOnly={templatesOnly}
       />
     </div>
   );
@@ -641,7 +661,7 @@ function Step3Note({
 function NoteInputBlock({
   noteType, setNoteType, noteCategory, setNoteCategory,
   noteText, setNoteText, pickedTemplateId, setPickedTemplateId,
-  visibleTemplates, pickTemplate, clearNote, speech,
+  visibleTemplates, pickTemplate, clearNote, speech, templatesOnly,
 }: any) {
   return (
     <>
@@ -690,48 +710,76 @@ function NoteInputBlock({
         </div>
       )}
 
-      <div className="relative">
-        <textarea
-          value={noteText + (speech.interim ? ' ' + speech.interim : '')}
-          onChange={(e) => { setNoteText(e.target.value); setPickedTemplateId(null); }}
-          className="input min-h-[100px] pe-12"
-          placeholder="اكتب الملاحظة، اختر قالباً، أو اضغط الميكروفون..."
-          maxLength={1000}
-        />
-        <button
-          onClick={() => speech.listening ? speech.stop() : speech.start()}
-          disabled={!speech.supported}
-          title={speech.supported ? (speech.listening ? 'إيقاف' : 'تسجيل صوتي') : 'غير مدعوم'}
-          className={`absolute top-2 left-2 p-2 rounded-lg ${
-            speech.listening
-              ? 'bg-red-500 text-white animate-pulse'
-              : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-500/20 dark:text-blue-400 disabled:opacity-30'
-          }`}
-        >
-          {speech.listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between mt-1 text-xs text-gray-500 dark:text-gray-400">
-        <span>{noteText.length}/1000</span>
-        <div className="flex items-center gap-2">
-          {speech.error && (
-            <span className="text-red-600 dark:text-red-400 inline-flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" /> {speech.error}
-            </span>
-          )}
-          {speech.listening && (
-            <span className="text-red-600 dark:text-red-400 inline-flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> جارٍ التسجيل...
-            </span>
-          )}
-          {(noteText || speech.transcript) && (
-            <button onClick={clearNote} className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200">
-              <Eraser className="w-3 h-3" /> مسح
+      {templatesOnly ? (
+        // Templates-only mode: show a read-only preview of the selected
+        // template instead of an editable textarea. Teacher can't add or
+        // change wording — only pick a different template above.
+        noteText ? (
+          <div className="rounded-lg border-2 border-blue-300 dark:border-blue-500/40 bg-blue-50/60 dark:bg-blue-500/10 p-3 mb-1">
+            <p className="text-xs text-blue-700 dark:text-blue-300 mb-1.5 font-medium">
+              ✓ القالب المختار
+            </p>
+            <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">
+              {noteText}
+            </p>
+            <button
+              onClick={clearNote}
+              className="text-xs text-red-600 dark:text-red-400 hover:underline mt-2 inline-flex items-center gap-1"
+            >
+              <Eraser className="w-3 h-3" /> اختيار قالب آخر
             </button>
-          )}
-        </div>
-      </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40 p-4 text-center text-sm text-gray-500 dark:text-gray-400 mb-1">
+            👆 اختر قالباً من القائمة أعلاه
+          </div>
+        )
+      ) : (
+        <>
+          <div className="relative">
+            <textarea
+              value={noteText + (speech.interim ? ' ' + speech.interim : '')}
+              onChange={(e) => { setNoteText(e.target.value); setPickedTemplateId(null); }}
+              className="input min-h-[100px] pe-12"
+              placeholder="اكتب الملاحظة، اختر قالباً، أو اضغط الميكروفون..."
+              maxLength={1000}
+            />
+            <button
+              onClick={() => speech.listening ? speech.stop() : speech.start()}
+              disabled={!speech.supported}
+              title={speech.supported ? (speech.listening ? 'إيقاف' : 'تسجيل صوتي') : 'غير مدعوم'}
+              className={`absolute top-2 left-2 p-2 rounded-lg ${
+                speech.listening
+                  ? 'bg-red-500 text-white animate-pulse'
+                  : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-500/20 dark:text-blue-400 disabled:opacity-30'
+              }`}
+            >
+              {speech.listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between mt-1 text-xs text-gray-500 dark:text-gray-400">
+            <span>{noteText.length}/1000</span>
+            <div className="flex items-center gap-2">
+              {speech.error && (
+                <span className="text-red-600 dark:text-red-400 inline-flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {speech.error}
+                </span>
+              )}
+              {speech.listening && (
+                <span className="text-red-600 dark:text-red-400 inline-flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> جارٍ التسجيل...
+                </span>
+              )}
+              {(noteText || speech.transcript) && (
+                <button onClick={clearNote} className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200">
+                  <Eraser className="w-3 h-3" /> مسح
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

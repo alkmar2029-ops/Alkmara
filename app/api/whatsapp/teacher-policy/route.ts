@@ -17,16 +17,23 @@ export async function GET() {
   if (!ctx) return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
 
   const admin = createAdminSupabaseClient();
-  const { data } = await admin
-    .from('whatsapp_settings')
-    .select('teachers_can_send_whatsapp, teachers_enabled')
-    .eq('id', 1)
-    .maybeSingle();
+  const [{ data: wa }, { data: school }] = await Promise.all([
+    admin.from('whatsapp_settings')
+      .select('teachers_can_send_whatsapp, teachers_enabled')
+      .eq('id', 1).maybeSingle(),
+    admin.from('school_settings')
+      .select('teachers_notes_templates_only')
+      .eq('id', 1).maybeSingle(),
+  ]);
 
   return NextResponse.json({
     data: {
-      teachers_can_send_whatsapp: data?.teachers_can_send_whatsapp === true,
-      teachers_enabled: data?.teachers_enabled !== false,
+      teachers_can_send_whatsapp: wa?.teachers_can_send_whatsapp === true,
+      teachers_enabled: wa?.teachers_enabled !== false,
+      // When true, the teacher portal locks notes to the curated templates
+      // (no free-text typing or voice-to-text). Defaults to true on
+      // pre-migration databases — matches the new baseline behavior.
+      teachers_notes_templates_only: school?.teachers_notes_templates_only !== false,
     },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

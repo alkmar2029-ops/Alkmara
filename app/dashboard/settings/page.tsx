@@ -43,6 +43,9 @@ export default function SettingsPage() {
         school_start_time: startTime,
         late_threshold: settings.late_threshold ?? 15,
         absent_threshold: settings.absent_threshold ?? 45,
+        // Defaults to true — matches the migration default. Pre-migration
+        // databases will return undefined; treat that as enabled too.
+        teachers_notes_templates_only: settings.teachers_notes_templates_only !== false,
       });
     }
   }, [settings, form]);
@@ -258,6 +261,58 @@ export default function SettingsPage() {
           <span className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full" />
         )}
       </button>
+
+      {/* Teacher notes restriction — controls whether teacher portal allows
+          free-text + voice notes or only pre-built templates. */}
+      <div className={`card ${
+        form.teachers_notes_templates_only
+          ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30'
+          : 'bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700'
+      }`}>
+        <div className="flex items-start gap-3">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+            form.teachers_notes_templates_only ? 'bg-amber-500' : 'bg-gray-400'
+          }`}>
+            <Settings className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className={`font-semibold ${
+              form.teachers_notes_templates_only
+                ? 'text-amber-900 dark:text-amber-200'
+                : 'text-gray-900 dark:text-gray-100'
+            }`}>
+              تقييد ملاحظات المعلم بالقوالب فقط
+            </h3>
+            <p className={`text-sm mt-1 ${
+              form.teachers_notes_templates_only
+                ? 'text-amber-800 dark:text-amber-300'
+                : 'text-gray-700 dark:text-gray-300'
+            }`}>
+              {form.teachers_notes_templates_only
+                ? '🔒 مفعّل — لا يستطيع المعلم كتابة ملاحظات حرة، فقط الاختيار من القوالب الجاهزة.'
+                : '✏️ موقوف — يستطيع المعلم كتابة ملاحظات حرة + استخدام تسجيل صوتي + اختيار قوالب.'}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              💡 يخفي مربع الكتابة وزر الميكروفون من شاشة "تسجيل الملاحظات" لدى المعلم.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              const next = !form.teachers_notes_templates_only;
+              setForm({ ...form, teachers_notes_templates_only: next });
+              saveMutation.mutate({ teachers_notes_templates_only: next });
+            }}
+            disabled={saveMutation.isPending}
+            className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              form.teachers_notes_templates_only
+                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                : 'bg-amber-600 text-white hover:bg-amber-700'
+            } ${saveMutation.isPending ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            {form.teachers_notes_templates_only ? 'إلغاء التقييد' : 'تفعيل التقييد'}
+          </button>
+        </div>
+      </div>
 
       {/* Note templates — admin-managed list of canned positive/negative notes */}
       <NoteTemplatesSection />

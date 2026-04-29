@@ -75,6 +75,9 @@ export const updateSettingsSchema = z.object({
     .string()
     .regex(/^\d{2}:\d{2}(:\d{2})?$/, 'وقت غير صالح (HH:MM)')
     .optional(),
+  // When true, the teacher portal hides the free-text textarea and the
+  // microphone — teachers must pick from the curated note templates.
+  teachers_notes_templates_only: z.boolean().optional(),
 });
 
 // Sections schemas
