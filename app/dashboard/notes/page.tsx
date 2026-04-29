@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   MessageSquarePlus, Search, Mic, MicOff, Save, X, ThumbsUp, ThumbsDown,
-  CheckSquare, Square, Loader2, Eraser, Sparkles, AlertCircle,
+  CheckSquare, Square, Loader2, Eraser, Sparkles, AlertCircle, Users, ChevronDown, ChevronUp, Trash2,
 } from 'lucide-react';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import { STAGE_LABELS } from '@/lib/utils/helpers';
@@ -44,8 +44,13 @@ export default function NotesPage() {
   const [sectionId, setSectionId] = useState<string>('');
   const [search, setSearch] = useState('');
 
-  // Selection
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Selection — keyed by student id, stores the full record so we can show
+  // the student's grade/section in the "selected students" panel even after
+  // the user changes the filter and the original list is no longer in view.
+  // Using a Map (not a Set of ids) is what makes cross-grade/cross-section
+  // multi-select work without re-fetching every selected student.
+  const [selectedMap, setSelectedMap] = useState<Map<number, Student>>(new Map());
+  const [showSelectedPanel, setShowSelectedPanel] = useState(false);
 
   // Note input state
   const [noteType, setNoteType] = useState<NoteType>('positive');
@@ -105,9 +110,9 @@ export default function NotesPage() {
     queryFn: async () => (await (await fetch('/api/note-templates?active=1&for_role=admin')).json()).data,
   });
 
-  // Reset section when grade changes; reset selection when section changes.
-  useEffect(() => { setSectionId(''); setSelected(new Set()); }, [gradeId]);
-  useEffect(() => { setSelected(new Set()); }, [sectionId]);
+  // Reset section when grade changes — but keep the selection so admin can
+  // pick students across multiple sections in one go.
+  useEffect(() => { setSectionId(''); }, [gradeId]);
 
   // ---- Voice recording ----
   const speech = useSpeechToText({ lang: 'ar-SA' });
@@ -132,16 +137,51 @@ export default function NotesPage() {
   }, [templates, noteType, noteCategory]);
 
   // ---- Selection helpers ----
-  const allSelected = students.length > 0 && students.every((s) => selected.has(s.id));
+  // "All selected" is scoped to the *current view*; toggling all only adds or
+  // removes the visible students, leaving selections from other sections intact.
+  const allCurrentSelected = students.length > 0 && students.every((s) => selectedMap.has(s.id));
   const toggleAll = () => {
-    if (allSelected) setSelected(new Set());
-    else setSelected(new Set(students.map((s) => s.id)));
+    setSelectedMap((prev) => {
+      const next = new Map(prev);
+      if (allCurrentSelected) {
+        // Remove only the visible students — preserve out-of-view selections.
+        for (const s of students) next.delete(s.id);
+      } else {
+        for (const s of students) next.set(s.id, s);
+      }
+      return next;
+    });
   };
-  const toggleOne = (id: number) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    setSelected(next);
+  const toggleOne = (s: Student) => {
+    setSelectedMap((prev) => {
+      const next = new Map(prev);
+      if (next.has(s.id)) next.delete(s.id);
+      else next.set(s.id, s);
+      return next;
+    });
   };
+  const removeSelected = (id: number) => {
+    setSelectedMap((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+  const clearAllSelected = () => setSelectedMap(new Map());
+
+  // Group selected students by grade/section for the summary panel. The
+  // student records may be missing the joined `grades`/`sections` fields if
+  // they came from a search-by-name query — fall back to ids in that case.
+  const groupedSelected = useMemo(() => {
+    const groups = new Map<string, { label: string; students: Student[] }>();
+    for (const s of selectedMap.values()) {
+      const key = `${s.grade_id}-${s.section_id}`;
+      const label = `${s.grades?.name || `صف #${s.grade_id}`} / ${s.sections?.name || `شعبة #${s.section_id}`}`;
+      if (!groups.has(key)) groups.set(key, { label, students: [] });
+      groups.get(key)!.students.push(s);
+    }
+    return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label, 'ar'));
+  }, [selectedMap]);
 
   const pickTemplate = (t: NoteTemplate) => {
     // Tapping a template fills the text and sets category — user can still edit.
@@ -165,7 +205,7 @@ export default function NotesPage() {
   // the notes are still saved and the user is sent to the print page.
   const saveMut = useMutation({
     mutationFn: async () => {
-      const studentIds = Array.from(selected);
+      const studentIds = Array.from(selectedMap.keys());
       const text = noteText.trim();
       const notes = studentIds.map((sid) => ({
         student_id: sid,
@@ -220,14 +260,14 @@ export default function NotesPage() {
         toast.success(`تم حفظ ${data.count} ملاحظة`);
       }
       clearNote();
-      setSelected(new Set());
+      setSelectedMap(new Map());
       router.push(`/dashboard/notes/print/${data.batch_id}`);
     },
     onError: (e: any) => toast.error(e.message || 'فشل الحفظ'),
   });
 
   const canSave =
-    selected.size > 0 &&
+    selectedMap.size > 0 &&
     noteText.trim().length >= 2 &&
     !saveMut.isPending;
 
@@ -289,6 +329,86 @@ export default function NotesPage() {
         </div>
       </div>
 
+      {/* Cross-grade/section selection summary — only shown when there's
+          something to manage. Lets the admin keep adding students from
+          different grades+sections, then send a note to all of them at once. */}
+      {selectedMap.size > 0 && (
+        <div className="card border-blue-200 dark:border-blue-500/30 bg-blue-50/50 dark:bg-blue-500/5">
+          <button
+            onClick={() => setShowSelectedPanel((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 text-right"
+          >
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <span className="font-semibold text-blue-900 dark:text-blue-200">
+                المختارون عبر الصفوف: {selectedMap.size} طالب
+              </span>
+              <span className="text-xs text-blue-700 dark:text-blue-300">
+                ({groupedSelected.length} {groupedSelected.length === 1 ? 'شعبة' : 'شعب'})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm(`مسح اختيار ${selectedMap.size} طالب؟`)) clearAllSelected();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault(); e.stopPropagation();
+                    if (confirm(`مسح اختيار ${selectedMap.size} طالب؟`)) clearAllSelected();
+                  }
+                }}
+                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> مسح الكل
+              </span>
+              {showSelectedPanel ? <ChevronUp className="w-4 h-4 text-blue-600 dark:text-blue-400" /> : <ChevronDown className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+            </div>
+          </button>
+
+          {showSelectedPanel && (
+            <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-500/30 space-y-3 max-h-72 overflow-y-auto">
+              {groupedSelected.map((g) => (
+                <div key={g.label}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <h4 className="text-xs font-semibold text-blue-900 dark:text-blue-200">
+                      {g.label} <span className="text-blue-600 dark:text-blue-400">({g.students.length})</span>
+                    </h4>
+                  </div>
+                  <ul className="flex flex-wrap gap-1.5">
+                    {g.students.map((s) => {
+                      const fullName = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
+                      return (
+                        <li
+                          key={s.id}
+                          className="inline-flex items-center gap-1 bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-500/30 rounded-full px-2 py-0.5 text-xs"
+                        >
+                          <span className="text-gray-800 dark:text-gray-200 truncate max-w-[160px]">{fullName}</span>
+                          <button
+                            onClick={() => removeSelected(s.id)}
+                            className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 shrink-0"
+                            title="إزالة من الاختيار"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="text-xs text-blue-700 dark:text-blue-300 mt-2 leading-relaxed">
+            💡 يمكنك تغيير الصف/الشعبة من الفلتر أعلاه — اختياراتك تبقى محفوظة. عند الحفظ ستُسجّل الملاحظة لكل المختارين دفعة واحدة.
+          </p>
+        </div>
+      )}
+
       {/* Two-column on desktop: students list + sticky note panel */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
         {/* Students list */}
@@ -300,12 +420,17 @@ export default function NotesPage() {
                 disabled={students.length === 0}
                 className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:no-underline"
               >
-                {allSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                {allSelected ? 'إلغاء اختيار الكل' : 'اختيار الكل'}
+                {allCurrentSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                {allCurrentSelected ? 'إلغاء اختيار هذا العرض' : 'اختيار كل هذا العرض'}
               </button>
             </div>
             <span className="text-xs text-gray-500 dark:text-gray-400">
-              <strong className="text-gray-900 dark:text-gray-100">{selected.size}</strong> محدّد من {students.length}
+              {selectedMap.size > 0 && (
+                <span className="me-2 text-blue-600 dark:text-blue-400">
+                  <strong>{selectedMap.size}</strong> محدّد إجمالاً
+                </span>
+              )}
+              <strong className="text-gray-900 dark:text-gray-100">{students.filter((s) => selectedMap.has(s.id)).length}</strong> من {students.length} في هذا العرض
             </span>
           </div>
 
@@ -322,12 +447,12 @@ export default function NotesPage() {
           ) : (
             <ul className="divide-y divide-gray-200 dark:divide-gray-800 max-h-[calc(100vh-360px)] overflow-y-auto">
               {students.map((s) => {
-                const checked = selected.has(s.id);
+                const checked = selectedMap.has(s.id);
                 const fullName = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
                 return (
                   <li
                     key={s.id}
-                    onClick={() => toggleOne(s.id)}
+                    onClick={() => toggleOne(s)}
                     className={`flex items-center gap-3 py-2.5 px-2 -mx-2 rounded cursor-pointer transition-colors ${
                       checked ? 'bg-blue-50 dark:bg-blue-500/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/60'
                     }`}
@@ -335,7 +460,7 @@ export default function NotesPage() {
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => toggleOne(s.id)}
+                      onChange={() => toggleOne(s)}
                       onClick={(e) => e.stopPropagation()}
                       className="w-4 h-4 shrink-0"
                     />
@@ -354,9 +479,9 @@ export default function NotesPage() {
         <div className="card lg:sticky lg:top-4 lg:self-start fixed bottom-0 inset-x-0 lg:relative lg:inset-auto rounded-t-2xl lg:rounded-xl border-t-2 lg:border lg:border-gray-200 dark:lg:border-gray-800 shadow-2xl lg:shadow-sm bg-white dark:bg-gray-900 z-40 max-h-[60vh] lg:max-h-none overflow-y-auto">
           <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
             تسجيل ملاحظة
-            {selected.size > 0 && (
+            {selectedMap.size > 0 && (
               <span className="text-sm font-normal text-blue-600 dark:text-blue-400 mr-2">
-                — لـ {selected.size} طالب
+                — لـ {selectedMap.size} طالب
               </span>
             )}
           </h3>
@@ -501,13 +626,13 @@ export default function NotesPage() {
               <>
                 <Save className="w-4 h-4" />
                 {sendWhatsapp
-                  ? `حفظ + واتساب + طباعة (${selected.size})`
-                  : `حفظ وطباعة (${selected.size})`}
+                  ? `حفظ + واتساب + طباعة (${selectedMap.size})`
+                  : `حفظ وطباعة (${selectedMap.size})`}
               </>
             )}
           </button>
 
-          {selected.size === 0 && (
+          {selectedMap.size === 0 && (
             <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
               حدّد طالباً واحداً على الأقل لتفعيل الحفظ
             </p>
