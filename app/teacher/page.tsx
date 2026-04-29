@@ -9,6 +9,8 @@ import {
   ChevronDown, Users, RefreshCw, ArrowRight,
 } from 'lucide-react';
 import { useClassSession } from '@/lib/hooks/useClassSession';
+import { useMyAssignedSections } from '@/lib/hooks/useMyAssignedSections';
+import NoAssignmentsEmpty from '@/components/teacher/NoAssignmentsEmpty';
 import type { PeriodAttendanceStatus } from '@/lib/types/database';
 
 interface Student {
@@ -89,19 +91,26 @@ function TeacherEntryPage() {
     queryFn: async () => ((await (await fetch('/api/periods')).json()).data || []).filter((p: any) => p.is_active),
   });
 
-  const { data: grades = [] } = useQuery<Grade[]>({
+  // Teacher's assignment scope. The pickers below filter against this so
+  // the teacher only ever sees the grades+sections they teach. The empty
+  // state above the form short-circuits when there are zero assignments.
+  const { grades: assignedGrades, sectionsByGrade, isUnassigned, isLoading: assignmentsLoading } = useMyAssignedSections();
+
+  // Used for naming/labeling — full grades list is needed to map an id to
+  // its display name (e.g. when reading from URL params before assignments
+  // load). Filtering for the dropdown happens against assignedGrades.
+  const { data: allGrades = [] } = useQuery<Grade[]>({
     queryKey: ['grades-all'],
     queryFn: async () => (await (await fetch('/api/grades')).json()).data,
   });
+  const grades: Grade[] = allGrades.filter((g) =>
+    assignedGrades.some((ag) => ag.id === g.id),
+  );
 
-  const { data: sections = [] } = useQuery<Section[]>({
-    queryKey: ['sections', gradeId],
-    queryFn: async () => {
-      if (!gradeId) return [];
-      return (await (await fetch(`/api/sections?grade_id=${gradeId}`)).json()).data;
-    },
-    enabled: !!gradeId,
-  });
+  // Sections are derived from the assignment list (not fetched per grade)
+  // — the assigned-sections endpoint already returns the full join, so we
+  // skip an extra round trip and avoid race conditions.
+  const sections: Section[] = (gradeId ? sectionsByGrade.get(gradeId) || [] : []) as Section[];
 
   const { data: studentsResp, isLoading: studentsLoading } = useQuery<{ data: Student[] }>({
     queryKey: ['students-period', sectionId],
@@ -115,9 +124,20 @@ function TeacherEntryPage() {
   });
   const students = studentsResp?.data || [];
 
-  // Auto-pick first period and grade when data lands.
+  // Auto-pick first period and the teacher's first ASSIGNED grade. If the
+  // url-prefilled gradeId points to a grade that's no longer in the
+  // teacher's assignments, drop it so the picker doesn't sit on a value
+  // the dropdown can't display.
   useEffect(() => { if (!periodId && periods.length > 0) setPeriodId(periods[0].id); }, [periods, periodId]);
-  useEffect(() => { if (!gradeId && grades.length > 0) setGradeId(grades[0].id); }, [grades, gradeId]);
+  useEffect(() => {
+    if (assignedGrades.length === 0) return;
+    if (gradeId && !assignedGrades.some((g) => g.id === gradeId)) {
+      setGradeId(assignedGrades[0].id);
+      setSectionId(null);
+    } else if (!gradeId) {
+      setGradeId(assignedGrades[0].id);
+    }
+  }, [assignedGrades, gradeId]);
 
   // Reset section when grade changes — but skip the first run so URL-prefilled
   // section_id (edit mode) survives initial mount.
@@ -234,6 +254,13 @@ function TeacherEntryPage() {
   });
 
   const canSave = !!(sectionId && periodId && date && students.length > 0);
+
+  // No assigned sections → cut the form short with a clear explanation,
+  // otherwise the teacher would see empty dropdowns and assume the system
+  // is broken.
+  if (!assignmentsLoading && isUnassigned) {
+    return <NoAssignmentsEmpty />;
+  }
 
   return (
     <div className="space-y-3">

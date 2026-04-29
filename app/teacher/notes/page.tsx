@@ -13,6 +13,8 @@ import { SkeletonTable } from '@/components/ui/Skeleton';
 import { STAGE_LABELS } from '@/lib/utils/helpers';
 import { useSpeechToText } from '@/lib/hooks/useSpeechToText';
 import { useClassSession } from '@/lib/hooks/useClassSession';
+import { useMyAssignedSections } from '@/lib/hooks/useMyAssignedSections';
+import NoAssignmentsEmpty from '@/components/teacher/NoAssignmentsEmpty';
 import type { NoteTemplate, NoteType, NoteCategory } from '@/lib/types/database';
 
 interface Student {
@@ -81,19 +83,18 @@ export default function TeacherNotesPage() {
   }, [date, gradeId, sectionId, loaded, patch]);
 
   // ---- Data ----
-  const { data: grades = [] } = useQuery<any[]>({
-    queryKey: ['grades-all'],
-    queryFn: async () => (await (await fetch('/api/grades')).json()).data,
-  });
+  // Teacher's assignment scope — drives the grade & section dropdowns so
+  // the teacher only sees the classes they teach. Empty state is shown
+  // below when no assignments exist.
+  const {
+    grades: assignedGrades,
+    sectionsByGrade,
+    isUnassigned,
+    isLoading: assignmentsLoading,
+  } = useMyAssignedSections();
 
-  const { data: sections = [] } = useQuery<any[]>({
-    queryKey: ['sections', gradeId],
-    queryFn: async () => {
-      if (!gradeId) return [];
-      return (await (await fetch(`/api/sections?grade_id=${gradeId}`)).json()).data;
-    },
-    enabled: !!gradeId,
-  });
+  const grades = assignedGrades;
+  const sections = (gradeId ? sectionsByGrade.get(Number(gradeId)) || [] : []);
 
   const { data: studentsResp, isLoading: studentsLoading } = useQuery<{ data: Student[] }>({
     queryKey: ['students-for-notes-teacher', sectionId, search],
@@ -224,6 +225,12 @@ export default function TeacherNotesPage() {
   // Step gates
   const step1Valid = !!gradeId && !!sectionId;
   const step2Valid = selected.size > 0;
+
+  // No assigned sections → cut the wizard short. The dropdowns would
+  // otherwise be empty and the teacher would mistake it for a bug.
+  if (!assignmentsLoading && isUnassigned) {
+    return <NoAssignmentsEmpty />;
+  }
 
   return (
     <div className="space-y-3 pb-3">
