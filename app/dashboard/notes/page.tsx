@@ -89,18 +89,28 @@ export default function NotesPage() {
     enabled: !!gradeId,
   });
 
+  // The list query fires when EITHER a section is picked OR the admin
+  // typed at least 2 characters into the search. That way the search can
+  // be used to hop across grades/sections — e.g. type "محمد" → pick the
+  // right one → search "خالد" → pick → save for both at once.
+  const trimmedSearch = search.trim();
+  const searchActive = trimmedSearch.length >= 2;
+  const isCrossSchoolSearch = searchActive && !sectionId;
+
   const { data: studentsResp, isLoading: studentsLoading } = useQuery<{ data: Student[] }>({
-    queryKey: ['students-for-notes', sectionId, search],
+    queryKey: ['students-for-notes', sectionId, trimmedSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (sectionId) params.set('section_id', sectionId);
-      if (search.trim()) params.set('search', search.trim());
-      params.set('limit', '500');
+      if (trimmedSearch) params.set('search', trimmedSearch);
+      // When searching across the whole school we use a smaller cap because
+      // the result list is meant to be narrowed via search, not paged.
+      params.set('limit', sectionId ? '500' : '50');
       const r = await fetch(`/api/students?${params}`);
       if (!r.ok) throw new Error('فشل تحميل الطلاب');
       return r.json();
     },
-    enabled: !!sectionId,
+    enabled: !!sectionId || searchActive,
   });
   const students = studentsResp?.data ?? [];
 
@@ -314,17 +324,21 @@ export default function NotesPage() {
             </select>
           </div>
           <div>
-            <label className="label">بحث بالاسم/الهوية</label>
+            <label className="label">بحث بالاسم/الهوية (في كامل المدرسة)</label>
             <div className="relative">
               <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-gray-400 pointer-events-none" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="input ps-9"
-                placeholder="اكتب للبحث..."
-                disabled={!sectionId}
+                placeholder="اكتب اسم الطالب أو رقم الهوية..."
               />
             </div>
+            {!sectionId && trimmedSearch.length === 1 && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                اكتب حرفين على الأقل للبحث في كامل المدرسة
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -434,9 +448,10 @@ export default function NotesPage() {
             </span>
           </div>
 
-          {!sectionId ? (
-            <div className="text-center text-gray-400 dark:text-gray-500 py-12 text-sm">
-              اختر الصف والشعبة أولاً لعرض الطلاب
+          {!sectionId && !searchActive ? (
+            <div className="text-center text-gray-400 dark:text-gray-500 py-12 text-sm space-y-1">
+              <p>اختر الصف والشعبة لعرض طلابها،</p>
+              <p>أو ابحث بالاسم/الهوية في كامل المدرسة 🔍</p>
             </div>
           ) : studentsLoading ? (
             <SkeletonTable rows={6} cols={3} />
@@ -449,6 +464,11 @@ export default function NotesPage() {
               {students.map((s) => {
                 const checked = selectedMap.has(s.id);
                 const fullName = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
+                // When in cross-school search mode, show grade/section so the
+                // admin can tell two students with the same name apart.
+                const gradeLabel = isCrossSchoolSearch
+                  ? `${s.grades?.name || ''} / ${s.sections?.name || ''}`.trim().replace(/^\/\s*|\s*\/$/g, '')
+                  : null;
                 return (
                   <li
                     key={s.id}
@@ -466,7 +486,14 @@ export default function NotesPage() {
                     />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{fullName}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 font-mono" dir="ltr">{s.student_id}</p>
+                      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <span className="font-mono" dir="ltr">{s.student_id}</span>
+                        {gradeLabel && (
+                          <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                            {gradeLabel}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </li>
                 );
