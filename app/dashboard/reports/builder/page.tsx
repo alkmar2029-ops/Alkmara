@@ -8,7 +8,7 @@ import {
   CheckCircle2, ClipboardList, Clock, BadgeCheck, MessageSquarePlus, Layers,
 } from 'lucide-react';
 
-type ReportType = 'attendance_daily' | 'attendance_period' | 'late' | 'excused' | 'notes' | 'comprehensive';
+type ReportType = 'attendance_daily' | 'attendance_period' | 'late' | 'excused' | 'notes' | 'comprehensive' | 'period_compare';
 type Scope = 'school' | 'grade' | 'section' | 'student';
 
 const TYPE_LABELS: Record<ReportType, { label: string; icon: any; tone: string }> = {
@@ -17,8 +17,13 @@ const TYPE_LABELS: Record<ReportType, { label: string; icon: any; tone: string }
   late:              { label: 'التأخر',                   icon: Clock,         tone: 'yellow' },
   excused:           { label: 'الاستئذان',                icon: BadgeCheck,    tone: 'blue' },
   notes:             { label: 'ملاحظات الطلاب',           icon: MessageSquarePlus, tone: 'purple' },
+  period_compare:    { label: 'مقارنة حصتين',             icon: Layers,        tone: 'cyan' },
   comprehensive:     { label: 'تقرير شامل (كل ما سبق)',   icon: Layers,        tone: 'green' },
 };
+
+// Period numbers shown in the dropdowns. 7 covers the typical Saudi
+// middle/secondary day; bumped to 8 to accommodate longer schedules.
+const PERIOD_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 function todayStr() {
   const d = new Date();
@@ -44,6 +49,30 @@ export default function ReportBuilderPage() {
   const [scope, setScope] = useState<Scope>('school');
   const [scopeId, setScopeId] = useState<number | null>(null);
   const [studentSearch, setStudentSearch] = useState('');
+
+  // Period scoping for the new "specific period" + "compare two periods"
+  // features. periodMode controls which extra inputs the wizard exposes.
+  type PeriodMode = 'all' | 'single' | 'compare';
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('all');
+  const [singlePeriod, setSinglePeriod] = useState<number>(1);
+  const [comparePeriodA, setComparePeriodA] = useState<number>(1);
+  const [comparePeriodB, setComparePeriodB] = useState<number>(5);
+
+  // The period section is only meaningful when at least one period-based
+  // type is selected. Hide the controls when the chosen types don't depend
+  // on period_id (e.g. notes, attendance_daily) so the form stays uncluttered.
+  const showsPeriodOptions = useMemo(() => {
+    return types.has('attendance_period') || types.has('late') || types.has('excused')
+      || types.has('comprehensive') || types.has('period_compare');
+  }, [types]);
+
+  // When user picks the comparison report type, force periodMode=compare so
+  // the API receives the two period numbers it needs.
+  useEffect(() => {
+    if (types.has('period_compare') && periodMode !== 'compare') {
+      setPeriodMode('compare');
+    }
+  }, [types]);
 
   const { data: grades = [] } = useQuery<any[]>({
     queryKey: ['grades-all'],
@@ -118,8 +147,13 @@ export default function ReportBuilderPage() {
     p.set('scope', scope);
     if (scopeId) p.set('scope_id', String(scopeId));
     p.set('types', Array.from(types).join(','));
+    if (periodMode === 'single') p.set('period_number', String(singlePeriod));
+    if (periodMode === 'compare' || types.has('period_compare')) {
+      p.set('compare_period_a', String(comparePeriodA));
+      p.set('compare_period_b', String(comparePeriodB));
+    }
     return `/dashboard/reports/print?${p}`;
-  }, [from, to, scope, scopeId, types]);
+  }, [from, to, scope, scopeId, types, periodMode, singlePeriod, comparePeriodA, comparePeriodB]);
 
   return (
     <div className="space-y-4">
@@ -187,6 +221,97 @@ export default function ReportBuilderPage() {
           <button onClick={() => setPreset('last_month')} className="px-2.5 py-1 rounded bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700">الشهر الماضي</button>
         </div>
       </div>
+
+      {/* Step 2.5: Period selector — only when at least one type uses period
+          data. Three modes: every period (default), one specific period, or
+          a side-by-side comparison of two periods. */}
+      {showsPeriodOptions && (
+        <div className="card">
+          <h2 className="font-semibold text-sm mb-3 flex items-center gap-1.5">
+            <Clock className="w-4 h-4" />
+            ٢.٥ الحصص
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+            {([
+              { v: 'all',     label: 'كل الحصص',         desc: 'جميع حصص اليوم' },
+              { v: 'single',  label: 'حصة محدّدة',         desc: 'تركيز على حصة واحدة' },
+              { v: 'compare', label: 'مقارنة حصتين',       desc: 'وضع جدول مقارنة' },
+            ] as const).map((opt) => {
+              const active = periodMode === opt.v;
+              // Compare mode is also auto-selected when the user picks the
+              // "period_compare" report type — disable manual change to avoid
+              // a confused state.
+              const locked = types.has('period_compare') && opt.v !== 'compare';
+              return (
+                <button
+                  key={opt.v}
+                  onClick={() => !locked && setPeriodMode(opt.v)}
+                  disabled={locked}
+                  className={`text-right p-3 rounded-lg border-2 transition-colors ${
+                    active
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/15'
+                      : 'border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/60'
+                  } ${locked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <p className={`text-sm font-semibold ${active ? 'text-blue-700 dark:text-blue-300' : ''}`}>
+                    {opt.label}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{opt.desc}</p>
+                </button>
+              );
+            })}
+          </div>
+
+          {periodMode === 'single' && (
+            <label className="block">
+              <span className="text-xs text-gray-500 dark:text-gray-400">اختر الحصة</span>
+              <select
+                value={singlePeriod}
+                onChange={(e) => setSinglePeriod(parseInt(e.target.value, 10))}
+                className="input"
+              >
+                {PERIOD_NUMBERS.map((n) => (
+                  <option key={n} value={n}>الحصة {n}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {periodMode === 'compare' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs text-gray-500 dark:text-gray-400">الحصة الأولى</span>
+                <select
+                  value={comparePeriodA}
+                  onChange={(e) => setComparePeriodA(parseInt(e.target.value, 10))}
+                  className="input"
+                >
+                  {PERIOD_NUMBERS.map((n) => (
+                    <option key={n} value={n}>الحصة {n}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500 dark:text-gray-400">الحصة الثانية</span>
+                <select
+                  value={comparePeriodB}
+                  onChange={(e) => setComparePeriodB(parseInt(e.target.value, 10))}
+                  className="input"
+                >
+                  {PERIOD_NUMBERS.map((n) => (
+                    <option key={n} value={n} disabled={n === comparePeriodA}>الحصة {n}</option>
+                  ))}
+                </select>
+              </label>
+              {comparePeriodA === comparePeriodB && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 sm:col-span-2">
+                  ⚠️ اختر حصّتين مختلفتين
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Step 3: Scope */}
       <div className="card">

@@ -22,11 +22,18 @@ export const dynamic = 'force-dynamic';
 const schema = z.object({
   types: z.array(z.enum([
     'attendance_daily', 'attendance_period', 'late', 'excused', 'notes', 'comprehensive',
+    'period_compare',  // NEW: side-by-side comparison of two periods
   ])).min(1),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   scope: z.enum(['school', 'grade', 'section', 'student']).default('school'),
   scope_id: z.number().int().positive().optional(),
+  // Optional: limit attendance_period/late/excused to a single period number.
+  // 1-7 for typical schools — matches periods.number (not the row id).
+  period_number: z.number().int().min(1).max(20).optional(),
+  // For period_compare: two period numbers to put side-by-side in the report.
+  compare_period_a: z.number().int().min(1).max(20).optional(),
+  compare_period_b: z.number().int().min(1).max(20).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -40,7 +47,7 @@ export async function POST(request: NextRequest) {
   const v = validateBody(schema, body);
   if (!v.success) return NextResponse.json({ error: v.error }, { status: 400 });
 
-  const { types, from, to, scope, scope_id } = v.data;
+  const { types, from, to, scope, scope_id, period_number, compare_period_a, compare_period_b } = v.data;
   const supabase = await createServerSupabaseClient();
 
   // Resolve the student-id set the report applies to.
@@ -151,6 +158,10 @@ export async function POST(request: NextRequest) {
     let filteredSessions = (sessions || []);
     if (scope === 'section' && scope_id) filteredSessions = filteredSessions.filter((s: any) => s.section_id === scope_id);
     if (scope === 'grade' && scope_id) filteredSessions = filteredSessions.filter((s: any) => s.sections?.grade_id === scope_id);
+    // Single-period filter: keep only sessions whose period.number matches.
+    if (period_number) {
+      filteredSessions = filteredSessions.filter((s: any) => s.periods?.number === period_number);
+    }
     // 'student' scope falls through — we filter absences below.
 
     const sessionIds = filteredSessions.map((s: any) => s.id);
@@ -230,6 +241,105 @@ export async function POST(request: NextRequest) {
       result.sections.excused = {
         rows: absenceRows.filter((r) => r.status === 'excused'),
         count: absenceRows.filter((r) => r.status === 'excused').length,
+      };
+    }
+
+    // ============= Period comparison (side-by-side) =============
+    // Builds a per-section row showing the same metric across two periods.
+    // Reuses the already-fetched `sessions` (range-scoped + role-scoped) so
+    // we don't pay an extra round trip. Returns sections sorted by absolute
+    // delta — biggest swing first, easiest for an admin to act on.
+    if (want('period_compare') && compare_period_a && compare_period_b) {
+      const aggregateByPeriod = (sessions: any[], periodNumber: number) => {
+        // Map<section_id, { absent, late, excused, total, sessions, grade, section }>
+        const acc = new Map<number, any>();
+        for (const s of sessions) {
+          if (s.periods?.number !== periodNumber) continue;
+          const row = acc.get(s.section_id) || {
+            section_id: s.section_id,
+            grade_name: s.sections?.grades?.name || '—',
+            section_name: s.sections?.name || '—',
+            absent: 0, late: 0, excused: 0, total_students: 0, sessions: 0,
+          };
+          row.absent += s.absent_count || 0;
+          row.late += s.late_count || 0;
+          row.excused += s.excused_count || 0;
+          row.total_students += s.total_count || 0;
+          row.sessions += 1;
+          acc.set(s.section_id, row);
+        }
+        return acc;
+      };
+
+      const aMap = aggregateByPeriod(filteredSessions, compare_period_a);
+      const bMap = aggregateByPeriod(filteredSessions, compare_period_b);
+
+      // Union of section ids — section may have been recorded for one period
+      // only in the range; we still want it on the report so the gap is visible.
+      const allSectionIds = new Set<number>([...aMap.keys(), ...bMap.keys()]);
+      const empty = (sid: number) => {
+        const ref = aMap.get(sid) || bMap.get(sid);
+        return {
+          section_id: sid,
+          grade_name: ref?.grade_name || '—',
+          section_name: ref?.section_name || '—',
+          absent: 0, late: 0, excused: 0, total_students: 0, sessions: 0,
+        };
+      };
+
+      const sections = Array.from(allSectionIds).map((sid) => {
+        const a = aMap.get(sid) || empty(sid);
+        const b = bMap.get(sid) || empty(sid);
+        return {
+          section_id: sid,
+          grade_name: a.grade_name || b.grade_name,
+          section_name: a.section_name || b.section_name,
+          period_a: { absent: a.absent, late: a.late, excused: a.excused, sessions: a.sessions, total_students: a.total_students },
+          period_b: { absent: b.absent, late: b.late, excused: b.excused, sessions: b.sessions, total_students: b.total_students },
+          delta_absent: b.absent - a.absent,
+          delta_late: b.late - a.late,
+        };
+      })
+      // Sort: biggest absolute delta in absences first; ties by name.
+      .sort((x, y) => {
+        const d = Math.abs(y.delta_absent) - Math.abs(x.delta_absent);
+        if (d !== 0) return d;
+        return `${x.grade_name} ${x.section_name}`.localeCompare(`${y.grade_name} ${y.section_name}`, 'ar');
+      });
+
+      // Lookup the period names for the header. Supabase's TS inference
+      // sometimes types nested joins as arrays; coerce here.
+      const periodNames = new Map<number, string>();
+      for (const s of (sessions || [])) {
+        const p = (s as any).periods;
+        const n = Array.isArray(p) ? p[0]?.number : p?.number;
+        const nm = Array.isArray(p) ? p[0]?.name : p?.name;
+        if (n && !periodNames.has(n)) {
+          periodNames.set(n, nm || `الحصة ${n}`);
+        }
+      }
+
+      // Totals across all sections — the "summary row" of the comparison.
+      const totals = {
+        period_a: sections.reduce((acc, r) => ({
+          absent: acc.absent + r.period_a.absent,
+          late: acc.late + r.period_a.late,
+          excused: acc.excused + r.period_a.excused,
+          sessions: acc.sessions + r.period_a.sessions,
+        }), { absent: 0, late: 0, excused: 0, sessions: 0 }),
+        period_b: sections.reduce((acc, r) => ({
+          absent: acc.absent + r.period_b.absent,
+          late: acc.late + r.period_b.late,
+          excused: acc.excused + r.period_b.excused,
+          sessions: acc.sessions + r.period_b.sessions,
+        }), { absent: 0, late: 0, excused: 0, sessions: 0 }),
+      };
+
+      result.sections.period_compare = {
+        period_a: { number: compare_period_a, name: periodNames.get(compare_period_a) || `الحصة ${compare_period_a}` },
+        period_b: { number: compare_period_b, name: periodNames.get(compare_period_b) || `الحصة ${compare_period_b}` },
+        sections,
+        totals,
       };
     }
   }

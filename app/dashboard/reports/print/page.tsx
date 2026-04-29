@@ -16,6 +16,7 @@ const TYPE_LABELS: Record<string, string> = {
   excused:           'الاستئذان',
   notes:             'الملاحظات',
   comprehensive:     'تقرير شامل',
+  period_compare:    'مقارنة حصتين',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -46,9 +47,12 @@ function PrintBody() {
   const scope = (sp.get('scope') || 'school') as 'school' | 'grade' | 'section' | 'student';
   const scopeId = sp.get('scope_id') ? Number(sp.get('scope_id')) : null;
   const types = (sp.get('types') || 'comprehensive').split(',');
+  const periodNumber = sp.get('period_number') ? Number(sp.get('period_number')) : null;
+  const comparePeriodA = sp.get('compare_period_a') ? Number(sp.get('compare_period_a')) : null;
+  const comparePeriodB = sp.get('compare_period_b') ? Number(sp.get('compare_period_b')) : null;
 
   const { data, isLoading, isError } = useQuery<any>({
-    queryKey: ['report-builder', from, to, scope, scopeId, types.join(',')],
+    queryKey: ['report-builder', from, to, scope, scopeId, types.join(','), periodNumber, comparePeriodA, comparePeriodB],
     queryFn: async () => {
       const r = await fetch('/api/reports/builder', {
         method: 'POST',
@@ -56,6 +60,9 @@ function PrintBody() {
         body: JSON.stringify({
           types, from, to, scope,
           scope_id: scopeId ?? undefined,
+          period_number: periodNumber ?? undefined,
+          compare_period_a: comparePeriodA ?? undefined,
+          compare_period_b: comparePeriodB ?? undefined,
         }),
       });
       const d = await r.json();
@@ -170,9 +177,13 @@ function PrintBody() {
           </Section>
         )}
 
-        {/* Period attendance section */}
+        {/* Period attendance section — title reflects single-period filter */}
         {want('attendance_period') && data.sections.attendance_period && (
-          <Section title="غياب الحصص" icon={Clock} bg="bg-orange-50">
+          <Section
+            title={periodNumber ? `غياب الحصة ${periodNumber}` : 'غياب الحصص'}
+            icon={Clock}
+            bg="bg-orange-50"
+          >
             <p className="text-xs text-gray-600 mb-2">
               عدد الجلسات: {data.sections.attendance_period.counts.sessions} •
               إجمالي الغياب: {data.sections.attendance_period.counts.absent}
@@ -183,6 +194,11 @@ function PrintBody() {
               special="period"
             />
           </Section>
+        )}
+
+        {/* Period comparison — side-by-side with delta column + bar chart */}
+        {want('period_compare') && data.sections.period_compare && (
+          <PeriodCompareSection data={data.sections.period_compare} />
         )}
 
         {/* Late */}
@@ -337,5 +353,144 @@ function RowsTable({ rows, cols, special }: { rows: any[]; cols: string[]; speci
         ))}
       </tbody>
     </table>
+  );
+}
+
+// ===================================================================
+// Period comparison: side-by-side table + visual bar chart per section.
+// Designed to be printable on A4 — every cell uses small text and the
+// bars are pure CSS (no SVG) so they reproduce well on monochrome printers.
+// ===================================================================
+function PeriodCompareSection({ data }: { data: any }) {
+  const { period_a, period_b, sections, totals } = data;
+  // Largest absent count across both periods drives the bar-width scale so
+  // both bars share the same axis and can be visually compared.
+  const maxAbsent = Math.max(
+    1,
+    ...sections.map((s: any) => Math.max(s.period_a.absent, s.period_b.absent)),
+  );
+  const deltaPercent = totals.period_a.absent > 0
+    ? Math.round(((totals.period_b.absent - totals.period_a.absent) / totals.period_a.absent) * 100)
+    : null;
+
+  return (
+    <div className="bg-cyan-50 border-2 border-cyan-300 rounded-lg p-4 print:bg-white print:border-gray-300">
+      <h3 className="text-lg font-bold text-cyan-900 mb-3 print:text-black">
+        📊 مقارنة {period_a.name} و {period_b.name}
+      </h3>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-2 mb-4 text-sm">
+        <div className="bg-white border border-cyan-200 rounded p-2 text-center print:border-gray-300">
+          <p className="text-xs text-gray-600">{period_a.name}</p>
+          <p className="text-2xl font-bold text-red-700">{totals.period_a.absent}</p>
+          <p className="text-[10px] text-gray-500">إجمالي الغياب • {totals.period_a.sessions} جلسة</p>
+        </div>
+        <div className="bg-white border border-cyan-200 rounded p-2 text-center print:border-gray-300">
+          <p className="text-xs text-gray-600">{period_b.name}</p>
+          <p className="text-2xl font-bold text-red-700">{totals.period_b.absent}</p>
+          <p className="text-[10px] text-gray-500">إجمالي الغياب • {totals.period_b.sessions} جلسة</p>
+        </div>
+        <div className="bg-white border-2 border-cyan-300 rounded p-2 text-center print:border-gray-400">
+          <p className="text-xs text-gray-600">الفرق</p>
+          <p className={`text-2xl font-bold ${
+            totals.period_b.absent > totals.period_a.absent ? 'text-red-700' :
+            totals.period_b.absent < totals.period_a.absent ? 'text-green-700' :
+            'text-gray-600'
+          }`}>
+            {totals.period_b.absent > totals.period_a.absent && '↗'}
+            {totals.period_b.absent < totals.period_a.absent && '↘'}
+            {totals.period_b.absent === totals.period_a.absent && '➖'}
+            {' '}{Math.abs(totals.period_b.absent - totals.period_a.absent)}
+          </p>
+          {deltaPercent !== null && (
+            <p className="text-[10px] text-gray-500">{deltaPercent > 0 ? '+' : ''}{deltaPercent}%</p>
+          )}
+        </div>
+      </div>
+
+      {/* Per-section detail with mini bar chart */}
+      {sections.length === 0 ? (
+        <p className="text-center text-gray-500 py-6 text-sm">لا توجد بيانات للمقارنة</p>
+      ) : (
+        <table className="w-full text-xs border-collapse">
+          <thead className="bg-cyan-100 print:bg-gray-100">
+            <tr>
+              <th className="border border-gray-300 px-2 py-1 text-right">الصف / الشعبة</th>
+              <th className="border border-gray-300 px-2 py-1 text-center">{period_a.name}</th>
+              <th className="border border-gray-300 px-2 py-1 text-center">{period_b.name}</th>
+              <th className="border border-gray-300 px-2 py-1 text-center">الفرق</th>
+              <th className="border border-gray-300 px-2 py-1 text-center min-w-[160px]">المقارنة المرئية</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sections.map((s: any) => {
+              const aWidth = (s.period_a.absent / maxAbsent) * 100;
+              const bWidth = (s.period_b.absent / maxAbsent) * 100;
+              return (
+                <tr key={s.section_id} className="even:bg-cyan-50/40 print:even:bg-gray-50">
+                  <td className="border border-gray-300 px-2 py-1 font-medium">
+                    {s.grade_name} / {s.section_name}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">
+                    <span className="font-bold text-red-700">{s.period_a.absent}</span>
+                    <span className="text-gray-500 text-[10px]">/{s.period_a.total_students}</span>
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1 text-center">
+                    <span className="font-bold text-red-700">{s.period_b.absent}</span>
+                    <span className="text-gray-500 text-[10px]">/{s.period_b.total_students}</span>
+                  </td>
+                  <td className={`border border-gray-300 px-2 py-1 text-center font-bold ${
+                    s.delta_absent > 0 ? 'text-red-700' :
+                    s.delta_absent < 0 ? 'text-green-700' :
+                    'text-gray-500'
+                  }`}>
+                    {s.delta_absent > 0 && '↗ +'}
+                    {s.delta_absent < 0 && '↘ '}
+                    {s.delta_absent === 0 && '➖ '}
+                    {s.delta_absent}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-1">
+                    {/* Two stacked horizontal bars, width proportional to maxAbsent */}
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] text-gray-500 w-4">أ</span>
+                        <div className="flex-1 h-2.5 bg-gray-100 rounded-sm overflow-hidden print:bg-white print:border print:border-gray-200">
+                          <div className="h-full bg-blue-500" style={{ width: `${aWidth}%` }} />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] text-gray-500 w-4">ب</span>
+                        <div className="flex-1 h-2.5 bg-gray-100 rounded-sm overflow-hidden print:bg-white print:border print:border-gray-200">
+                          <div className="h-full bg-orange-500" style={{ width: `${bWidth}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="bg-cyan-200 font-bold print:bg-gray-200">
+              <td className="border border-gray-300 px-2 py-1">الإجمالي</td>
+              <td className="border border-gray-300 px-2 py-1 text-center">{totals.period_a.absent}</td>
+              <td className="border border-gray-300 px-2 py-1 text-center">{totals.period_b.absent}</td>
+              <td className={`border border-gray-300 px-2 py-1 text-center ${
+                totals.period_b.absent > totals.period_a.absent ? 'text-red-700' :
+                totals.period_b.absent < totals.period_a.absent ? 'text-green-700' :
+                'text-gray-700'
+              }`}>
+                {totals.period_b.absent - totals.period_a.absent > 0 && '+'}
+                {totals.period_b.absent - totals.period_a.absent}
+              </td>
+              <td className="border border-gray-300 px-2 py-1 text-center text-[10px] text-gray-700">
+                المقياس: ٠ إلى {maxAbsent}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </div>
   );
 }
