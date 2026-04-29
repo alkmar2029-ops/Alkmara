@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, BookOpen, Fingerprint, ClipboardList, BarChart3,
   Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
   Sun, Moon, Bell, Download, MessageSquarePlus, UserCog, ClipboardCheck, Mail,
-  AlertTriangle, UserPlus,
+  AlertTriangle, UserPlus, LogOut as ExitIcon,
 } from 'lucide-react';
 import UnreadBadge from '@/components/ui/UnreadBadge';
 import PendingRegistrationsBadge from '@/components/ui/PendingRegistrationsBadge';
@@ -29,6 +29,7 @@ const navItems = [
   { path: '/dashboard/teacher-registrations', label: 'طلبات انضمام المعلمين', icon: UserPlus },
   { path: '/dashboard/messages', label: 'الرسائل الداخلية', icon: Mail },
   { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
+  { path: '/dashboard/dismissals', label: 'استئذان الطلاب', icon: ExitIcon },
   { path: '/dashboard/reports/builder', label: 'التقارير', icon: BarChart3 },
   { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap },
   { path: '/dashboard/whatsapp', label: 'إعدادات WhatsApp', icon: MessageCircle },

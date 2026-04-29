@@ -171,6 +171,32 @@ export const updateRegistrationSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+// === Student dismissals (early leave) ===
+export const DISMISSAL_REASONS = ['medical', 'family', 'emergency', 'other'] as const;
+export const PICKUP_RELATIONSHIPS = ['father', 'mother', 'guardian', 'relative', 'other'] as const;
+
+export const createDismissalSchema = z.object({
+  student_id: z.number().int().positive(),
+  // Optional — defaults to today + now in the API if absent.
+  dismissal_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dismissal_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
+  reason: z.enum(DISMISSAL_REASONS).default('other'),
+  reason_details: z.string().max(500).optional(),
+  pickup_person_name: z.string().min(2, 'اسم المُستلِم مطلوب').max(200),
+  pickup_person_relationship: z.enum(PICKUP_RELATIONSHIPS),
+  pickup_person_id_number: z.string()
+    .regex(/^\d{10}$/, 'رقم الهوية يجب أن يكون 10 أرقام')
+    .optional()
+    .or(z.literal('')),
+  pickup_person_phone: z.string()
+    .regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح')
+    .optional()
+    .or(z.literal('')),
+  notes: z.string().max(500).optional(),
+  send_whatsapp: z.boolean().optional().default(true),
+  auto_excuse_periods: z.boolean().optional().default(true),
+});
+
 export const updateTeacherSchema = z.object({
   full_name: z.string().min(2).max(200).optional(),
   phone: z.string().regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح').optional(),
