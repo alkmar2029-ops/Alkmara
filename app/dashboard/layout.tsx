@@ -25,6 +25,7 @@ const navItems = [
   { path: '/dashboard/late-notifications', label: 'إشعارات التأخير', icon: Bell },
   { path: '/dashboard/notes', label: 'الملاحظات', icon: MessageSquarePlus },
   { path: '/dashboard/teachers', label: 'المعلمون', icon: UserCog },
+  { path: '/dashboard/teacher-assignments', label: 'تعيين الشعب للمعلمين', icon: UserCog },
   { path: '/dashboard/teacher-registrations', label: 'طلبات انضمام المعلمين', icon: UserPlus },
   { path: '/dashboard/messages', label: 'الرسائل الداخلية', icon: Mail },
   { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
