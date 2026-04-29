@@ -40,7 +40,11 @@ export async function GET(request: NextRequest) {
     .order('period_id', { ascending: true })
     .limit(limit);
 
-  if (mine) q = q.eq('recorded_by', ctx.userId);
+  // Hard-lock teachers to their own recordings — they can never see
+  // sessions that another teacher recorded, even on a section they share.
+  // Admin/staff/viewer keep their full read access; ?mine=1 is still
+  // honored for them as an opt-in self-filter.
+  if (mine || ctx.role === 'teacher') q = q.eq('recorded_by', ctx.userId);
   if (date) q = q.eq('attendance_date', date);
   if (from) q = q.gte('attendance_date', from);
   if (to) q = q.lte('attendance_date', to);

@@ -38,6 +38,15 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'الجلسة غير موجودة' }, { status: 404 });
   }
 
+  // Strict isolation for teacher role — they can only open their own
+  // sessions even when RLS would otherwise allow them to see a colleague's
+  // session for a shared section. Returns the same 404 the
+  // section-out-of-scope case returns so URL-fishing doesn't reveal
+  // that a session exists.
+  if (ctx.role === 'teacher' && session.recorded_by !== ctx.userId) {
+    return NextResponse.json({ error: 'الجلسة غير موجودة' }, { status: 404 });
+  }
+
   // 2. Teacher display name.
   let teacherName: string | null = null;
   if (session.recorded_by) {
