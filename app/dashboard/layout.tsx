@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
+import InstallPrompt from '@/components/pwa/InstallPrompt';
 import {
   LayoutDashboard, Users, BookOpen, Fingerprint, ClipboardList, BarChart3,
   Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
@@ -48,6 +49,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const { theme, toggle, mounted } = useTheme();
+
+  // Register the service worker and check for updates periodically. Without
+  // this, admins who installed the dashboard PWA never see new versions
+  // until they manually clear cache. Same SW used by the teacher portal.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // 30-min update polling — admins typically keep the dashboard tab
+      // open all day so we don't want to force-refresh on every page nav.
+      setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            newWorker.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    }).catch(() => { /* ignore */ });
+  }, []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -155,6 +177,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
         <main className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
       </div>
+
+      {/* PWA install banner — Chrome/Edge fires beforeinstallprompt;
+          iOS Safari shows a "tap Share → Add to Home Screen" hint instead.
+          Auto-hides when the app is already running standalone. */}
+      <InstallPrompt />
     </div>
   );
 }

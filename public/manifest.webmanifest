@@ -1,12 +1,12 @@
 {
-  "name": "نظام الحضور — بوابة المعلم",
-  "short_name": "حضور المعلم",
-  "description": "تسجيل الغياب وكتابة الملاحظات للمعلمين",
-  "start_url": "/teacher",
+  "name": "نظام الحضور المدرسي",
+  "short_name": "نظام الحضور",
+  "description": "نظام إدارة الحضور والملاحظات للإدارة والمعلمين",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "orientation": "portrait",
+  "orientation": "any",
   "lang": "ar",
   "dir": "rtl",
   "theme_color": "#2563eb",
@@ -28,23 +28,31 @@
   ],
   "shortcuts": [
     {
-      "name": "تسجيل الغياب",
-      "short_name": "غياب",
-      "description": "صفحة تسجيل غياب الحصة",
+      "name": "تسجيل حضور الحصة",
+      "short_name": "حضور",
+      "description": "للمعلمين — تسجيل غياب الحصة الحالية",
       "url": "/teacher",
       "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
     },
     {
-      "name": "تسجيل الملاحظات",
+      "name": "تسجيل ملاحظات",
       "short_name": "ملاحظات",
-      "description": "كتابة ملاحظات على الطلاب",
+      "description": "للمعلمين — كتابة ملاحظات على الطلاب",
       "url": "/teacher/notes",
       "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
     },
     {
-      "name": "سجل حصصي",
-      "short_name": "السجل",
-      "url": "/teacher/history",
+      "name": "كشف الغياب والهروب",
+      "short_name": "كشف الغياب",
+      "description": "للإدارة — تحليل الغياب اليومي وإرسال إشعارات",
+      "url": "/dashboard/daily-attendance",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "استئذان الطلاب",
+      "short_name": "استئذان",
+      "description": "للوكيل — تسجيل الخروج المبكر",
+      "url": "/dashboard/dismissals",
       "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }]
     }
   ],
