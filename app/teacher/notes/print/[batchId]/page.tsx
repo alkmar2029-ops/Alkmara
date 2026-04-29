@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { Printer, ArrowRight, ThumbsUp, ThumbsDown, Loader2 } from 'lucide-react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { Printer, ArrowRight, ThumbsUp, ThumbsDown, Loader2, Send, MessageCircle } from 'lucide-react';
 
 interface NoteRow {
   id: number;
@@ -31,6 +32,28 @@ export default function TeacherNotesPrintPage() {
     queryFn: async () => (await (await fetch('/api/settings')).json()).data,
   });
 
+  // WhatsApp toggle — read from the public-facing settings endpoint so the
+  // teacher's UI mirrors the admin switch. If the flag is OFF the send button
+  // is hidden entirely (no point teasing a feature the API will reject).
+  const { data: waSettings } = useQuery<{ teachers_can_send_whatsapp: boolean }>({
+    queryKey: ['public-whatsapp-toggle'],
+    queryFn: async () => {
+      // /api/whatsapp/settings is admin-only; we expose just the relevant
+      // flag through a tiny GET-allowed view that the teacher sidebar uses.
+      // For simplicity we hit /api/settings + /api/whatsapp/policy here; if
+      // either request fails we conservatively assume the toggle is OFF.
+      try {
+        const r = await fetch('/api/whatsapp/teacher-policy');
+        if (!r.ok) return { teachers_can_send_whatsapp: false };
+        const d = await r.json();
+        return { teachers_can_send_whatsapp: !!d.data?.teachers_can_send_whatsapp };
+      } catch {
+        return { teachers_can_send_whatsapp: false };
+      }
+    },
+    staleTime: 60_000,
+  });
+
   const { data: notes, isLoading, isError } = useQuery<NoteRow[]>({
     queryKey: ['notes-batch-teacher', batchId],
     queryFn: async () => {
@@ -39,6 +62,29 @@ export default function TeacherNotesPrintPage() {
       return (await r.json()).data;
     },
     enabled: !!batchId,
+  });
+
+  // Send WhatsApp to parents for the batch. Same endpoint admin uses; the
+  // server enforces the toggle for teacher callers.
+  const sendWaMut = useMutation({
+    mutationFn: async () => {
+      const r = await fetch('/api/whatsapp/send-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: batchId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'فشل الإرسال');
+      return d.data as { sent: number; failed: number; skipped: number };
+    },
+    onSuccess: (d) => {
+      if (d.failed === 0 && d.skipped === 0) {
+        toast.success(`✓ تم إرسال ${d.sent} رسالة لأولياء الأمور`);
+      } else {
+        toast(`أُرسل ${d.sent} • فشل ${d.failed} • تخطّي ${d.skipped}`, { icon: '⚠️', duration: 5000 });
+      }
+    },
+    onError: (e: any) => toast.error(e.message),
   });
 
   useEffect(() => {
@@ -87,10 +133,25 @@ export default function TeacherNotesPrintPage() {
           <h1 className="font-bold">معاينة الطباعة</h1>
           <p className="text-xs text-gray-500 dark:text-gray-400">{notes.length} ورقة • {formattedDate}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={() => router.push('/teacher/notes')} className="btn-secondary inline-flex items-center gap-1 text-sm">
             <ArrowRight className="w-4 h-4" /> رجوع
           </button>
+          {waSettings?.teachers_can_send_whatsapp && notes && notes.length > 0 && (
+            <button
+              onClick={() => {
+                const msg = `سيتم إرسال ${notes.length} رسالة واتساب لأولياء الأمور.\nالوقت المتوقّع: ${Math.ceil(notes.length * 5.5)} ثانية.\n\nهل تريد المتابعة؟`;
+                if (confirm(msg)) sendWaMut.mutate();
+              }}
+              disabled={sendWaMut.isPending}
+              className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {sendWaMut.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال...</>
+                : <><MessageCircle className="w-4 h-4" /> إرسال واتساب لأولياء الأمور ({notes.length})</>
+              }
+            </button>
+          )}
           <button onClick={() => window.print()} className="btn-primary inline-flex items-center gap-1 text-sm">
             <Printer className="w-4 h-4" /> طباعة / حفظ PDF
           </button>

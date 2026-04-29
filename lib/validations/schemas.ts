@@ -301,6 +301,8 @@ export const updateWhatsappSettingsSchema = z.object({
   session_id: z.string().max(100).optional().or(z.literal('')),
   // Master switch for teacher-bound messages — credentials, reminders, bulk.
   teachers_enabled: z.boolean().optional(),
+  // Whether teachers may *send* WhatsApp to parents from the notes flow.
+  teachers_can_send_whatsapp: z.boolean().optional(),
 });
 
 // Device action schema

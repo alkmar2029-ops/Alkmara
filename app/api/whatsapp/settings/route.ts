@@ -17,7 +17,7 @@ export async function GET() {
   const { data, error } = await supabase.from('whatsapp_settings').select('*').eq('id', 1).maybeSingle();
   if (error) return NextResponse.json({ error: 'حدث خطأ في جلب الإعدادات' }, { status: 400 });
 
-  const row = data || { id: 1, api_key: null, session_id: null, phone_number: null, status: 'disconnected', last_checked_at: null, updated_at: null, teachers_enabled: true };
+  const row = data || { id: 1, api_key: null, session_id: null, phone_number: null, status: 'disconnected', last_checked_at: null, updated_at: null, teachers_enabled: true, teachers_can_send_whatsapp: false };
   return NextResponse.json({
     data: {
       id: row.id,
@@ -30,6 +30,8 @@ export async function GET() {
       updated_at: row.updated_at,
       // Default true if the column is missing (pre-migration databases).
       teachers_enabled: row.teachers_enabled !== false,
+      // Defaults to false — pre-migration databases get the safe value.
+      teachers_can_send_whatsapp: row.teachers_can_send_whatsapp === true,
     },
   }, { headers: NO_STORE });
 }
@@ -59,6 +61,9 @@ export async function PUT(request: NextRequest) {
   if (typeof validation.data.teachers_enabled === 'boolean') {
     update.teachers_enabled = validation.data.teachers_enabled;
   }
+  if (typeof validation.data.teachers_can_send_whatsapp === 'boolean') {
+    update.teachers_can_send_whatsapp = validation.data.teachers_can_send_whatsapp;
+  }
 
   // Ensure singleton row exists (id=1) — tolerate first run on databases that
   // were migrated before the seed insert in schema.sql.
@@ -68,7 +73,7 @@ export async function PUT(request: NextRequest) {
     .from('whatsapp_settings')
     .update(update)
     .eq('id', 1)
-    .select('id, session_id, phone_number, status, last_checked_at, updated_at, api_key, teachers_enabled')
+    .select('id, session_id, phone_number, status, last_checked_at, updated_at, api_key, teachers_enabled, teachers_can_send_whatsapp')
     .single();
 
   if (error) return NextResponse.json({ error: 'حدث خطأ في حفظ الإعدادات' }, { status: 400 });
@@ -93,6 +98,7 @@ export async function PUT(request: NextRequest) {
       last_checked_at: data.last_checked_at,
       updated_at: data.updated_at,
       teachers_enabled: data.teachers_enabled !== false,
+      teachers_can_send_whatsapp: data.teachers_can_send_whatsapp === true,
     },
   }, { headers: NO_STORE });
 }

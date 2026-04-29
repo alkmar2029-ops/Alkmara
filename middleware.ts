@@ -56,6 +56,10 @@ export async function middleware(request: NextRequest) {
         '/api/settings',              // GET only — already RLS-restricted for writes
         '/api/teacher-registrations', // public submission
         '/api/public/',               // public info (school name, etc.)
+        '/api/whatsapp/teacher-policy', // tiny boolean flags for teacher UI
+        '/api/whatsapp/send-notes',   // teacher may send when admin toggle is ON
+        '/api/student-notes',         // teachers record their own notes
+        '/api/note-templates',        // GET — teachers pick from templates
       ];
       const allowed = teacherApiAllowlist.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'));
       if (!allowed) {

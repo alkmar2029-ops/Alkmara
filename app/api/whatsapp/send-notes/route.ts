@@ -4,6 +4,7 @@ import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { sendNotesWhatsappSchema, validateBody } from '@/lib/validations/schemas';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { renderTemplate } from '@/lib/whatsapp/template';
+import { canTeachersSendWhatsapp, TEACHER_CANNOT_SEND_WHATSAPP_ERROR } from '@/lib/whatsapp/policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,10 @@ interface SendOutcome {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(['admin', 'staff']);
+  // Admin and staff are always allowed. Teachers are allowed only when
+  // the admin has flipped the precautionary toggle ON in /dashboard/whatsapp;
+  // we check the flag below so the API is the single source of truth.
+  const auth = await requireRole(['admin', 'staff', 'teacher']);
   if (!auth.ok) return auth.res;
 
   let body: unknown;
@@ -29,6 +33,13 @@ export async function POST(request: NextRequest) {
   if (!v.success) return NextResponse.json({ error: v.error }, { status: 400 });
 
   const supabase = await createServerSupabaseClient();
+
+  // Toggle gate for teacher role.
+  if (auth.ctx.role === 'teacher') {
+    if (!(await canTeachersSendWhatsapp(supabase))) {
+      return NextResponse.json({ error: TEACHER_CANNOT_SEND_WHATSAPP_ERROR }, { status: 403 });
+    }
+  }
 
   // 1. WhatsApp credentials
   const { data: ws } = await supabase

@@ -25,3 +25,25 @@ export async function isTeacherWhatsappEnabled(supabase: SupabaseClient): Promis
 
 /** Stable error message returned by every send path when the toggle is off. */
 export const TEACHER_WHATSAPP_DISABLED_ERROR = 'إرسال الواتساب للمعلمين موقوف من الإعدادات';
+
+/**
+ * Reads `whatsapp_settings.teachers_can_send_whatsapp` — whether a
+ * teacher account is permitted to send WhatsApp to parents from their
+ * notes flow. Defaults to FALSE on read failure (the safer side: an
+ * outage should not silently expand teacher privileges).
+ */
+export async function canTeachersSendWhatsapp(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from('whatsapp_settings')
+      .select('teachers_can_send_whatsapp')
+      .eq('id', 1)
+      .maybeSingle();
+    return data?.teachers_can_send_whatsapp === true;
+  } catch {
+    return false;
+  }
+}
+
+export const TEACHER_CANNOT_SEND_WHATSAPP_ERROR =
+  'لا يُسمح للمعلمين بإرسال رسائل الواتساب من الإعدادات';

@@ -241,6 +241,7 @@ export interface WhatsappSettings {
   last_checked_at: string | null;
   updated_at: string;
   teachers_enabled: boolean;
+  teachers_can_send_whatsapp: boolean;
 }
 
 export interface DeviceSyncLog {

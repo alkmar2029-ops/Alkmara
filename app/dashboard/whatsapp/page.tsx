@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { MessageCircle, Save, RefreshCw, Eye, EyeOff, CheckCircle2, XCircle, Loader2, QrCode, AlertTriangle, GraduationCap, BellOff, Bell } from 'lucide-react';
+import { MessageCircle, Save, RefreshCw, Eye, EyeOff, CheckCircle2, XCircle, Loader2, QrCode, AlertTriangle, GraduationCap, BellOff, Bell, ShieldCheck, ShieldOff, Send } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 import type { WhatsappSettings, WhatsappStatus } from '@/lib/types/database';
 import MessageTemplatesEditor from '@/components/whatsapp/MessageTemplatesEditor';
@@ -83,6 +83,28 @@ export default function WhatsappSettingsPage() {
       toast.success(enabled
         ? '✓ تم تفعيل رسائل الواتساب للمعلمين'
         : '🔕 تم إيقاف رسائل الواتساب للمعلمين');
+    },
+    onError: (err: any) => toast.error(err.message || 'فشل التغيير'),
+  });
+
+  // Second toggle: whether teachers may *send* WhatsApp to parents from
+  // the notes-print page. Off by default — the historical behavior — so
+  // existing schools see no change unless an admin opts in.
+  const teachersCanSendMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await fetch('/api/whatsapp/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teachers_can_send_whatsapp: enabled }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'فشل التغيير');
+      return enabled;
+    },
+    onSuccess: (enabled) => {
+      qc.invalidateQueries({ queryKey: ['whatsapp-settings'] });
+      toast.success(enabled
+        ? '✓ يستطيع المعلم الآن إرسال الواتساب لأولياء الأمور'
+        : '🔒 تم منع المعلم من إرسال الواتساب لأولياء الأمور');
     },
     onError: (err: any) => toast.error(err.message || 'فشل التغيير'),
   });
@@ -286,6 +308,64 @@ export default function WhatsappSettingsPage() {
                 <Bell className="w-4 h-4" />
               )}
               {settings.teachers_enabled ? 'إيقاف' : 'تفعيل'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Second toggle — teacher-initiated WhatsApp sends */}
+      {settings && (
+        <div className={`card ${
+          settings.teachers_can_send_whatsapp
+            ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30'
+            : 'bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700'
+        }`}>
+          <div className="flex items-start gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              settings.teachers_can_send_whatsapp ? 'bg-blue-500' : 'bg-gray-400 dark:bg-gray-600'
+            }`}>
+              {settings.teachers_can_send_whatsapp
+                ? <Send className="w-5 h-5 text-white" />
+                : <ShieldCheck className="w-5 h-5 text-white" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className={`font-semibold ${
+                settings.teachers_can_send_whatsapp
+                  ? 'text-blue-900 dark:text-blue-200'
+                  : 'text-gray-900 dark:text-gray-100'
+              }`}>
+                إرسال الواتساب لأولياء الأمور من حساب المعلم
+              </h3>
+              <p className={`text-sm mt-1 ${
+                settings.teachers_can_send_whatsapp
+                  ? 'text-blue-800 dark:text-blue-300'
+                  : 'text-gray-700 dark:text-gray-300'
+              }`}>
+                {settings.teachers_can_send_whatsapp
+                  ? '✓ مسموح — يستطيع المعلم بعد حفظ الملاحظات إرسال إشعار واتساب لأولياء الأمور.'
+                  : '🔒 ممنوع — لا يستطيع المعلم إرسال أي رسالة واتساب لأولياء الأمور (الإدارة فقط).'}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                💡 يؤثّر على زر "إرسال واتساب لأولياء الأمور" بعد حفظ الملاحظات في حساب المعلم.
+              </p>
+            </div>
+            <button
+              onClick={() => teachersCanSendMutation.mutate(!settings.teachers_can_send_whatsapp)}
+              disabled={teachersCanSendMutation.isPending}
+              className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                settings.teachers_can_send_whatsapp
+                  ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              } ${teachersCanSendMutation.isPending ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+              {teachersCanSendMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : settings.teachers_can_send_whatsapp ? (
+                <ShieldOff className="w-4 h-4" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              {settings.teachers_can_send_whatsapp ? 'منع' : 'سماح'}
             </button>
           </div>
         </div>
