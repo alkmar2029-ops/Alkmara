@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { SkeletonTable } from '@/components/ui/Skeleton';
+import MessageBodyViewer from '@/components/whatsapp/MessageBodyViewer';
 
 interface WaMessage {
   id: number;
@@ -306,11 +307,9 @@ function MessageRow({ message: m, expanded, onToggle, onResend, resending }: {
 
       {expanded && (
         <div className="mt-3 ms-7 ps-3 border-s-2 border-blue-300 dark:border-blue-500/40">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">نص الرسالة:</p>
-          <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200 font-sans bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-200 dark:border-gray-800" dir="auto">
-            {m.message_body}
-          </pre>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">نص الرسالة:</p>
+          <MessageBodyViewer body={m.message_body} />
+          <div className="text-xs text-gray-500 dark:text-gray-400 mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
             {m.template_name && <div>القالب: <code className="text-gray-700 dark:text-gray-300">{m.template_name}</code></div>}
             {m.msg_id && <div>msgId: <code dir="ltr">{m.msg_id}</code></div>}
             {m.http_status && <div>HTTP: <code>{m.http_status}</code></div>}
