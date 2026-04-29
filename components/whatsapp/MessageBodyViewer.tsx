@@ -15,7 +15,8 @@ interface ExtractedFields {
  * Parses a WhatsApp message body and pulls out the bits an admin most often
  * needs to grab quickly: the teacher's email, the auto-generated password,
  * and any portal link. Heuristics are forgiving — they tolerate the various
- * label spellings the codebase uses ("كلمة السر" / "كلمة المرور" / "Password").
+ * label spellings the codebase uses ("كلمة السر" / "كلمة المرور" / "كلمة السر
+ * الجديدة" / "Password" / "الباسوورد").
  *
  * Returns nulls when a field isn't found rather than empty strings; callers
  * use truthy checks to decide whether to render the chip.
@@ -23,28 +24,65 @@ interface ExtractedFields {
 export function extractMessageFields(body: string): ExtractedFields {
   if (!body) return { email: null, password: null, link: null };
 
-  // Email — single-line, RFC-lite pattern. We don't need full RFC — admins'
-  // teacher accounts are always plain user@domain.tld.
+  // Email — single-line, RFC-lite pattern.
   const emailMatch = body.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
 
-  // Password — captured from a labeled line. Templates vary:
-  //   "🔐 كلمة السر:\nAbc123!@"
-  //   "🔑 كلمة السر الجديدة:\nXyz9..."
-  //   "كلمة المرور: ..."
-  // We grep for the label, optional emoji, then the next non-empty line of
-  // 8-32 chars (matches the generatePassword() output range).
-  const pwLabel = /(?:🔐|🔑)?\s*(?:كلمة\s*(?:السر|المرور)(?:\s*الجديدة)?|password)\s*:?\s*\n?\s*/i;
-  const pwMatch = body.match(new RegExp(pwLabel.source + '([^\\s\\n]{6,40})'));
-
-  // First http(s) link — portals/registration pages. Excludes wa.me and the
-  // like that aren't useful to copy as credentials.
+  // First http(s) link — portals / registration pages.
   const linkMatch = body.match(/https?:\/\/[^\s]+/);
+
+  // Password — line-by-line scan is far more reliable than a single regex
+  // when the value sits on a separate line. We look for any line that
+  // mentions a password-label keyword, then grab the captured token (same
+  // line after ":" or the next non-empty line).
+  const password = extractPasswordLineByLine(body);
 
   return {
     email: emailMatch?.[0] || null,
-    password: pwMatch?.[1] || null,
+    password,
     link: linkMatch?.[0] || null,
   };
+}
+
+/**
+ * Walks the message line by line. When we find a line that contains any of
+ * the known password labels, we try to recover the actual value from:
+ *   1. The same line, after a ":" — e.g. "كلمة السر: aBc123"
+ *   2. The next non-empty line — the standard template form:
+ *        🔑 كلمة السر الجديدة:
+ *        aBc123$Xy
+ * Returns the token if it looks like a password (6-40 chars, no whitespace).
+ */
+function extractPasswordLineByLine(body: string): string | null {
+  // Normalize zero-width / RTL marker chars that sometimes hitchhike from
+  // copy-paste — they break trim()/length checks otherwise.
+  const cleaned = body.replace(/[​-‏‪-‮﻿]/g, '');
+
+  const lines = cleaned.split('\n');
+  // Match any of the labels we use. `i` flag covers "Password" / "PASSWORD".
+  const labelRe = /(?:كلمة\s*(?:السر|المرور)|الباسوورد|باسورد|password)/i;
+
+  // A "looks like password" check — printable ascii-ish, no whitespace,
+  // 6-40 chars. generatePassword() emits 12 chars in this range so 6 is a
+  // safe lower bound that also accepts manually-set short passwords.
+  const looksLikePassword = (s: string) => /^[\S]{6,40}$/.test(s);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!labelRe.test(line)) continue;
+
+    // 1. Same-line value after the last colon.
+    const sameLine = line.split(':').pop()?.trim();
+    if (sameLine && looksLikePassword(sameLine)) return sameLine;
+
+    // 2. Next non-empty line.
+    for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+      const cand = lines[j].trim();
+      if (!cand) continue;
+      if (looksLikePassword(cand)) return cand;
+      break;  // first non-empty line that doesn't match — give up
+    }
+  }
+  return null;
 }
 
 async function copyToClipboard(text: string, label: string) {
