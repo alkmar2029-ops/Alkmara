@@ -29,6 +29,7 @@ const navItems = [
   { path: '/dashboard/teacher-registrations', label: 'طلبات انضمام المعلمين', icon: UserPlus },
   { path: '/dashboard/messages', label: 'الرسائل الداخلية', icon: Mail },
   { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
+  { path: '/dashboard/daily-attendance', label: 'كشف الغياب والهروب', icon: AlertTriangle },
   { path: '/dashboard/dismissals', label: 'استئذان الطلاب', icon: ExitIcon },
   { path: '/dashboard/reports/builder', label: 'التقارير', icon: BarChart3 },
   { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap },
