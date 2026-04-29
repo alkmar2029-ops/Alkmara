@@ -209,10 +209,24 @@ function TeacherEntryPage() {
       if (!r.ok) throw new Error(d.error || 'فشل الحفظ');
       return d.data;
     },
-    onSuccess: () => {
+    onSuccess: (data: { absent: number; late: number; excused: number; total: number }) => {
       qc.invalidateQueries({ queryKey: ['period-attendance', sectionId, periodId, date] });
       refetchExisting();
-      toast.success('تم حفظ الحضور');
+
+      // Numeric summary reassures the teacher they saved the right shape.
+      // ("Did I really mark Ali absent? Did I miss anyone?") Showing the
+      // counts inline turns the toast into a quick visual sanity-check.
+      const present = Math.max(0, (data.total || 0) - data.absent - data.late - data.excused);
+      const parts: string[] = [];
+      if (data.absent > 0)  parts.push(`${data.absent} غياب`);
+      if (data.late > 0)    parts.push(`${data.late} تأخّر`);
+      if (data.excused > 0) parts.push(`${data.excused} استئذان`);
+      const summary = parts.length > 0
+        ? `${parts.join('، ')} • ${present} حاضر`
+        : `كل الطلاب حاضرون (${present})`;
+
+      toast.success(`✓ تم الحفظ — ${summary}`, { duration: 4000 });
+
       // Vibrate on supporting devices for tactile confirmation.
       if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(30);
     },
