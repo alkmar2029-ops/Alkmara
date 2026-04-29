@@ -6,11 +6,13 @@ export const dynamic = 'force-dynamic';
 
 // PATCH — used to mark notes as printed/whatsapp-sent. Body accepts
 // { mark_printed: true } or { mark_whatsapp_sent: true }.
+//
+// Teachers can mark their OWN notes (RLS enforces `recorded_by = auth.uid()`).
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const auth = await requireRole(['admin', 'staff']);
+  const auth = await requireRole(['admin', 'staff', 'teacher']);
   if (!auth.ok) return auth.res;
 
   const id = parseInt(params.id, 10);

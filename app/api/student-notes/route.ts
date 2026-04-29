@@ -83,8 +83,12 @@ export async function GET(request: NextRequest) {
 
 // POST — bulk create notes. Returns batch_id so the client can immediately
 // open the print page filtered by that batch.
+//
+// Teachers are allowed to record notes from the teacher portal — RLS
+// requires `recorded_by = auth.uid()` for them, so they can't impersonate
+// another teacher.
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(['admin', 'staff']);
+  const auth = await requireRole(['admin', 'staff', 'teacher']);
   if (!auth.ok) return auth.res;
 
   let body: unknown;
@@ -117,7 +121,16 @@ export async function POST(request: NextRequest) {
     .select('id, student_id');
 
   if (error) {
-    return NextResponse.json({ error: 'حدث خطأ في حفظ الملاحظات: ' + error.message }, { status: 500 });
+    console.error('student_notes insert failed:', error.message);
+    // Surface a friendlier message for the most common cause: RLS
+    // rejection (teacher trying to record_by someone else, or pre-migration
+    // database). Still gets a generic message for everything else.
+    const isRls = error.message?.toLowerCase().includes('row-level security')
+      || error.message?.toLowerCase().includes('violates');
+    return NextResponse.json(
+      { error: isRls ? 'لا تملك صلاحية حفظ هذه الملاحظات' : 'تعذّر حفظ الملاحظات' },
+      { status: isRls ? 403 : 500 },
+    );
   }
 
   await writeAuditLog({
