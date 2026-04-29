@@ -28,6 +28,7 @@ export async function middleware(request: NextRequest) {
   const isPublic =
     path.startsWith('/login') ||
     path.startsWith('/register') ||
+    path === '/landing.html' ||
     path === '/manifest.webmanifest' ||
     path === '/sw.js' ||
     path.startsWith('/icon-');
