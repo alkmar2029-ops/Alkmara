@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import {
   ClipboardCheck, Loader2, Calendar, RefreshCw, Filter, Printer, Send,
   X, CheckCircle2, XCircle, Clock as ClockIcon, BadgeCheck, User, ChevronLeft, AlertCircle,
+  Trash2,
 } from 'lucide-react';
 
 interface SessionRow {
@@ -61,11 +62,30 @@ export default function PeriodAttendancePage() {
   const [date, setDate] = useState(todayStr());
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [openSessionId, setOpenSessionId] = useState<number | null>(null);
+  const qc = useQueryClient();
 
   const { data: sessions = [], isLoading, refetch, isFetching, dataUpdatedAt } = useQuery<SessionRow[]>({
     queryKey: ['period-attendance-day', date],
     queryFn: async () => (await (await fetch(`/api/period-attendance/history?date=${date}&limit=200`)).json()).data,
     refetchInterval: 60_000,  // auto-refresh each minute (only on this tab)
+  });
+
+  // Wipe every session for the currently-selected date. Triple-confirm because
+  // this is destructive — convenient for clearing test data or fixing a
+  // wholesale wrong-day save.
+  const bulkDeleteMut = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/period-attendance/sessions?date=${date}`, { method: 'DELETE' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'فشل الحذف');
+      return d.deleted as number;
+    },
+    onSuccess: (count) => {
+      toast.success(`تم حذف ${count} جلسة من تاريخ ${date}`);
+      qc.invalidateQueries({ queryKey: ['period-attendance-day'] });
+      qc.invalidateQueries({ queryKey: ['period-history'] });
+    },
+    onError: (e: any) => toast.error(e.message),
   });
 
   // Build the matrix (grade/section × period)
@@ -137,6 +157,22 @@ export default function PeriodAttendancePage() {
             {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             تحديث
           </button>
+          {sessions.length > 0 && (
+            <button
+              onClick={() => {
+                const msg = `سيتم حذف ${sessions.length} جلسة بتاريخ ${date} نهائياً.\n\nهذا الإجراء لا يمكن التراجع عنه.\n\nهل أنت متأكد؟`;
+                if (confirm(msg)) bulkDeleteMut.mutate();
+              }}
+              disabled={bulkDeleteMut.isPending}
+              className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-500/25 disabled:opacity-50"
+              title="حذف كل جلسات هذا التاريخ (للإدارة فقط)"
+            >
+              {bulkDeleteMut.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الحذف...</>
+                : <><Trash2 className="w-4 h-4" /> حذف جلسات اليوم ({sessions.length})</>
+              }
+            </button>
+          )}
         </div>
       </div>
 
@@ -274,6 +310,7 @@ export default function PeriodAttendancePage() {
 
 // =================== Detail modal ===================
 function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose: () => void }) {
+  const qc = useQueryClient();
   const { data, isLoading, isError } = useQuery<SessionDetail>({
     queryKey: ['session-detail', sessionId],
     queryFn: async () => (await (await fetch(`/api/period-attendance/session/${sessionId}`)).json()).data,
@@ -293,6 +330,22 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
     onSuccess: (d) => {
       if (d.failed > 0) toast(`أُرسل ${d.sent} • فشل ${d.failed}`, { icon: '⚠️' });
       else toast.success(`تم إرسال ${d.sent} رسالة لأولياء الغائبين`);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  // Admin-only: clear out a session entirely (e.g. removing test data, fixing
+  // a teacher's mistaken save). period_absences are wiped via ON DELETE
+  // CASCADE in the DB.
+  const deleteMut = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/period-attendance/session/${sessionId}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error((await r.json()).error || 'فشل الحذف');
+    },
+    onSuccess: () => {
+      toast.success('تم حذف الجلسة');
+      qc.invalidateQueries({ queryKey: ['period-history'] });
+      onClose();
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -374,18 +427,35 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
         </div>
 
         {/* Footer */}
-        {data && data.summary.absent > 0 && (
-          <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex flex-wrap items-center justify-end gap-2">
+        {data && (
+          <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex flex-wrap items-center justify-between gap-2">
             <button
-              onClick={() => sendWaMut.mutate()}
-              disabled={sendWaMut.isPending}
-              className="btn-primary inline-flex items-center gap-1 text-sm"
+              onClick={() => {
+                if (confirm('هل أنت متأكد من حذف هذه الجلسة؟ سيتم حذف جميع سجلات الغياب المرتبطة بها.')) {
+                  deleteMut.mutate();
+                }
+              }}
+              disabled={deleteMut.isPending}
+              className="inline-flex items-center gap-1 text-sm px-3 py-2 rounded-lg bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-500/25 disabled:opacity-50"
+              title="حذف الجلسة (إداري فقط)"
             >
-              {sendWaMut.isPending
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال... (~{Math.ceil(data.summary.absent * 5.5)}ث)</>
-                : <><Send className="w-4 h-4" /> إرسال واتساب لأولياء الغائبين ({data.summary.absent})</>
+              {deleteMut.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الحذف...</>
+                : <><Trash2 className="w-4 h-4" /> حذف الجلسة</>
               }
             </button>
+            {data.summary.absent > 0 && (
+              <button
+                onClick={() => sendWaMut.mutate()}
+                disabled={sendWaMut.isPending}
+                className="btn-primary inline-flex items-center gap-1 text-sm"
+              >
+                {sendWaMut.isPending
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال... (~{Math.ceil(data.summary.absent * 5.5)}ث)</>
+                  : <><Send className="w-4 h-4" /> إرسال واتساب لأولياء الغائبين ({data.summary.absent})</>
+                }
+              </button>
+            )}
           </div>
         )}
       </div>

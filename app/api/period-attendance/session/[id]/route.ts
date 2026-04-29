@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthContext } from '@/lib/supabase/auth';
+import { getAuthContext, requireRole, writeAuditLog } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,3 +115,52 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }
+
+// DELETE — remove a saved period-session (admin only). The matching
+// period_absences rows are cleaned up automatically via ON DELETE CASCADE.
+//
+// Used to clear out test data, fix mistaken saves, or wipe a session a
+// teacher recorded against the wrong section. Restricted to admin so a
+// teacher can't quietly erase their own attendance history.
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireRole(['admin']);
+  if (!auth.ok) return auth.res;
+
+  const sessionId = parseInt(params.id, 10);
+  if (Number.isNaN(sessionId)) {
+    return NextResponse.json({ error: 'معرف غير صالح' }, { status: 400 });
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  // Capture context for the audit trail before deleting.
+  const { data: target } = await supabase
+    .from('period_sessions')
+    .select('section_id, period_id, attendance_date, absent_count, late_count, excused_count')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (!target) {
+    return NextResponse.json({ error: 'الجلسة غير موجودة' }, { status: 404 });
+  }
+
+  const { error } = await supabase
+    .from('period_sessions')
+    .delete()
+    .eq('id', sessionId);
+  if (error) {
+    console.error('period_sessions delete failed:', error.message);
+    return NextResponse.json({ error: 'تعذّر حذف الجلسة' }, { status: 500 });
+  }
+
+  await writeAuditLog({
+    ctx: auth.ctx,
+    action: 'period_session.delete',
+    targetType: 'period_session',
+    targetId: sessionId,
+    details: target,
+    request,
+  });
+
+  return NextResponse.json({ message: 'تم الحذف' });
+}
+
