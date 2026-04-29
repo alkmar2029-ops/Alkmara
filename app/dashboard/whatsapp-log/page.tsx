@@ -308,7 +308,7 @@ function MessageRow({ message: m, expanded, onToggle, onResend, resending }: {
       {expanded && (
         <div className="mt-3 ms-7 ps-3 border-s-2 border-blue-300 dark:border-blue-500/40">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">نص الرسالة:</p>
-          <MessageBodyViewer body={m.message_body} />
+          <MessageBodyViewer body={m.message_body} recipientPhone={m.recipient_phone} />
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
             {m.template_name && <div>القالب: <code className="text-gray-700 dark:text-gray-300">{m.template_name}</code></div>}
             {m.msg_id && <div>msgId: <code dir="ltr">{m.msg_id}</code></div>}

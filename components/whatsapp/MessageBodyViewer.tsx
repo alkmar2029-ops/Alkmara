@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, Mail, Key, Link as LinkIcon, FileText, MessageCircle } from 'lucide-react';
+import { Copy, Mail, Key, Link as LinkIcon, FileText, MessageCircle, Send } from 'lucide-react';
 
 interface ExtractedFields {
   email: string | null;
@@ -63,6 +63,22 @@ interface Props {
   hideActions?: boolean;
   /** Compact = smaller text and tighter padding (good for log row preview). */
   compact?: boolean;
+  /** When supplied, surfaces a "Send via WhatsApp" chip that opens
+   *  wa.me/<phone>?text=<body> in a new tab. Use the original recipient
+   *  phone from whatsapp_messages.recipient_phone. */
+  recipientPhone?: string | null;
+}
+
+/**
+ * Build a wa.me deep link with the message text pre-filled. Strips
+ * non-digits from the phone (wa.me wants pure E.164 without "+"),
+ * URL-encodes the body. Works on mobile (opens app) and desktop
+ * (opens WhatsApp Web).
+ */
+function buildWaLink(phone: string, body: string): string {
+  const digits = String(phone).replace(/\D/g, '');
+  const text = encodeURIComponent(body);
+  return `https://wa.me/${digits}?text=${text}`;
 }
 
 /**
@@ -71,13 +87,29 @@ interface Props {
  * full message" chip when no fields are detected, so the component is always
  * useful — never invisible UI.
  */
-export default function MessageBodyViewer({ body, hideActions, compact }: Props) {
+export default function MessageBodyViewer({ body, hideActions, compact, recipientPhone }: Props) {
   const fields = useMemo(() => extractMessageFields(body), [body]);
+  const waLink = recipientPhone ? buildWaLink(recipientPhone, body) : null;
 
   return (
     <div className="space-y-2">
       {!hideActions && (
         <div className="flex flex-wrap gap-1.5">
+          {/* Manual WhatsApp send — opens wa.me with the body pre-filled.
+              Especially useful for failed sends: admin clicks → WhatsApp Web
+              opens → message ready → admin hits Send manually. */}
+          {waLink && (
+            <a
+              href={waLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30 dark:hover:bg-green-500/25 transition-colors"
+              title="يفتح واتساب مع الرسالة جاهزة للإرسال"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>إرسال يدوي عبر واتساب</span>
+            </a>
+          )}
           {fields.email && (
             <CopyChip
               icon={Mail}
