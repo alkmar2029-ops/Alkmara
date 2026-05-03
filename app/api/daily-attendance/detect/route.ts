@@ -28,7 +28,11 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.res;
 
   const { searchParams } = new URL(request.url);
-  const date = searchParams.get('date') || new Date().toISOString().slice(0, 10);
+  // Default = today's date in SCHOOL local time (Asia/Riyadh), not UTC.
+  // Otherwise admins working past midnight Riyadh / before 3am UTC would
+  // get yesterday's data unexpectedly.
+  const { todayInSchoolTz } = await import('@/lib/utils/school-time');
+  const date = searchParams.get('date') || todayInSchoolTz();
   const fromPeriod = Math.max(1, parseInt(searchParams.get('from_period') || '1', 10) || 1);
   const toPeriodRaw = parseInt(searchParams.get('to_period') || '0', 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {

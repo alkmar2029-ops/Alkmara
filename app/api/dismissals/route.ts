@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { createDismissalSchema, validateBody } from '@/lib/validations/schemas';
 import { autoExcuseRemainingPeriods } from '@/lib/dismissals/auto-excuse';
+import { nowInSchoolTz } from '@/lib/utils/school-time';
 import { sendDismissalWhatsapp } from '@/lib/dismissals/whatsapp';
 
 export const dynamic = 'force-dynamic';
@@ -125,10 +126,10 @@ export async function POST(request: NextRequest) {
     || (auth.ctx.role === 'admin' || auth.ctx.role === 'super_admin' ? 'إدارة المدرسة' : 'الوكيل');
 
   // 2. Insert the dismissal row.
-  const today = new Date().toISOString().slice(0, 10);
-  // HH:MM:SS — Postgres TIME tolerates any slice of this format.
-  const nowTime = new Date().toTimeString().slice(0, 8);
-
+  // Vercel runs in UTC; the school is in Riyadh (UTC+3). Anchor the
+  // default date+time to school local time so a 9pm dismissal isn't
+  // stored as 6pm.
+  const { date: today, time: nowTime } = nowInSchoolTz();
   const dismissalDate = v.data.dismissal_date || today;
   const dismissalTime = v.data.dismissal_time || nowTime;
 
