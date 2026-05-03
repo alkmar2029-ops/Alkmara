@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Upload, Loader2, CheckCircle2, AlertTriangle, X, Save, FileSpreadsheet,
-  Calendar, Users, BookOpen,
+  Calendar, Users, BookOpen, UserPlus,
 } from 'lucide-react';
 import type { ParseResult, NameMatch, SectionMatch, DayOfWeek } from '@/lib/schedule/types';
 
@@ -316,6 +316,20 @@ export default function TeacherSchedulePage() {
             </div>
           </div>
 
+          {/* Bulk-create panel for unmatched teachers — lets the admin
+              instantly create accounts for Excel teachers who don't
+              exist in user_profiles yet, instead of skipping them. */}
+          <BulkCreateTeachersPanel
+            preview={preview}
+            onSuccess={() => {
+              // Re-trigger the upload so the matching refreshes with the
+              // newly-created users included.
+              if (fileInputRef.current?.files?.[0]) {
+                previewMut.mutate(fileInputRef.current.files[0]);
+              }
+            }}
+          />
+
           {/* Duplicate-mapping warning */}
           {duplicateUserIds.size > 0 && (
             <div className="card border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10">
@@ -352,6 +366,175 @@ export default function TeacherSchedulePage() {
               {commitMut.isPending
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الحفظ...</>
                 : <><Save className="w-4 h-4" /> تأكيد الاستيراد</>
+              }
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// =============== Bulk-create teachers panel ===============
+// Surfaces every Excel teacher whose name didn't match an existing
+// user_profiles row, lets the admin add a phone per row, then creates
+// them all in one shot via /api/teachers/bulk. After success, the
+// schedule preview is re-run so the new accounts show as exact
+// matches and can be committed to the schedule.
+function BulkCreateTeachersPanel({
+  preview, onSuccess,
+}: {
+  preview: PreviewResponse;
+  onSuccess: () => void;
+}) {
+  const unmatched = preview.parsed.teachers
+    .map((t, i) => ({ teacher: t, match: preview.name_matches[i], idx: i }))
+    .filter((x) => x.match.status === 'none');
+
+  // Local edits keyed by Excel row index. Phone is editable; email is
+  // optional (auto-generated if empty).
+  const [phones, setPhones] = useState<Record<number, string>>({});
+  const [emails, setEmails] = useState<Record<number, string>>({});
+  const [results, setResults] = useState<{
+    summary: { requested: number; created: number; skipped: number; failed: number };
+    outcomes: Array<{ full_name: string; status: string; error?: string; password?: string | null; whatsapp_sent?: boolean }>;
+  } | null>(null);
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      const teachers = unmatched.map(({ teacher, idx }) => ({
+        full_name: teacher.teacher_name,
+        phone: phones[idx]?.trim() || null,
+        email: emails[idx]?.trim() || null,
+      }));
+      const r = await fetch('/api/teachers/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teachers, skip_existing_names: true }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'فشل الإنشاء الجماعي');
+      return d.data;
+    },
+    onSuccess: (d) => {
+      setResults(d);
+      const { created, skipped, failed } = d.summary;
+      if (failed === 0) {
+        toast.success(`✓ تم إنشاء ${created} حساب${skipped > 0 ? ` • تخطّي ${skipped}` : ''}`);
+      } else {
+        toast(`أُنشئ ${created} • فشل ${failed}`, { icon: '⚠️', duration: 6000 });
+      }
+      // Refresh the schedule preview so the just-created teachers
+      // become exact matches and can be committed alongside.
+      setTimeout(onSuccess, 500);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  if (unmatched.length === 0) {
+    return null;  // nothing to surface
+  }
+
+  return (
+    <div className="card border-purple-200 dark:border-purple-500/30 bg-purple-50/40 dark:bg-purple-500/5">
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <div>
+          <h3 className="font-semibold flex items-center gap-2 text-purple-900 dark:text-purple-200">
+            <UserPlus className="w-4 h-4" /> تسجيل المعلمين الناقصين ({unmatched.length})
+          </h3>
+          <p className="text-xs text-purple-800 dark:text-purple-300 mt-0.5">
+            هؤلاء أسماؤهم في Excel لكن لا يوجد لهم حسابات في النظام. أضِف رقم الجوال (اختياري) ثم اضغط "إنشاء كلهم".
+          </p>
+        </div>
+      </div>
+
+      {results ? (
+        // Success / failure breakdown
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <Stat label="أُنشئ" value={results.summary.created} tone="green" />
+            <Stat label="تُخُطِّي" value={results.summary.skipped} tone="amber" />
+            <Stat label="فشل" value={results.summary.failed} tone="red" />
+          </div>
+          <ul className="space-y-1 max-h-72 overflow-y-auto text-xs">
+            {results.outcomes.map((o, i) => (
+              <li key={i} className={`flex items-center gap-2 px-2 py-1 rounded ${
+                o.status === 'created' ? 'bg-green-50 dark:bg-green-500/10' :
+                o.status === 'skipped_existing' ? 'bg-amber-50 dark:bg-amber-500/10' :
+                'bg-red-50 dark:bg-red-500/10'
+              }`}>
+                {o.status === 'created' ? '✓' : o.status === 'skipped_existing' ? '⊝' : '✗'}
+                <span className="flex-1 font-medium">{o.full_name}</span>
+                {o.password && (
+                  <span className="font-mono text-[10px] bg-white dark:bg-gray-900 border px-1 py-0.5 rounded" dir="ltr" title="كلمة المرور (لم تُرسل عبر واتساب — انسخها يدويًا)">
+                    🔑 {o.password}
+                  </span>
+                )}
+                {o.whatsapp_sent && <span className="text-green-700 dark:text-green-400 text-[10px]">✓ واتساب</span>}
+                {o.error && <span className="text-red-700 dark:text-red-400 truncate max-w-[40%]" title={o.error}>{o.error}</span>}
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => { setResults(null); setPhones({}); setEmails({}); }}
+            className="text-xs underline text-purple-700 dark:text-purple-300"
+          >
+            إعادة المحاولة لمن فشل
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto -mx-2">
+            <table className="w-full text-xs min-w-[500px]">
+              <thead>
+                <tr className="text-gray-600 dark:text-gray-400 border-b">
+                  <th className="px-2 py-1 text-start">الاسم</th>
+                  <th className="px-2 py-1 text-start">رقم الجوال (اختياري)</th>
+                  <th className="px-2 py-1 text-start hidden sm:table-cell">البريد (اختياري)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unmatched.map(({ teacher, idx }) => (
+                  <tr key={idx} className="border-b border-gray-100 dark:border-gray-800">
+                    <td className="px-2 py-1 font-medium">{teacher.teacher_name}</td>
+                    <td className="px-2 py-1">
+                      <input
+                        type="tel"
+                        placeholder="05xxxxxxxx"
+                        value={phones[idx] || ''}
+                        onChange={(e) => setPhones({ ...phones, [idx]: e.target.value })}
+                        className="input text-xs py-1 font-mono"
+                        dir="ltr"
+                      />
+                    </td>
+                    <td className="px-2 py-1 hidden sm:table-cell">
+                      <input
+                        type="email"
+                        placeholder="(تلقائي)"
+                        value={emails[idx] || ''}
+                        onChange={(e) => setEmails({ ...emails, [idx]: e.target.value })}
+                        className="input text-xs py-1"
+                        dir="ltr"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              {Object.values(phones).filter((p) => p?.trim()).length} رقم مُدخل من {unmatched.length}.
+              من بدون رقم → الحساب يُنشأ بدون إرسال واتساب وكلمة المرور تظهر هنا.
+            </p>
+            <button
+              onClick={() => createMut.mutate()}
+              disabled={createMut.isPending}
+              className="btn-primary inline-flex items-center gap-1 text-sm disabled:opacity-50"
+            >
+              {createMut.isPending
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإنشاء...</>
+                : <><UserPlus className="w-4 h-4" /> إنشاء كلهم ({unmatched.length})</>
               }
             </button>
           </div>
