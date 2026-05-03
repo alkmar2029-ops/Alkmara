@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import {
   Calendar, Search, AlertTriangle, AlertCircle, BadgeCheck, CheckSquare, Square,
   Send, Loader2, RefreshCw, BarChart3, MapPin, Filter, MessageCircle, X,
-  CheckCircle2, XCircle,
+  CheckCircle2, XCircle, Printer,
 } from 'lucide-react';
 
 interface DetectionRow {
@@ -84,6 +84,79 @@ export default function DailyAttendancePage() {
   const [selectedMidDay, setSelectedMidDay] = useState<Set<number>>(new Set());
   const [selectedSelective, setSelectedSelective] = useState<Set<number>>(new Set());
   const [showResult, setShowResult] = useState<{ result: SendResult; type: 'absence' | 'escape' } | null>(null);
+
+  // Print dialog state. The 8 toggles map to the 8 sections of the
+  // printable A4 sheet. Defaults to "everything on" because that's the
+  // most common admin intent when they hit "طباعة".
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printOpts, setPrintOpts] = useState({
+    header: true,
+    stats: true,
+    incomplete: true,
+    fullAbsence: true,
+    escapeAfterFirst: true,
+    midDayDeparture: true,
+    selectiveSkip: true,
+    dismissals: true,
+  });
+
+  // School identity for the print header. Public endpoint, lightly cached.
+  const { data: schoolInfo } = useQuery<{ school_name: string; principal_name: string }>({
+    queryKey: ['school-info'],
+    queryFn: async () => {
+      const r = await fetch('/api/public/school-info');
+      if (!r.ok) return { school_name: '', principal_name: '' };
+      return (await r.json()).data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fires window.print after the dialog state is committed and the
+  // print-area DOM is fresh.
+  const triggerPrint = () => {
+    setPrintOpen(false);
+    setTimeout(() => window.print(), 80);
+  };
+
+  // Quick-print: temporarily switches the print options to a single
+  // category, prints, then restores the old options on `afterprint`.
+  const quickPrintCategory = (
+    cat: 'fullAbsence' | 'escapeAfterFirst' | 'midDayDeparture' | 'selectiveSkip' | 'dismissals',
+  ) => {
+    const saved = { ...printOpts };
+    const restore = () => {
+      setPrintOpts(saved);
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    setPrintOpts({
+      header: true,
+      stats: false,
+      incomplete: false,
+      fullAbsence: cat === 'fullAbsence',
+      escapeAfterFirst: cat === 'escapeAfterFirst',
+      midDayDeparture: cat === 'midDayDeparture',
+      selectiveSkip: cat === 'selectiveSkip',
+      dismissals: cat === 'dismissals',
+    });
+    setTimeout(() => window.print(), 80);
+  };
+
+  const allPrintSelected =
+    printOpts.header && printOpts.stats && printOpts.incomplete &&
+    printOpts.fullAbsence && printOpts.escapeAfterFirst &&
+    printOpts.midDayDeparture && printOpts.selectiveSkip && printOpts.dismissals;
+  const noPrintSelected =
+    !printOpts.fullAbsence && !printOpts.escapeAfterFirst &&
+    !printOpts.midDayDeparture && !printOpts.selectiveSkip && !printOpts.dismissals;
+  const togglePrintAll = () => {
+    const v = !allPrintSelected;
+    setPrintOpts({
+      header: v, stats: v, incomplete: v,
+      fullAbsence: v, escapeAfterFirst: v,
+      midDayDeparture: v, selectiveSkip: v, dismissals: v,
+    });
+  };
 
   const { data, isLoading, isFetching, refetch } = useQuery<DetectionResult>({
     queryKey: ['daily-attendance', date, fromPeriod, toPeriod],
@@ -218,14 +291,23 @@ export default function DailyAttendancePage() {
               ))}
             </select>
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <button
               onClick={() => { setShouldRun(true); refetch(); }}
               disabled={isFetching}
-              className="btn-primary w-full inline-flex items-center justify-center gap-1"
+              className="btn-primary flex-1 inline-flex items-center justify-center gap-1"
             >
               {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
               {isFetching ? 'يحلّل...' : 'تحليل'}
+            </button>
+            <button
+              onClick={() => setPrintOpen(true)}
+              disabled={!data}
+              className="px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600 inline-flex items-center justify-center gap-1 text-sm disabled:opacity-50"
+              title="طباعة الكشف"
+            >
+              <Printer className="w-4 h-4" />
+              <span className="hidden sm:inline">طباعة</span>
             </button>
           </div>
         </div>
@@ -297,6 +379,7 @@ export default function DailyAttendancePage() {
             sending={sendMut.isPending && sendMut.variables?.type === 'absence'}
             sendLabel="إرسال إشعار غياب"
             showPeriods={false}
+            onPrint={() => quickPrintCategory('fullAbsence')}
           />
 
           {/* 🟠 Escape after first period */}
@@ -311,6 +394,7 @@ export default function DailyAttendancePage() {
             sending={sendMut.isPending && sendMut.variables?.type === 'escape'}
             sendLabel="إرسال إشعار"
             showPeriods={true}
+            onPrint={() => quickPrintCategory('escapeAfterFirst')}
           />
 
           {/* 🔵 Mid-day departure */}
@@ -325,6 +409,7 @@ export default function DailyAttendancePage() {
             sending={sendMut.isPending && sendMut.variables?.type === 'escape'}
             sendLabel="إرسال إشعار"
             showPeriods={true}
+            onPrint={() => quickPrintCategory('midDayDeparture')}
           />
 
           {/* 🟡 Selective skip */}
@@ -339,15 +424,25 @@ export default function DailyAttendancePage() {
             sending={sendMut.isPending && sendMut.variables?.type === 'escape'}
             sendLabel="إرسال إشعار"
             showPeriods={true}
+            onPrint={() => quickPrintCategory('selectiveSkip')}
           />
 
           {/* Dismissals — info only, no send */}
           {data.dismissals.length > 0 && (
             <div className="card">
-              <h2 className="font-semibold flex items-center gap-2 mb-3">
-                <BadgeCheck className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                🟣 المستأذنون اليوم ({data.dismissals.length})
-              </h2>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h2 className="font-semibold flex items-center gap-2">
+                  <BadgeCheck className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  🟣 المستأذنون اليوم ({data.dismissals.length})
+                </h2>
+                <button
+                  onClick={() => quickPrintCategory('dismissals')}
+                  className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  title="طباعة هذه الفئة"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+              </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 هؤلاء الطلاب لديهم استئذانات مسجَّلة — تم إشعار الأهالي مسبقاً ولا يحتاجون رسالة جديدة.
               </p>
@@ -373,12 +468,412 @@ export default function DailyAttendancePage() {
           onClose={() => setShowResult(null)}
         />
       )}
+
+      {/* Print options dialog — 8 toggles + master "all" */}
+      {printOpen && data && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setPrintOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 max-w-md w-full p-5 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-base flex items-center gap-2">
+                <Printer className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                ماذا تطبع؟
+              </h3>
+              <button
+                onClick={() => setPrintOpen(false)}
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                aria-label="إغلاق"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <label className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 mb-1">
+              <input type="checkbox" checked={allPrintSelected} onChange={togglePrintAll} className="w-4 h-4" />
+              <span className="font-medium">الجميع</span>
+            </label>
+            <div className="border-t border-gray-200 dark:border-gray-700 my-2" />
+
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1 mt-2">عناصر علوية</p>
+            <div className="space-y-0.5">
+              <PrintCheck label="ترويسة المدرسة" checked={printOpts.header} onChange={(v) => setPrintOpts({ ...printOpts, header: v })} />
+              <PrintCheck label="صف الإحصائيات" checked={printOpts.stats} onChange={(v) => setPrintOpts({ ...printOpts, stats: v })} />
+              <PrintCheck label="الشعب غير المكتملة" checked={printOpts.incomplete} onChange={(v) => setPrintOpts({ ...printOpts, incomplete: v })} />
+            </div>
+
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1 mt-3">الفئات</p>
+            <div className="space-y-0.5">
+              <PrintCheck label="🔴 الغياب الكامل" count={data.full_absences.length} checked={printOpts.fullAbsence} onChange={(v) => setPrintOpts({ ...printOpts, fullAbsence: v })} />
+              <PrintCheck label="🟠 هروب بعد التحضير" count={(data.escape_after_first || []).length} checked={printOpts.escapeAfterFirst} onChange={(v) => setPrintOpts({ ...printOpts, escapeAfterFirst: v })} />
+              <PrintCheck label="🔵 انصراف منتصف اليوم" count={(data.mid_day_departure || []).length} checked={printOpts.midDayDeparture} onChange={(v) => setPrintOpts({ ...printOpts, midDayDeparture: v })} />
+              <PrintCheck label="🟡 تهرّب من حصص" count={(data.selective_skip || []).length} checked={printOpts.selectiveSkip} onChange={(v) => setPrintOpts({ ...printOpts, selectiveSkip: v })} />
+              <PrintCheck label="🟣 المستأذنون" count={data.dismissals.length} checked={printOpts.dismissals} onChange={(v) => setPrintOpts({ ...printOpts, dismissals: v })} />
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setPrintOpen(false)}
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={triggerPrint}
+                disabled={noPrintSelected}
+                className="flex-1 btn-primary inline-flex items-center justify-center gap-1 text-sm disabled:opacity-50"
+              >
+                <Printer className="w-4 h-4" /> طباعة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print-only area — hidden on screen, becomes the printed sheet. */}
+      {data && (
+        <div className="report-print-area" aria-hidden>
+          {printOpts.header && (
+            <div className="print-header">
+              <p className="print-kingdom">المملكة العربية السعودية ـ وزارة التعليم</p>
+              {schoolInfo?.school_name && (
+                <h1>{schoolInfo.school_name}</h1>
+              )}
+              {schoolInfo?.principal_name && (
+                <p className="print-principal">المدير: {schoolInfo.principal_name}</p>
+              )}
+              <hr />
+              <h2>📋 كشف الغياب والتهرّب اليومي</h2>
+              <div className="print-meta">
+                <p><strong>التاريخ:</strong> {data.date}</p>
+                <p><strong>نطاق الحصص:</strong> {data.range.from} → {data.range.to}</p>
+                <p><strong>وقت الطباعة:</strong> {new Date().toLocaleString('ar-SA-u-ca-gregory', { hour: '2-digit', minute: '2-digit' })}</p>
+              </div>
+            </div>
+          )}
+
+          {printOpts.stats && (
+            <table className="print-stats">
+              <thead>
+                <tr>
+                  <th>الإجمالي</th>
+                  <th>غياب كامل</th>
+                  <th>هروب بعد التحضير</th>
+                  <th>انصراف منتصف اليوم</th>
+                  <th>تهرّب من حصص</th>
+                  <th>استئذان</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{data.stats.total_students}</td>
+                  <td>{data.stats.full_absences}</td>
+                  <td>{data.stats.escape_after_first ?? 0}</td>
+                  <td>{data.stats.mid_day_departure ?? 0}</td>
+                  <td>{data.stats.selective_skip ?? 0}</td>
+                  <td>{data.stats.dismissals}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+
+          {printOpts.incomplete && data.incomplete_sections.length > 0 && (
+            <section className="print-section print-incomplete">
+              <h3>⏸ شعب لم تُسجَّل كل حصصها</h3>
+              <ul>
+                {data.incomplete_sections.map((s) => (
+                  <li key={s.section_id}>
+                    📚 {s.grade_name} / {s.section_name} — لم تُسجَّل: {s.missing_periods.join('، ')}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {printOpts.fullAbsence && data.full_absences.length > 0 && (
+            <PrintReportSection
+              emoji="🔴"
+              title="الغياب الكامل"
+              students={data.full_absences}
+              showPeriods={false}
+            />
+          )}
+
+          {printOpts.escapeAfterFirst && (data.escape_after_first || []).length > 0 && (
+            <PrintReportSection
+              emoji="🟠"
+              title="هروب بعد التحضير"
+              students={data.escape_after_first || []}
+              showPeriods={true}
+            />
+          )}
+
+          {printOpts.midDayDeparture && (data.mid_day_departure || []).length > 0 && (
+            <PrintReportSection
+              emoji="🔵"
+              title="انصراف منتصف اليوم"
+              students={data.mid_day_departure || []}
+              showPeriods={true}
+            />
+          )}
+
+          {printOpts.selectiveSkip && (data.selective_skip || []).length > 0 && (
+            <PrintReportSection
+              emoji="🟡"
+              title="تهرّب من حصص محددة"
+              students={data.selective_skip || []}
+              showPeriods={true}
+            />
+          )}
+
+          {printOpts.dismissals && data.dismissals.length > 0 && (
+            <PrintDismissalSection students={data.dismissals} />
+          )}
+
+          <div className="print-footer">
+            <div className="print-signatures">
+              <div>توقيع وكيل الطلاب: ............................</div>
+              <div>توقيع المدير: ............................</div>
+            </div>
+            <p className="print-stamp">
+              طُبع في: {new Date().toLocaleString('ar-SA-u-ca-gregory', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit',
+              })}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Print stylesheet — scoped to .report-print-area. */}
+      <style jsx global>{`
+        .report-print-area { display: none; }
+        @media print {
+          body * { visibility: hidden !important; }
+          .report-print-area, .report-print-area * { visibility: visible !important; }
+          .report-print-area {
+            display: block !important;
+            position: absolute;
+            inset: 0;
+            background: white !important;
+            color: black !important;
+            padding: 6mm;
+            font-family: 'Cairo', 'Tajawal', system-ui, sans-serif;
+            font-size: 10.5pt;
+          }
+          @page { size: A4 portrait; margin: 8mm; }
+
+          .report-print-area .print-header {
+            text-align: center;
+            border-bottom: 1.5pt solid #1f2937;
+            padding-bottom: 6pt;
+            margin-bottom: 10pt;
+          }
+          .report-print-area .print-header .print-kingdom {
+            font-size: 9pt; color: #6b7280; margin: 0 0 2pt;
+          }
+          .report-print-area .print-header h1 {
+            font-size: 17pt; font-weight: 800; margin: 2pt 0;
+          }
+          .report-print-area .print-header .print-principal {
+            font-size: 10pt; margin: 2pt 0; color: #374151;
+          }
+          .report-print-area .print-header hr {
+            border: 0; border-top: 0.5pt solid #d4d4d8; margin: 4pt 0;
+          }
+          .report-print-area .print-header h2 {
+            font-size: 14pt; margin: 6pt 0 4pt; font-weight: 700;
+          }
+          .report-print-area .print-header .print-meta {
+            display: flex; justify-content: space-around; flex-wrap: wrap;
+            font-size: 9.5pt; margin-top: 6pt; gap: 6pt;
+          }
+          .report-print-area .print-header .print-meta p { margin: 0; }
+
+          .report-print-area .print-stats {
+            width: 100%; border-collapse: collapse; margin-bottom: 12pt;
+          }
+          .report-print-area .print-stats th,
+          .report-print-area .print-stats td {
+            border: 0.5pt solid #6b7280; padding: 5pt 4pt;
+            text-align: center; font-size: 9pt;
+          }
+          .report-print-area .print-stats th {
+            background: #e5e7eb; font-weight: 700;
+          }
+          .report-print-area .print-stats td { font-weight: 700; font-size: 11pt; }
+
+          .report-print-area .print-incomplete {
+            margin-bottom: 12pt; padding: 6pt 8pt;
+            background: #fef3c7; border-right: 4pt solid #f59e0b;
+          }
+          .report-print-area .print-incomplete h3 {
+            font-size: 11pt; margin: 0 0 4pt; color: #92400e;
+          }
+          .report-print-area .print-incomplete ul {
+            margin: 0; padding-right: 16pt; font-size: 9pt;
+          }
+          .report-print-area .print-incomplete li { margin: 1pt 0; }
+
+          .report-print-area .print-section {
+            margin-bottom: 14pt;
+          }
+          .report-print-area .print-section > h3 {
+            font-size: 13pt; font-weight: 700; margin: 0 0 4pt;
+            padding: 5pt 8pt; background: #f3f4f6;
+            border-right: 4pt solid #2563eb;
+            page-break-after: avoid;
+          }
+          .report-print-area .print-section table {
+            width: 100%; border-collapse: collapse;
+          }
+          .report-print-area .print-section thead { display: table-header-group; }
+          .report-print-area .print-section th,
+          .report-print-area .print-section td {
+            border: 0.5pt solid #9ca3af; padding: 4pt 6pt;
+            font-size: 9.5pt; text-align: right;
+          }
+          .report-print-area .print-section th {
+            background: #f9fafb; font-weight: 700;
+          }
+          .report-print-area .print-section tr { page-break-inside: avoid; }
+
+          .report-print-area .print-footer {
+            margin-top: 20pt; padding-top: 6pt;
+            border-top: 0.5pt solid #d4d4d8;
+            page-break-inside: avoid;
+          }
+          .report-print-area .print-footer .print-signatures {
+            display: flex; justify-content: space-between; gap: 24pt;
+            font-size: 10pt; margin-bottom: 10pt;
+          }
+          .report-print-area .print-footer .print-stamp {
+            font-size: 8.5pt; color: #6b7280;
+            text-align: center; margin: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 }
 
+// Single checkbox row in the print options dialog.
+function PrintCheck({
+  label, count, checked, onChange,
+}: {
+  label: string;
+  count?: number;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-4 h-4"
+      />
+      <span className="flex-1 text-sm">{label}</span>
+      {typeof count === 'number' && (
+        <span className="text-xs text-gray-500 font-mono">{count}</span>
+      )}
+    </label>
+  );
+}
+
+// Per-category section in the printed report. Renders a colored heading
+// and a table with row numbers, name, grade/section, student id, missed
+// periods (when applicable), phone, and a blank signature column.
+function PrintReportSection({
+  emoji, title, students, showPeriods,
+}: {
+  emoji: string;
+  title: string;
+  students: DetectionRow[];
+  showPeriods: boolean;
+}) {
+  return (
+    <section className="print-section">
+      <h3>{emoji} {title} ({students.length})</h3>
+      <table>
+        <thead>
+          <tr>
+            <th style={{ width: '6%' }}>#</th>
+            <th>اسم الطالب</th>
+            <th style={{ width: '14%' }}>الصف/الشعبة</th>
+            <th style={{ width: '15%' }}>رقم الهوية</th>
+            {showPeriods && <th style={{ width: '14%' }}>غاب من حصص</th>}
+            <th style={{ width: '14%' }}>الجوال</th>
+            <th style={{ width: '12%' }}>التوقيع</th>
+          </tr>
+        </thead>
+        <tbody>
+          {students.map((s, i) => (
+            <tr key={s.student_id}>
+              <td style={{ textAlign: 'center' }}>{i + 1}</td>
+              <td>{s.student_name}</td>
+              <td style={{ textAlign: 'center' }}>{s.grade_name}/{s.section_name}</td>
+              <td style={{ direction: 'ltr', textAlign: 'left', fontFamily: 'monospace' }}>
+                {s.student_code}
+              </td>
+              {showPeriods && (
+                <td style={{ textAlign: 'center' }}>
+                  {s.absent_periods.join('، ')}
+                </td>
+              )}
+              <td style={{ direction: 'ltr', textAlign: 'left', fontFamily: 'monospace' }}>
+                {s.phone || '—'}
+              </td>
+              <td></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+// Dismissal section — fewer columns since dismissals aren't actionable
+// from this report (they were already approved by the deputy).
+function PrintDismissalSection({ students }: { students: DismissalRow[] }) {
+  return (
+    <section className="print-section">
+      <h3>🟣 المستأذنون ({students.length})</h3>
+      <table>
+        <thead>
+          <tr>
+            <th style={{ width: '8%' }}>#</th>
+            <th>اسم الطالب</th>
+            <th style={{ width: '20%' }}>رقم الهوية</th>
+            <th style={{ width: '20%' }}>الجوال</th>
+          </tr>
+        </thead>
+        <tbody>
+          {students.map((s, i) => (
+            <tr key={s.student_id}>
+              <td style={{ textAlign: 'center' }}>{i + 1}</td>
+              <td>{s.student_name}</td>
+              <td style={{ direction: 'ltr', textAlign: 'left', fontFamily: 'monospace' }}>
+                {s.student_code}
+              </td>
+              <td style={{ direction: 'ltr', textAlign: 'left', fontFamily: 'monospace' }}>
+                {s.phone || '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 function BucketCard({
-  title, description, tone, rows, selected, setSelected, onSend, sending, sendLabel, showPeriods,
+  title, description, tone, rows, selected, setSelected, onSend, sending, sendLabel, showPeriods, onPrint,
 }: {
   title: string;
   description: string;
@@ -390,6 +885,8 @@ function BucketCard({
   sending: boolean;
   sendLabel: string;
   showPeriods: boolean;
+  /** Optional quick-print handler — renders a small printer icon next to "send". */
+  onPrint?: () => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -426,6 +923,15 @@ function BucketCard({
           >
             {allSelected ? 'إلغاء التحديد' : 'تحديد الكل (مع جوال)'}
           </button>
+          {onPrint && (
+            <button
+              onClick={onPrint}
+              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
+              title="طباعة هذه الفئة"
+            >
+              <Printer className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={onSend}
             disabled={sending || selected.size === 0}
