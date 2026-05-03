@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import InstallPrompt from '@/components/pwa/InstallPrompt';
+import GlobalSearch from '@/components/search/GlobalSearch';
 import {
   LayoutDashboard, Users, BookOpen, Fingerprint, ClipboardList, BarChart3,
   Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
@@ -297,7 +298,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className="flex-1 flex flex-col min-h-screen min-w-0">
-        <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
+        <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30 gap-3">
           <button
             onClick={() => setMobileOpen(true)}
             className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
@@ -305,6 +306,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           >
             <Menu className="w-5 h-5" />
           </button>
+
+          {/* Global search (Cmd+K). Component renders both the trigger
+              button (in the topbar) and the modal (overlay) — it's
+              keyed by an internal open state, so we only mount it once. */}
+          <GlobalSearch />
+
           {/* Mobile theme toggle in header (sidebar is hidden) */}
           <button
             onClick={toggle}
