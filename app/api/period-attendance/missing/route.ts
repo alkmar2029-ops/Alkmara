@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
           .select('section_id, period_number, teacher_name, subject, teacher_user_id')
           .eq('day_of_week', dow)
           .eq('duty_type', 'class')
-      : Promise.resolve({ data: [], error: null }),
+      : Promise.resolve({ data: [] as any[], error: null }),
   ]);
 
   if (sectionsRes.error || periodsRes.error || recordedRes.error) {
@@ -137,11 +137,16 @@ export async function GET(request: NextRequest) {
   for (const p of periods as any[]) {
     if (typeof p.number === 'number') periodNumberToId.set(p.number, p.id);
   }
-  const expected: Record<string, { teacher_name: string; subject: string | null }> = {};
+  const expected: Record<string, {
+    teacher_user_id: string | null;
+    teacher_name: string;
+    subject: string | null;
+  }> = {};
   for (const s of (scheduleRes.data || []) as any[]) {
     const periodId = periodNumberToId.get(s.period_number);
     if (!periodId || !s.section_id) continue;
     expected[`${s.section_id}:${periodId}`] = {
+      teacher_user_id: (s.teacher_user_id as string) || null,
       teacher_name: s.teacher_name,
       subject: s.subject || null,
     };

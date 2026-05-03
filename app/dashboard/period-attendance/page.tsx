@@ -36,6 +36,7 @@ interface RecordedCell {
   teacher_name: string | null;
 }
 interface ExpectedCell {
+  teacher_user_id: string | null;
   teacher_name: string;
   subject: string | null;
 }
@@ -110,8 +111,17 @@ export default function PeriodAttendancePage() {
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [openSessionId, setOpenSessionId] = useState<number | null>(null);
   const [missingTarget, setMissingTarget] = useState<{
-    section: SectionRow; period: PeriodRow; date: string;
+    section: SectionRow;
+    period: PeriodRow;
+    date: string;
+    // When the smart schedule has an entry for this slot, pre-select the
+    // teacher in the modal so the admin doesn't have to scroll a 40-name
+    // dropdown for each missing cell.
+    initialTeacherId?: string | null;
   } | null>(null);
+  // When set, the bulk-period reminder modal opens listing every missing
+  // cell for that single period across all sections.
+  const [bulkPeriodTarget, setBulkPeriodTarget] = useState<PeriodRow | null>(null);
   const [showMissingOnly, setShowMissingOnly] = useState(false);
   const qc = useQueryClient();
 
@@ -323,9 +333,27 @@ export default function PeriodAttendancePage() {
                 <thead className="bg-gray-50 dark:bg-gray-900">
                   <tr className="text-right">
                     <th className="px-3 py-2 font-medium sticky right-0 bg-gray-50 dark:bg-gray-900">الصف / الشعبة</th>
-                    {monitor.periods.map((p) => (
-                      <th key={p.id} className="px-2 py-2 font-medium text-center">حصة {p.number}</th>
-                    ))}
+                    {monitor.periods.map((p) => {
+                      // How many cells in this period column are still
+                      // missing? Drives the bulk-remind button state.
+                      const missingCount = visibleSections.reduce((acc, s) => {
+                        return monitor.recorded[`${s.id}:${p.id}`] ? acc : acc + 1;
+                      }, 0);
+                      return (
+                        <th key={p.id} className="px-2 py-2 font-medium text-center">
+                          <div>حصة {p.number}</div>
+                          {missingCount > 0 && (
+                            <button
+                              onClick={() => setBulkPeriodTarget(p)}
+                              className="mt-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-500/30 font-normal"
+                              title={`تذكير ${missingCount} معلم لم يسجِّل هذه الحصة`}
+                            >
+                              <Bell className="w-2.5 h-2.5" /> تذكير {missingCount}
+                            </button>
+                          )}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
@@ -346,7 +374,12 @@ export default function PeriodAttendancePage() {
                           return (
                             <td key={p.id} className="px-1 py-1 text-center">
                               <button
-                                onClick={() => setMissingTarget({ section: sec, period: p, date })}
+                                onClick={() => setMissingTarget({
+                                  section: sec,
+                                  period: p,
+                                  date,
+                                  initialTeacherId: exp?.teacher_user_id ?? null,
+                                })}
                                 className="w-full rounded-md border-2 border-dashed border-red-300 dark:border-red-500/40 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 py-1.5 px-1 text-xs transition-colors group"
                                 title={
                                   exp
@@ -439,7 +472,20 @@ export default function PeriodAttendancePage() {
           section={missingTarget.section}
           period={missingTarget.period}
           date={missingTarget.date}
+          initialTeacherId={missingTarget.initialTeacherId}
           onClose={() => setMissingTarget(null)}
+        />
+      )}
+
+      {/* Bulk reminder for a whole period */}
+      {bulkPeriodTarget && monitor && (
+        <BulkPeriodReminderModal
+          period={bulkPeriodTarget}
+          date={date}
+          sections={visibleSections}
+          recorded={monitor.recorded}
+          expected={monitor.expected || {}}
+          onClose={() => setBulkPeriodTarget(null)}
         />
       )}
     </div>
@@ -1031,12 +1077,235 @@ function Stat({ label, value, tone = 'gray' }: { label: string; value: number; t
 // Opens when admin clicks an unrecorded cell in the heatmap. Lets them pick
 // a teacher and fire a dual reminder (in-app message + WhatsApp). Pre-fills
 // a sensible Arabic body the admin can edit before sending.
-function MissingSessionReminderModal({
-  section, period, date, onClose,
+// Bulk reminder for every missing cell in ONE period — sends a reminder
+// to every expected teacher (per the smart schedule) for sections that
+// haven't been recorded yet for the given period+date.
+//
+// Uses the existing single-teacher /api/period-attendance/remind endpoint
+// in a sequential loop so we don't need a new bulk API. ~250ms between
+// sends to keep WhatsApp pacing happy.
+function BulkPeriodReminderModal({
+  period, date, sections, recorded, expected, onClose,
 }: {
-  section: SectionRow; period: PeriodRow; date: string; onClose: () => void;
+  period: PeriodRow;
+  date: string;
+  sections: SectionRow[];
+  recorded: Record<string, RecordedCell>;
+  expected: Record<string, ExpectedCell>;
+  onClose: () => void;
 }) {
-  const [teacherId, setTeacherId] = useState<string>('');
+  // Build the per-section list of "missing + expected teacher known"
+  // cells. Sections without a schedule entry are surfaced separately so
+  // the admin knows the schedule import didn't cover them.
+  const targets = useMemo(() => {
+    const withTeacher: Array<{ section: SectionRow; teacher_user_id: string; teacher_name: string }> = [];
+    const withoutTeacher: SectionRow[] = [];
+    for (const s of sections) {
+      if (recorded[`${s.id}:${period.id}`]) continue;  // already recorded
+      const exp = expected[`${s.id}:${period.id}`];
+      if (exp?.teacher_user_id) {
+        withTeacher.push({
+          section: s,
+          teacher_user_id: exp.teacher_user_id,
+          teacher_name: exp.teacher_name,
+        });
+      } else {
+        withoutTeacher.push(s);
+      }
+    }
+    return { withTeacher, withoutTeacher };
+  }, [sections, period.id, recorded, expected]);
+
+  // Selection state — admin can untick individual rows.
+  const [selected, setSelected] = useState<Set<number>>(
+    new Set(targets.withTeacher.map((t) => t.section.id)),
+  );
+  const [customMessage, setCustomMessage] = useState('');
+
+  // Per-row outcome after send. `pending` while the loop runs.
+  const [outcomes, setOutcomes] = useState<Record<number, 'pending' | 'ok' | 'fail'>>({});
+  const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const sendAll = async () => {
+    setRunning(true);
+    setDone(false);
+    const initial: Record<number, 'pending' | 'ok' | 'fail'> = {};
+    for (const t of targets.withTeacher) {
+      if (selected.has(t.section.id)) initial[t.section.id] = 'pending';
+    }
+    setOutcomes(initial);
+
+    let ok = 0, fail = 0;
+    for (const t of targets.withTeacher) {
+      if (!selected.has(t.section.id)) continue;
+      try {
+        const r = await fetch('/api/period-attendance/remind', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            teacher_user_id: t.teacher_user_id,
+            section_id: t.section.id,
+            period_id: period.id,
+            attendance_date: date,
+            custom_message: customMessage.trim() || undefined,
+          }),
+        });
+        const success = r.ok;
+        setOutcomes((prev) => ({ ...prev, [t.section.id]: success ? 'ok' : 'fail' }));
+        if (success) ok++; else fail++;
+      } catch {
+        setOutcomes((prev) => ({ ...prev, [t.section.id]: 'fail' }));
+        fail++;
+      }
+      // Pacing — keep wasender happy + avoid burst-throttling Supabase auth.
+      await new Promise((res) => setTimeout(res, 250));
+    }
+    setRunning(false);
+    setDone(true);
+    if (fail === 0) toast.success(`✓ تم إرسال ${ok} تذكير`);
+    else toast(`أُرسل ${ok} • فشل ${fail}`, { icon: '⚠️', duration: 5000 });
+  };
+
+  const allSelected = targets.withTeacher.length > 0 &&
+    targets.withTeacher.every((t) => selected.has(t.section.id));
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 bg-amber-50 dark:bg-amber-500/10">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 bg-amber-500 rounded-full flex items-center justify-center">
+              <Bell className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="font-bold text-lg">تذكير جماعي — حصة {period.number}</h2>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {targets.withTeacher.length} معلم لم يسجِّل هذه الحصة
+                {period.name && ` • ${period.name}`}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-amber-100 dark:hover:bg-amber-500/20">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {targets.withTeacher.length === 0 ? (
+            <p className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
+              لا يوجد معلم متوقَّع لشعب لم تُسجَّل في هذه الحصة.
+            </p>
+          ) : (
+            <>
+              {/* Custom message — same options as single reminder */}
+              <div>
+                <label className="label">رسالة مخصصة (اختياري)</label>
+                <textarea
+                  value={customMessage}
+                  onChange={(e) => setCustomMessage(e.target.value)}
+                  rows={2}
+                  className="input"
+                  placeholder="اتركها فارغة لاستخدام الرسالة الافتراضية..."
+                  disabled={running}
+                />
+              </div>
+
+              {/* Targets list */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold">
+                    المعلمون ({selected.size} محدد من {targets.withTeacher.length})
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (allSelected) setSelected(new Set());
+                      else setSelected(new Set(targets.withTeacher.map((t) => t.section.id)));
+                    }}
+                    className="text-xs underline text-amber-700 dark:text-amber-400"
+                  >
+                    {allSelected ? 'إلغاء التحديد' : 'تحديد الكل'}
+                  </button>
+                </div>
+                <ul className="divide-y divide-gray-200 dark:divide-gray-800 border rounded-lg max-h-80 overflow-y-auto">
+                  {targets.withTeacher.map((t) => {
+                    const status = outcomes[t.section.id];
+                    return (
+                      <li key={t.section.id} className="px-3 py-2 flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(t.section.id)}
+                          disabled={running}
+                          onChange={() => {
+                            const next = new Set(selected);
+                            if (next.has(t.section.id)) next.delete(t.section.id);
+                            else next.add(t.section.id);
+                            setSelected(next);
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{t.teacher_name}</p>
+                          <p className="text-[11px] text-gray-500">{t.section.grade_name} / {t.section.section_name}</p>
+                        </div>
+                        {status === 'pending' && <Loader2 className="w-4 h-4 animate-spin text-amber-500" />}
+                        {status === 'ok' && <CheckCircle2 className="w-4 h-4 text-green-600" />}
+                        {status === 'fail' && <XCircle className="w-4 h-4 text-red-600" />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+
+              {targets.withoutTeacher.length > 0 && (
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded p-2">
+                  <p className="text-xs text-gray-600 dark:text-gray-300">
+                    ⓘ {targets.withoutTeacher.length} شعبة بدون معلم متوقَّع في الجدول الذكي — لن تُذكَّر تلقائيًّا
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            {done ? 'إغلاق' : 'إلغاء'}
+          </button>
+          {!done && (
+            <button
+              onClick={sendAll}
+              disabled={running || selected.size === 0}
+              className="inline-flex items-center gap-1 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm disabled:opacity-50"
+            >
+              {running ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال...</>
+                       : <><Send className="w-4 h-4" /> إرسال للجميع ({selected.size})</>}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MissingSessionReminderModal({
+  section, period, date, initialTeacherId, onClose,
+}: {
+  section: SectionRow;
+  period: PeriodRow;
+  date: string;
+  /** Pre-select this teacher in the dropdown — passed when the cell
+   *  has a known expected teacher from the smart schedule. */
+  initialTeacherId?: string | null;
+  onClose: () => void;
+}) {
+  const [teacherId, setTeacherId] = useState<string>(initialTeacherId || '');
   const [customMessage, setCustomMessage] = useState<string>('');
 
   // Load all active teachers for the picker.
