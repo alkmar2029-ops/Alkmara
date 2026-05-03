@@ -245,7 +245,10 @@ export const sendMessageSchema = z.object({
   recipient_id: z.string().uuid().optional().nullable(),
   recipient_role: z.enum(MESSAGE_RECIPIENT_ROLES).optional().nullable(),
   student_id: z.number().int().positive().optional().nullable(),
-  subject: z.string().max(200).optional(),
+  // .nullable() so empty subject inputs serialized as `subject: null`
+  // (the compose form does this) don't fail validation. Treated the
+  // same as undefined downstream — both write NULL to internal_messages.subject.
+  subject: z.string().max(200).optional().nullable(),
   body: z.string().min(1, 'الرسالة مطلوبة').max(2000),
   parent_message_id: z.number().int().positive().optional().nullable(),
 }).refine((v) => v.recipient_id || v.recipient_role, {
