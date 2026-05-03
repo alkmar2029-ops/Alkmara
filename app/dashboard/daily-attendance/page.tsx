@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import {
   Calendar, Search, AlertTriangle, AlertCircle, BadgeCheck, CheckSquare, Square,
   Send, Loader2, RefreshCw, BarChart3, MapPin, Filter, MessageCircle, X,
-  CheckCircle2, XCircle, Printer,
+  CheckCircle2, XCircle, Printer, TrendingUp, Users,
 } from 'lucide-react';
 
 interface DetectionRow {
@@ -426,6 +426,11 @@ export default function DailyAttendancePage() {
             showPeriods={true}
             onPrint={() => quickPrintCategory('selectiveSkip')}
           />
+
+          {/* Teacher skip-rate analytics — 30-day window. Hidden until
+              expanded to keep the page from getting overwhelming. */}
+          <TeacherSkipStats />
+
 
           {/* Dismissals — info only, no send */}
           {data.dismissals.length > 0 && (
@@ -869,6 +874,150 @@ function PrintDismissalSection({ students }: { students: DismissalRow[] }) {
         </tbody>
       </table>
     </section>
+  );
+}
+
+// =============== Teacher skip-rate analytics ===============
+// Collapsible card that pulls /api/daily-attendance/teacher-skip-stats.
+// Defaults to a 30-day window. Shown at the bottom of the report so it
+// doesn't push the actionable "send WhatsApp" buckets below the fold.
+function TeacherSkipStats() {
+  const [expanded, setExpanded] = useState(false);
+  const today = todayStr();
+  const thirtyDaysAgo = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  })();
+  const [from, setFrom] = useState(thirtyDaysAgo);
+  const [to, setTo] = useState(today);
+
+  type TeacherStat = {
+    teacher_user_id: string | null;
+    teacher_name: string;
+    subject: string | null;
+    total_periods_taught: number;
+    total_student_periods: number;
+    total_absences: number;
+    skip_rate_percent: number;
+    top_students: Array<{ student_id: number; name: string; count: number }>;
+  };
+
+  const { data, isLoading, refetch, isFetching } = useQuery<{
+    from: string;
+    to: string;
+    school_average_percent: number;
+    teachers: TeacherStat[];
+  }>({
+    queryKey: ['teacher-skip-stats', from, to],
+    queryFn: async () => {
+      const params = new URLSearchParams({ from, to });
+      const r = await fetch(`/api/daily-attendance/teacher-skip-stats?${params}`);
+      if (!r.ok) throw new Error('فشل تحميل الإحصائيات');
+      return (await r.json()).data;
+    },
+    enabled: expanded,
+  });
+
+  return (
+    <div className="card">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 text-start"
+      >
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+          <h2 className="font-semibold">📊 تحليل التهرّب لكل معلم</h2>
+          <span className="text-xs text-gray-500">(يستخدم الجدول الذكي)</span>
+        </div>
+        <span className="text-xs text-gray-500">{expanded ? '▲ إخفاء' : '▼ عرض'}</span>
+      </button>
+
+      {expanded && (
+        <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+              <label className="label">من</label>
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} max={to} className="input" />
+            </div>
+            <div>
+              <label className="label">إلى</label>
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} max={today} min={from} className="input" />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="btn-primary w-full inline-flex items-center justify-center gap-1 text-sm"
+              >
+                {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                تحديث
+              </button>
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="text-center py-6"><Loader2 className="w-5 h-5 animate-spin inline text-gray-400" /></div>
+          ) : !data || data.teachers.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">
+              لا توجد بيانات في هذه الفترة. تأكد أن الجدول الذكي مرفوع وأن هناك حضورًا مسجَّلًا.
+            </p>
+          ) : (
+            <>
+              <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 rounded-lg p-2 text-sm flex items-center gap-2">
+                <span className="text-blue-700 dark:text-blue-300">المتوسط العام للمدرسة:</span>
+                <span className="font-bold text-blue-900 dark:text-blue-200">{data.school_average_percent}٪</span>
+              </div>
+
+              <div className="space-y-2">
+                {data.teachers.map((t, idx) => {
+                  const isAbove = t.skip_rate_percent > data.school_average_percent;
+                  const tone = idx < 3 && isAbove
+                    ? 'border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10'
+                    : t.skip_rate_percent <= data.school_average_percent / 2
+                    ? 'border-green-200 dark:border-green-500/30 bg-green-50 dark:bg-green-500/10'
+                    : 'border-gray-200 dark:border-gray-700';
+                  return (
+                    <div key={(t.teacher_user_id || t.teacher_name) + idx} className={`border rounded-lg p-3 ${tone}`}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm">{t.teacher_name}</span>
+                          {t.subject && <span className="text-xs px-1.5 py-0.5 rounded bg-white dark:bg-gray-900 border text-gray-600 dark:text-gray-300">{t.subject}</span>}
+                        </div>
+                        <div className="text-end">
+                          <p className={`text-xl font-bold ${
+                            isAbove ? 'text-red-700 dark:text-red-400' : 'text-green-700 dark:text-green-400'
+                          }`}>{t.skip_rate_percent}٪</p>
+                          <p className="text-[10px] text-gray-500">
+                            {t.total_absences} غياب / {t.total_student_periods} طالب-حصة
+                          </p>
+                        </div>
+                      </div>
+                      {t.top_students.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-1 inline-flex items-center gap-1">
+                            <Users className="w-3 h-3" /> الأكثر تهرّبًا من حصصه:
+                          </p>
+                          <ul className="text-xs space-y-0.5">
+                            {t.top_students.map((s) => (
+                              <li key={s.student_id} className="flex items-center gap-1">
+                                <span>•</span>
+                                <span className="flex-1 truncate">{s.name}</span>
+                                <span className="text-gray-500">{s.count} مرة</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
