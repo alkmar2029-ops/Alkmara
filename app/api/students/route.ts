@@ -51,13 +51,15 @@ export async function GET(request: NextRequest) {
   const { data, count, error } = await query;
   if (error) return NextResponse.json({ error: 'حدث خطأ أثناء جلب بيانات الطلاب' }, { status: 400 });
 
+  // Keep grades + sections nested objects on the response so callers
+  // that read s.grades?.name / s.sections?.name (notes page, dismissal
+  // form, etc.) display correctly. Also expose flat grade_name/
+  // section_name for callers that prefer those.
   const students = (data || []).map((s: any) => ({
     ...s,
     grade_name: s.grades?.name,
     grade_stage: s.grades?.stage,
     section_name: s.sections?.name,
-    grades: undefined,
-    sections: undefined,
   }));
 
   return NextResponse.json({

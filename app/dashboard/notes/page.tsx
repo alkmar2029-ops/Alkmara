@@ -497,11 +497,12 @@ export default function NotesPage() {
               {students.map((s) => {
                 const checked = selectedMap.has(s.id);
                 const fullName = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
-                // When in cross-school search mode, show grade/section so the
-                // admin can tell two students with the same name apart.
-                const gradeLabel = isCrossSchoolSearch
-                  ? `${s.grades?.name || ''} / ${s.sections?.name || ''}`.trim().replace(/^\/\s*|\s*\/$/g, '')
-                  : null;
+                // Always show the grade/section badge — students with the
+                // same name need to be distinguishable, not just in cross-
+                // school search.
+                const gN = s.grades?.name || (s as any).grade_name || '';
+                const sN = s.sections?.name || (s as any).section_name || '';
+                const gradeLabel = (gN || sN) ? `${gN}${gN && sN ? ' / ' : ''}${sN}` : null;
                 return (
                   <li
                     key={s.id}

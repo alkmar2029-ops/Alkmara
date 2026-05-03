@@ -430,22 +430,39 @@ function CreateDismissalModal({ onClose }: { onClose: () => void }) {
                 </div>
                 {students.length > 0 && (
                   <ul className="mt-2 max-h-44 overflow-y-auto border border-gray-200 dark:border-gray-800 rounded-lg divide-y divide-gray-100 dark:divide-gray-800/50">
-                    {students.map((s) => (
-                      <li key={s.id}>
-                        <button
-                          onClick={() => setSelectedStudent(s)}
-                          className="w-full text-right p-2 hover:bg-blue-50 dark:hover:bg-blue-500/10"
-                        >
-                          <p className="text-sm font-medium">
-                            {[s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ')}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            <span className="font-mono" dir="ltr">{s.student_id}</span>
-                            {' • '}{s.grades?.name} / {s.sections?.name}
-                          </p>
-                        </button>
-                      </li>
-                    ))}
+                    {students.map((s: any) => {
+                      const gN = s.grades?.name || s.grade_name || '';
+                      const sN = s.sections?.name || s.section_name || '';
+                      const gradeLabel = (gN || sN) ? `${gN}${gN && sN ? ' / ' : ''}${sN}` : '';
+                      return (
+                        <li key={s.id}>
+                          <button
+                            onClick={() => setSelectedStudent(s)}
+                            className="w-full text-right p-2 hover:bg-blue-50 dark:hover:bg-blue-500/10"
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-medium">
+                                {[s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ')}
+                              </p>
+                              {gradeLabel && (
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 font-medium">
+                                  {gradeLabel}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              <span className="font-mono" dir="ltr">{s.student_id}</span>
+                              {s.phone && (
+                                <>
+                                  {' • '}
+                                  <span className="font-mono" dir="ltr">{s.phone}</span>
+                                </>
+                              )}
+                            </p>
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </>
