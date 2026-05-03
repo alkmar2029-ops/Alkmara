@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { sendNotesWhatsappSchema, validateBody } from '@/lib/validations/schemas';
@@ -41,8 +41,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 1. WhatsApp credentials
-  const { data: ws } = await supabase
+  // 1. WhatsApp credentials. We use the service-role (admin) client here
+  // because whatsapp_settings has admin-only RLS — teachers can't read
+  // it directly, but they ARE allowed to send (gated by the teacher policy
+  // toggle above). The API key never leaves the server, so escalating
+  // privilege only for this read is safe.
+  const adminClient = createAdminSupabaseClient();
+  const { data: ws } = await adminClient
     .from('whatsapp_settings')
     .select('api_key')
     .eq('id', 1)
