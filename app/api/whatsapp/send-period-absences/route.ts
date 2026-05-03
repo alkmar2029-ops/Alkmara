@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     catch { return session.attendance_date as string; }
   })();
   const teacherName = (profile?.full_name as string)
-    || (auth.ctx.role === 'admin' || auth.ctx.role === 'staff' ? 'إدارة المدرسة' : 'المعلم');
+    || (auth.ctx.role === 'admin' || auth.ctx.role === 'super_admin' || auth.ctx.role === 'staff' ? 'إدارة المدرسة' : 'المعلم');
 
   // 6. Send sequentially with rate-limit pacing.
   const outcomes: SendOutcome[] = [];

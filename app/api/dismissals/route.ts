@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
   const studentFullName = [student.first_name, student.father_name, student.last_name]
     .filter(Boolean).join(' ').trim();
   const deputyName = (deputyProfile?.full_name as string)
-    || (auth.ctx.role === 'admin' ? 'إدارة المدرسة' : 'الوكيل');
+    || (auth.ctx.role === 'admin' || auth.ctx.role === 'super_admin' ? 'إدارة المدرسة' : 'الوكيل');
 
   // 2. Insert the dismissal row.
   const today = new Date().toISOString().slice(0, 10);

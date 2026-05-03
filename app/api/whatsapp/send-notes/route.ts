@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
   // parent-facing messages — fall back to a generic admin/teacher label.
   const teacherName =
     (profile?.full_name as string)
-    || (auth.ctx.role === 'admin' || auth.ctx.role === 'staff' ? 'إدارة المدرسة' : 'المعلم');
+    || (auth.ctx.role === 'admin' || auth.ctx.role === 'super_admin' || auth.ctx.role === 'staff' ? 'إدارة المدرسة' : 'المعلم');
 
   // 3. Load notes — by batch or by ids — joined with student/grade/section.
   let q = supabase

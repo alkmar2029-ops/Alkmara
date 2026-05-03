@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   // Creating grades/sections is admin-only (RLS), so staff cannot use
   // auto_create_grades — refuse upfront instead of letting silent insert
   // failures leave students orphaned without grade/section.
-  if (autoCreateGrades && auth.ctx.role !== 'admin') {
+  if (autoCreateGrades && auth.ctx.role !== 'admin' && auth.ctx.role !== 'super_admin') {
     return NextResponse.json(
       { error: 'إنشاء الصفوف والشعب تلقائياً يتطلب صلاحية المدير' },
       { status: 403 },

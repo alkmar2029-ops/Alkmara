@@ -104,7 +104,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ctx = await getAuthContext();
   if (!ctx) return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-  if (!['admin', 'staff', 'teacher'].includes(ctx.role)) {
+  // super_admin always passes (school's root); otherwise must be admin/staff/teacher.
+  if (!['super_admin', 'admin', 'staff', 'teacher'].includes(ctx.role)) {
     return NextResponse.json({ error: 'لا تملك صلاحية إرسال رسائل' }, { status: 403 });
   }
 
