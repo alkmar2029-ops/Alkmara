@@ -62,6 +62,7 @@ export async function middleware(request: NextRequest) {
         '/api/student-notes',         // teachers record their own notes
         '/api/note-templates',        // GET — teachers pick from templates
         '/api/teacher-assignments/me', // teacher's own assigned sections
+        '/api/teacher-schedule/me',    // teacher's own weekly schedule
       ];
       const allowed = teacherApiAllowlist.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'));
       if (!allowed) {

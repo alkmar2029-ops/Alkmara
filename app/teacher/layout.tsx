@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
-import { ClipboardList, History, User, LogOut, Menu, X, MessageSquarePlus, FileText, Mail, Sun, Moon } from 'lucide-react';
+import { ClipboardList, History, User, LogOut, Menu, X, MessageSquarePlus, FileText, Mail, Sun, Moon, Calendar } from 'lucide-react';
 import UnreadBadge from '@/components/ui/UnreadBadge';
 import InstallPrompt from '@/components/pwa/InstallPrompt';
 import { useTheme } from '@/lib/hooks/useTheme';
 
 const navItems = [
   { path: '/teacher',          label: 'تسجيل الغياب', Icon: ClipboardList },
+  { path: '/teacher/schedule', label: 'جدولي',          Icon: Calendar },
   { path: '/teacher/notes',    label: 'الملاحظات',     Icon: MessageSquarePlus },
   { path: '/teacher/messages', label: 'الرسائل',       Icon: Mail },
   { path: '/teacher/history',  label: 'سجل حصصي',     Icon: History },
