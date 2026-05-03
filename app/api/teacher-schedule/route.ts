@@ -151,11 +151,26 @@ export async function POST(request: NextRequest) {
 // Match an Excel grade label like "1" / "2" / "3" against the grade
 // names in the database, which are usually Arabic ordinals like
 // "الأول متوسط". We accept both pure digits and ordinals.
+//
+// Each n maps to MULTIPLE accepted Arabic spellings — e.g., 1 can be
+// written "الأول" (with hamza) or "الاول" (without hamza). The earlier
+// implementation listed both forms in a flat array which shifted the
+// indices for n=2, 3, ... and silently mismatched grades الثاني and
+// الثالث during schedule import. Per-n keyed lookup avoids that
+// off-by-one footgun.
 function matchGradeByDigit(gradeName: string, label: string): boolean {
   const n = parseInt(label, 10);
   if (Number.isNaN(n)) return false;
-  const ordinals = ['الأول', 'الاول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس'];
-  const expected = ordinals[n - 1];
-  if (!expected) return false;
-  return gradeName.includes(expected) || gradeName.includes(String(n));
+  const variants: Record<number, string[]> = {
+    1: ['الأول', 'الاول'],
+    2: ['الثاني'],
+    3: ['الثالث'],
+    4: ['الرابع'],
+    5: ['الخامس'],
+    6: ['السادس'],
+  };
+  const accepted = variants[n];
+  if (!accepted) return false;
+  return accepted.some((v) => gradeName.includes(v))
+    || gradeName.includes(String(n));
 }
