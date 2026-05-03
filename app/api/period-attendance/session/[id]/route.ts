@@ -58,6 +58,34 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     teacherName = (profile?.full_name as string) || null;
   }
 
+  // 2b. Expected teacher per the imported smart schedule. Derive
+  // day_of_week from attendance_date — JS getDay() returns 0=Sunday..6
+  // which lines up with our schema (Saturday/Friday absent from the
+  // schedule). If no schedule entry exists, expected_teacher stays null
+  // and the UI just hides that line.
+  const periodNumber = (session as any).periods?.number;
+  let expectedTeacher: { teacher_user_id: string | null; teacher_name: string; subject: string | null } | null = null;
+  if (periodNumber != null && session.attendance_date) {
+    const dow = new Date(String(session.attendance_date)).getDay();
+    if (dow >= 0 && dow <= 4) {
+      const { data: schedRow } = await supabase
+        .from('teacher_schedule')
+        .select('teacher_user_id, teacher_name, subject')
+        .eq('section_id', session.section_id)
+        .eq('period_number', periodNumber)
+        .eq('day_of_week', dow)
+        .eq('duty_type', 'class')
+        .maybeSingle();
+      if (schedRow) {
+        expectedTeacher = {
+          teacher_user_id: (schedRow.teacher_user_id as string) || null,
+          teacher_name: schedRow.teacher_name as string,
+          subject: (schedRow.subject as string) || null,
+        };
+      }
+    }
+  }
+
   // 3. All active students in this section. Alphabetical order matches the
   // attendance-sheet display the teacher sees, with tiebreakers for repeat
   // first names ("محمد", "أحمد"...).
@@ -118,6 +146,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         period_number: (session as any).periods?.number ?? null,
         period_name: (session as any).periods?.name ?? null,
         notes: session.notes,
+        // Pulled from teacher_schedule (the imported smart schedule).
+        // Null when the schedule has no entry for this slot.
+        expected_teacher: expectedTeacher,
       },
       summary,
       students: studentRows,

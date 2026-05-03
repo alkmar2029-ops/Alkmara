@@ -63,6 +63,11 @@ interface SessionDetail {
     period_number: number | null;
     period_name: string | null;
     notes: string | null;
+    expected_teacher: {
+      teacher_user_id: string | null;
+      teacher_name: string;
+      subject: string | null;
+    } | null;
   };
   summary: { total: number; present: number; absent: number; late: number; excused: number };
   students: Array<{
@@ -519,8 +524,28 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
                 </div>
                 <div>
                   <dt className="text-xs text-gray-500 dark:text-gray-400">الحصة</dt>
-                  <dd className="font-medium">الحصة {data.session.period_number}</dd>
+                  <dd className="font-medium">
+                    الحصة {data.session.period_number}
+                    {data.session.expected_teacher?.subject && (
+                      <span className="text-xs text-purple-700 dark:text-purple-400 font-normal me-2">
+                        — {data.session.expected_teacher.subject}
+                      </span>
+                    )}
+                  </dd>
                 </div>
+                {data.session.expected_teacher && (
+                  <div className="col-span-2 bg-purple-50 dark:bg-purple-500/10 -mx-1 px-3 py-2 rounded">
+                    <dt className="text-xs text-purple-700 dark:text-purple-300">المعلم المتوقَّع (من الجدول الذكي)</dt>
+                    <dd className="font-medium flex items-center gap-2 flex-wrap">
+                      <span>{data.session.expected_teacher.teacher_name}</span>
+                      {data.session.recorded_by && data.session.expected_teacher.teacher_user_id && (
+                        data.session.expected_teacher.teacher_user_id === data.session.recorded_by
+                          ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300">✓ مطابق للمسجِّل</span>
+                          : <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">⚠️ بديل</span>
+                      )}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt className="text-xs text-gray-500 dark:text-gray-400">المعلم المسجِّل</dt>
                   <dd className="font-medium">{data.session.teacher_name || '—'}</dd>
