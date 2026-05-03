@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -104,7 +104,22 @@ export default function TeacherSchedulePage() {
       return d.data;
     },
     onSuccess: (d) => {
-      toast.success(`✓ تم استيراد ${d.rows_inserted} خانة لـ ${d.teachers_committed} معلمًا`);
+      // Build the success toast — mention duplicates if any, since the
+      // admin should know we silently dropped some cells.
+      let msg = `✓ تم استيراد ${d.rows_inserted} خانة لـ ${d.teachers_committed} معلمًا`;
+      if (d.duplicates_dropped > 0) {
+        msg += ` • تجاهل ${d.duplicates_dropped} خانة مكرَّرة`;
+      }
+      toast.success(msg, { duration: 5000 });
+      if (d.conflicts && d.conflicts.length > 0) {
+        // Surface the first conflict in a separate toast so the admin
+        // knows where to look in the Excel file.
+        const c = d.conflicts[0];
+        toast(
+          `⚠️ تعارض: "${c.teacher_names.join('" و"')}" يشيران لنفس المعلم`,
+          { icon: '⚠️', duration: 8000 },
+        );
+      }
       setPreview(null);
       setTeacherChoices({});
       qc.invalidateQueries({ queryKey: ['teacher-schedule'] });
@@ -117,6 +132,27 @@ export default function TeacherSchedulePage() {
     const file = e.target.files?.[0];
     if (file) previewMut.mutate(file);
   };
+
+  // Detect duplicate user_id mappings — if two Excel rows point to the
+  // same user, the unique constraint will explode at commit time. Show
+  // the admin upfront so they can change one of the picks.
+  const duplicateUserIds = useMemo(() => {
+    if (!preview) return new Map<string, string[]>();
+    const m = new Map<string, string[]>();
+    preview.parsed.teachers.forEach((t, i) => {
+      const uid = teacherChoices[i];
+      if (!uid) return;
+      const arr = m.get(uid) || [];
+      arr.push(t.teacher_name);
+      m.set(uid, arr);
+    });
+    // Keep only entries with > 1 Excel name pointing to the same user.
+    const out = new Map<string, string[]>();
+    for (const [uid, names] of m) {
+      if (names.length > 1) out.set(uid, names);
+    }
+    return out;
+  }, [preview, teacherChoices]);
 
   const validForCommit = preview &&
     preview.parsed.teachers.some((_, i) => teacherChoices[i] != null);
@@ -279,6 +315,26 @@ export default function TeacherSchedulePage() {
               })}
             </div>
           </div>
+
+          {/* Duplicate-mapping warning */}
+          {duplicateUserIds.size > 0 && (
+            <div className="card border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10">
+              <p className="text-sm font-semibold mb-1 text-amber-900 dark:text-amber-200">
+                ⚠️ تعارض في المطابقة — أكثر من اسم Excel يشير لنفس المعلم في النظام
+              </p>
+              <p className="text-xs text-amber-800 dark:text-amber-300 mb-2">
+                الاستيراد سيستمر لكن سيُستبقى أوّل معلم لكل خانة، والباقي سيُتجاهل.
+                لو كانوا فعلًا أشخاصًا مختلفين، عدِّل الاختيار قبل التأكيد.
+              </p>
+              <ul className="text-xs space-y-1">
+                {Array.from(duplicateUserIds.entries()).map(([uid, names]) => (
+                  <li key={uid} className="text-amber-900 dark:text-amber-200">
+                    • {names.join('  ↔  ')}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="card sticky bottom-2 z-10 flex items-center justify-between gap-2 flex-wrap">

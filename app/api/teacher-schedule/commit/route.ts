@@ -88,11 +88,61 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'لم يتم تحديد أي خانة قابلة للحفظ' }, { status: 400 });
   }
 
+  // Deduplicate by (teacher_user_id, day_of_week, period_number) before
+  // inserting. This handles the case where two different Excel teacher
+  // names get mapped to the same user_id — the unique constraint on
+  // teacher_schedule would otherwise abort the whole import. We keep
+  // the FIRST occurrence (Excel row order) and report the dropped ones
+  // so the admin can reconcile the source spreadsheet later.
+  const seen = new Set<string>();
+  const dedupedRows: typeof rowsToInsert = [];
+  const conflicts: Array<{ teacher_user_id: string; teacher_names: string[]; day: number; period: number }> = [];
+  const conflictByKey = new Map<string, { teacher_names: Set<string>; teacher_user_id: string; day: number; period: number }>();
+
+  for (const row of rowsToInsert) {
+    const key = `${row.teacher_user_id}:${row.day_of_week}:${row.period_number}`;
+    if (seen.has(key)) {
+      // Track that this slot saw multiple Excel teacher names for the same user.
+      const ex = conflictByKey.get(key);
+      if (ex) ex.teacher_names.add(row.teacher_name);
+      else conflictByKey.set(key, {
+        teacher_names: new Set([row.teacher_name]),
+        teacher_user_id: row.teacher_user_id,
+        day: row.day_of_week,
+        period: row.period_number,
+      });
+      continue;
+    }
+    seen.add(key);
+    dedupedRows.push(row);
+    // Pre-register so the next duplicate adds the OTHER name too — the
+    // first row's name is also part of the conflict set.
+    conflictByKey.set(key, {
+      teacher_names: new Set([row.teacher_name]),
+      teacher_user_id: row.teacher_user_id,
+      day: row.day_of_week,
+      period: row.period_number,
+    });
+  }
+
+  // Compile conflicts for the response — only entries where >1 distinct
+  // teacher_name landed on the same slot.
+  for (const [, v] of conflictByKey) {
+    if (v.teacher_names.size > 1) {
+      conflicts.push({
+        teacher_user_id: v.teacher_user_id,
+        teacher_names: Array.from(v.teacher_names),
+        day: v.day,
+        period: v.period,
+      });
+    }
+  }
+
   // Insert in chunks to stay under Supabase's request size limit.
   const CHUNK = 500;
   let inserted = 0;
-  for (let i = 0; i < rowsToInsert.length; i += CHUNK) {
-    const slice = rowsToInsert.slice(i, i + CHUNK);
+  for (let i = 0; i < dedupedRows.length; i += CHUNK) {
+    const slice = dedupedRows.slice(i, i + CHUNK);
     const { error: insErr } = await admin.from('teacher_schedule').insert(slice);
     if (insErr) {
       return NextResponse.json(
@@ -120,6 +170,12 @@ export async function POST(request: NextRequest) {
       teachers_committed: body.teachers.filter((t) => t.teacher_user_id).length,
       teachers_skipped_unmatched: body.teachers.filter((t) => !t.teacher_user_id).length,
       rows_inserted: inserted,
+      // Number of cells dropped due to duplicate (user, day, period)
+      // — happens when the admin maps two Excel teacher names to the
+      // same user. The conflicts array surfaces which slots collided
+      // so the admin can fix the source data if needed.
+      duplicates_dropped: rowsToInsert.length - dedupedRows.length,
+      conflicts,
     },
   });
 }
