@@ -19,6 +19,7 @@ interface DetectionRow {
   grade_name: string;
   expected_periods: number;
   absent_periods: number[];
+  category?: 'full_absence' | 'escape_after_first' | 'mid_day_departure' | 'selective_skip';
 }
 
 interface DismissalRow {
@@ -41,11 +42,18 @@ interface DetectionResult {
   stats: {
     total_students: number;
     full_absences: number;
-    escapes: number;
+    escapes: number;                  // total of the three escape sub-categories
+    escape_after_first: number;
+    mid_day_departure: number;
+    selective_skip: number;
     dismissals: number;
     incomplete_sections: number;
   };
   full_absences: DetectionRow[];
+  escape_after_first: DetectionRow[];
+  mid_day_departure: DetectionRow[];
+  selective_skip: DetectionRow[];
+  // legacy union — kept by the API for old callers; we don't read it here
   escapes: DetectionRow[];
   dismissals: DismissalRow[];
   incomplete_sections: IncompleteSection[];
@@ -72,7 +80,9 @@ export default function DailyAttendancePage() {
   const [shouldRun, setShouldRun] = useState(true);
 
   const [selectedAbsences, setSelectedAbsences] = useState<Set<number>>(new Set());
-  const [selectedEscapes, setSelectedEscapes] = useState<Set<number>>(new Set());
+  const [selectedEscapeFirst, setSelectedEscapeFirst] = useState<Set<number>>(new Set());
+  const [selectedMidDay, setSelectedMidDay] = useState<Set<number>>(new Set());
+  const [selectedSelective, setSelectedSelective] = useState<Set<number>>(new Set());
   const [showResult, setShowResult] = useState<{ result: SendResult; type: 'absence' | 'escape' } | null>(null);
 
   const { data, isLoading, isFetching, refetch } = useQuery<DetectionResult>({
@@ -94,8 +104,12 @@ export default function DailyAttendancePage() {
   // common "send to everyone" intent. Admin can untick individuals.
   useMemo(() => {
     if (!data) return;
-    setSelectedAbsences(new Set(data.full_absences.filter((r) => !!r.phone).map((r) => r.student_id)));
-    setSelectedEscapes(new Set(data.escapes.filter((r) => !!r.phone).map((r) => r.student_id)));
+    const withPhone = (rows: DetectionRow[]) =>
+      new Set(rows.filter((r) => !!r.phone).map((r) => r.student_id));
+    setSelectedAbsences(withPhone(data.full_absences));
+    setSelectedEscapeFirst(withPhone(data.escape_after_first || []));
+    setSelectedMidDay(withPhone(data.mid_day_departure || []));
+    setSelectedSelective(withPhone(data.selective_skip || []));
   }, [data]);
 
   const sendMut = useMutation({
@@ -141,10 +155,15 @@ export default function DailyAttendancePage() {
     }
   };
 
-  const sendEscapes = () => {
-    if (!data) return;
-    const recipients = data.escapes
-      .filter((r) => selectedEscapes.has(r.student_id))
+  // All three escape sub-categories share the same send endpoint
+  // (type='escape'); only the visible bucket and pre-selection differ.
+  const sendEscapeBucket = (
+    rows: DetectionRow[],
+    selected: Set<number>,
+    label: string,
+  ) => {
+    const recipients = rows
+      .filter((r) => selected.has(r.student_id))
       .map((r) => ({
         student_id: r.student_id,
         student_name: r.student_name,
@@ -158,7 +177,7 @@ export default function DailyAttendancePage() {
       return;
     }
     const minutes = Math.ceil((recipients.length * 5.5) / 60);
-    if (confirm(`سيتم إرسال ${recipients.length} رسالة هروب • مدة متوقّعة ~${minutes} دقيقة`)) {
+    if (confirm(`سيتم إرسال ${recipients.length} رسالة "${label}" • مدة متوقّعة ~${minutes} دقيقة`)) {
       sendMut.mutate({ type: 'escape', recipients });
     }
   };
@@ -223,12 +242,14 @@ export default function DailyAttendancePage() {
         ) : null
       ) : (
         <>
-          {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {/* Stats — 6 categories laid out wide */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
             <Stat label="إجمالي الطلاب" value={data.stats.total_students} tone="gray" />
             <Stat label="🔴 غياب كامل" value={data.stats.full_absences} tone="red" />
-            <Stat label="🟠 هروب" value={data.stats.escapes} tone="orange" />
-            <Stat label="🔵 استئذان" value={data.stats.dismissals} tone="blue" />
+            <Stat label="🟠 هروب بعد التحضير" value={data.stats.escape_after_first ?? 0} tone="orange" />
+            <Stat label="🔵 انصراف منتصف اليوم" value={data.stats.mid_day_departure ?? 0} tone="cyan" />
+            <Stat label="🟡 تهرّب من حصة" value={data.stats.selective_skip ?? 0} tone="yellow" />
+            <Stat label="🟣 استئذان" value={data.stats.dismissals} tone="purple" />
             <Stat label="⏸ غير مكتمل" value={data.stats.incomplete_sections} tone="amber" />
           </div>
 
@@ -264,10 +285,10 @@ export default function DailyAttendancePage() {
             </div>
           )}
 
-          {/* Full absences */}
+          {/* 🔴 Full absences */}
           <BucketCard
             title="🔴 الغياب الكامل"
-            description="الطلاب الذين تغيّبوا عن كل الحصص في النطاق"
+            description="الطلاب الذين تغيّبوا عن كل الحصص في النطاق — لم يأتوا للمدرسة"
             tone="red"
             rows={data.full_absences}
             selected={selectedAbsences}
@@ -278,17 +299,45 @@ export default function DailyAttendancePage() {
             showPeriods={false}
           />
 
-          {/* Escapes */}
+          {/* 🟠 Escape after first period */}
           <BucketCard
-            title="🟠 الهروب من حصص"
-            description="الطلاب الذين حضروا للمدرسة لكن تغيّبوا عن بعض الحصص"
+            title="🟠 هروب بعد التحضير"
+            description="حضر الحصة الأولى للتحضير، ثم غاب من باقي الحصص — حالة مشبوهة"
             tone="orange"
-            rows={data.escapes}
-            selected={selectedEscapes}
-            setSelected={setSelectedEscapes}
-            onSend={sendEscapes}
+            rows={data.escape_after_first || []}
+            selected={selectedEscapeFirst}
+            setSelected={setSelectedEscapeFirst}
+            onSend={() => sendEscapeBucket(data.escape_after_first || [], selectedEscapeFirst, 'هروب بعد التحضير')}
             sending={sendMut.isPending && sendMut.variables?.type === 'escape'}
-            sendLabel="إرسال إشعار هروب"
+            sendLabel="إرسال إشعار"
+            showPeriods={true}
+          />
+
+          {/* 🔵 Mid-day departure */}
+          <BucketCard
+            title="🔵 انصراف منتصف اليوم"
+            description="حضر بداية اليوم، ثم غاب من حصص لاحقة — قد يكون انصرف فعلًا"
+            tone="cyan"
+            rows={data.mid_day_departure || []}
+            selected={selectedMidDay}
+            setSelected={setSelectedMidDay}
+            onSend={() => sendEscapeBucket(data.mid_day_departure || [], selectedMidDay, 'انصراف منتصف اليوم')}
+            sending={sendMut.isPending && sendMut.variables?.type === 'escape'}
+            sendLabel="إرسال إشعار"
+            showPeriods={true}
+          />
+
+          {/* 🟡 Selective skip */}
+          <BucketCard
+            title="🟡 تهرّب من حصص محددة"
+            description="حاضر معظم الحصص، غائب من حصة أو حصتين بعينها — راجع المعلم المعنيّ"
+            tone="yellow"
+            rows={data.selective_skip || []}
+            selected={selectedSelective}
+            setSelected={setSelectedSelective}
+            onSend={() => sendEscapeBucket(data.selective_skip || [], selectedSelective, 'تهرّب من حصص')}
+            sending={sendMut.isPending && sendMut.variables?.type === 'escape'}
+            sendLabel="إرسال إشعار"
             showPeriods={true}
           />
 
@@ -296,8 +345,8 @@ export default function DailyAttendancePage() {
           {data.dismissals.length > 0 && (
             <div className="card">
               <h2 className="font-semibold flex items-center gap-2 mb-3">
-                <BadgeCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                🔵 المستأذنون اليوم ({data.dismissals.length})
+                <BadgeCheck className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                🟣 المستأذنون اليوم ({data.dismissals.length})
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 هؤلاء الطلاب لديهم استئذانات مسجَّلة — تم إشعار الأهالي مسبقاً ولا يحتاجون رسالة جديدة.
@@ -333,7 +382,7 @@ function BucketCard({
 }: {
   title: string;
   description: string;
-  tone: 'red' | 'orange';
+  tone: 'red' | 'orange' | 'cyan' | 'yellow';
   rows: DetectionRow[];
   selected: Set<number>;
   setSelected: (s: Set<number>) => void;
@@ -356,6 +405,8 @@ function BucketCard({
   const cls = {
     red:    { bg: 'bg-red-50 dark:bg-red-500/10', border: 'border-red-200 dark:border-red-500/30', btn: 'bg-red-600 hover:bg-red-700' },
     orange: { bg: 'bg-orange-50 dark:bg-orange-500/10', border: 'border-orange-200 dark:border-orange-500/30', btn: 'bg-orange-600 hover:bg-orange-700' },
+    cyan:   { bg: 'bg-cyan-50 dark:bg-cyan-500/10', border: 'border-cyan-200 dark:border-cyan-500/30', btn: 'bg-cyan-600 hover:bg-cyan-700' },
+    yellow: { bg: 'bg-yellow-50 dark:bg-yellow-500/10', border: 'border-yellow-200 dark:border-yellow-500/30', btn: 'bg-yellow-600 hover:bg-yellow-700' },
   }[tone];
 
   return (
@@ -432,13 +483,16 @@ function BucketCard({
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone: 'gray' | 'red' | 'orange' | 'blue' | 'amber' }) {
+function Stat({ label, value, tone }: { label: string; value: number; tone: 'gray' | 'red' | 'orange' | 'blue' | 'amber' | 'cyan' | 'yellow' | 'purple' }) {
   const cls = {
     gray:   'text-gray-900 dark:text-gray-100',
     red:    'text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10',
     orange: 'text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/10',
     blue:   'text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10',
     amber:  'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10',
+    cyan:   'text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-500/10',
+    yellow: 'text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-500/10',
+    purple: 'text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-500/10',
   }[tone];
   return (
     <div className={`card text-center py-3 ${cls.includes('bg-') ? cls.split(' ').filter(c => c.startsWith('bg-')).join(' ') : ''}`}>

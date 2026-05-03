@@ -211,6 +211,16 @@ export const changePasswordSchema = z.object({
 // Period attendance — submitted as a session (one save = one record + many absences)
 export const PERIOD_ATT_STATUSES = ['absent', 'late', 'excused'] as const;
 
+// Provenance of each absence entry. The teacher UI sets these:
+//   manual        — teacher tapped the student themselves
+//   auto_cascade  — system suggested from an earlier period and the
+//                   teacher accepted by clicking "apply cascade"
+//   overridden    — reserved for future "kept absent but flagged as
+//                   edited from cascade default" — currently unused on
+//                   the wire but accepted to keep the schema forward-
+//                   compatible with the DB column.
+export const PERIOD_ABSENCE_SOURCES = ['manual', 'auto_cascade', 'overridden'] as const;
+
 export const savePeriodAttendanceSchema = z.object({
   section_id: z.number().int().positive(),
   period_id: z.number().int().positive(),
@@ -221,6 +231,7 @@ export const savePeriodAttendanceSchema = z.object({
     student_id: z.number().int().positive(),
     status: z.enum(PERIOD_ATT_STATUSES).default('absent'),
     notes: z.string().max(500).optional(),
+    source: z.enum(PERIOD_ABSENCE_SOURCES).optional(),
   })).max(500),
 });
 

@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   Calendar, Clock, Search, Save, CheckCircle2, Loader2, AlertCircle,
-  ChevronDown, Users, RefreshCw, ArrowRight,
+  ChevronDown, Users, RefreshCw, ArrowRight, History, X as XIcon,
 } from 'lucide-react';
 import { useClassSession } from '@/lib/hooks/useClassSession';
 import { useMyAssignedSections } from '@/lib/hooks/useMyAssignedSections';
@@ -85,6 +85,18 @@ function TeacherEntryPage() {
   // status[student_id] — defaults to 'present', set explicitly for non-present.
   const [statuses, setStatuses] = useState<Record<number, PeriodAttendanceStatus>>({});
 
+  // Track which student IDs had their 'absent' status applied via the
+  // cascade-from-earlier-periods button. Used at save time to mark those
+  // rows as source='auto_cascade' so reports can distinguish first-hand
+  // teacher observations from inherited absences. Cleared whenever the
+  // teacher changes section/period/date (see effect below).
+  const [cascadeApplied, setCascadeApplied] = useState<Set<number>>(new Set());
+
+  // After the teacher dismisses the banner ("تجاهل") we don't show it
+  // again for the same combination — it would be noisy. Reset together
+  // with cascadeApplied below.
+  const [cascadeDismissed, setCascadeDismissed] = useState(false);
+
   // ---- Data ----
   const { data: periods = [] } = useQuery<Period[]>({
     queryKey: ['periods-active'],
@@ -146,7 +158,11 @@ function TeacherEntryPage() {
     gradeChangeCount.count++;
     if (gradeChangeCount.count > 1) setSectionId(null);
   }, [gradeId, gradeChangeCount]);
-  useEffect(() => { setStatuses({}); }, [sectionId, periodId, date]);
+  useEffect(() => {
+    setStatuses({});
+    setCascadeApplied(new Set());
+    setCascadeDismissed(false);
+  }, [sectionId, periodId, date]);
 
   // Pre-fill statuses from any saved session for this combination.
   const { data: existing, refetch: refetchExisting } = useQuery({
@@ -170,6 +186,55 @@ function TeacherEntryPage() {
     }
     setStatuses(next);
   }, [existing]);
+
+  // Cascade query — students absent in EARLIER periods of this same
+  // section+date. Used to power the "apply absences from period 1" banner
+  // shown to teachers entering period 2+.
+  type CascadeRow = {
+    student_id: number;
+    student_code: string;
+    name: string;
+    earliest_absent_period: number;
+    absent_period_numbers: number[];
+    latest_status: 'absent' | 'late' | 'excused';
+  };
+  const { data: cascadeData } = useQuery<{ earliest_period_number: number | null; cascade: CascadeRow[] }>({
+    queryKey: ['period-cascade', sectionId, periodId, date],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        section_id: String(sectionId), period_id: String(periodId), date,
+      });
+      const r = await fetch(`/api/period-attendance/cascade?${params}`);
+      if (!r.ok) return { earliest_period_number: null, cascade: [] };
+      return (await r.json()).data;
+    },
+    enabled: !!(sectionId && periodId && date),
+  });
+
+  // Filter out cascade rows for students who are already marked something
+  // in the current period (the teacher already handled them) so the banner
+  // count reflects only NEW suggestions.
+  const pendingCascade = useMemo(() => {
+    const list = cascadeData?.cascade || [];
+    return list.filter((c) => !statuses[c.student_id] && c.latest_status === 'absent');
+  }, [cascadeData, statuses]);
+
+  const applyCascade = () => {
+    setStatuses((prev) => {
+      const next = { ...prev };
+      const newCascadeIds = new Set(cascadeApplied);
+      for (const c of pendingCascade) {
+        next[c.student_id] = 'absent';
+        newCascadeIds.add(c.student_id);
+      }
+      setCascadeApplied(newCascadeIds);
+      return next;
+    });
+    toast.success(`تم تطبيق غياب ${pendingCascade.length} طالبًا من حصص سابقة`, {
+      duration: 3500,
+    });
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(20);
+  };
 
   // ---- Search filter ----
   const visibleStudents = useMemo(() => {
@@ -202,6 +267,14 @@ function TeacherEntryPage() {
       if (next === null) delete copy[id]; else copy[id] = next;
       return copy;
     });
+    // Manual edit clears the cascade tag — the row was no longer set
+    // automatically, the teacher took ownership of the value.
+    setCascadeApplied((prev) => {
+      if (!prev.has(id)) return prev;
+      const copy = new Set(prev);
+      copy.delete(id);
+      return copy;
+    });
   };
 
   const setAllPresent = () => setStatuses({});
@@ -216,7 +289,17 @@ function TeacherEntryPage() {
     mutationFn: async () => {
       const absences = Object.entries(statuses)
         .filter(([, st]) => st !== 'present')
-        .map(([sid, st]) => ({ student_id: Number(sid), status: st as 'absent'|'late'|'excused' }));
+        .map(([sid, st]) => {
+          const id = Number(sid);
+          return {
+            student_id: id,
+            status: st as 'absent'|'late'|'excused',
+            // Tag rows that came from clicking "apply cascade" so the
+            // detection report can show them differently (inherited vs
+            // teacher-observed).
+            source: cascadeApplied.has(id) ? 'auto_cascade' as const : 'manual' as const,
+          };
+        });
 
       const r = await fetch('/api/period-attendance', {
         method: 'POST',
@@ -345,6 +428,64 @@ function TeacherEntryPage() {
         </div>
       )}
 
+      {/* Cascade banner — students absent in earlier periods of the same
+          (section, date). Shown only when there's at least one student
+          NOT yet handled in the current period and the teacher hasn't
+          dismissed the banner. */}
+      {!cascadeDismissed && pendingCascade.length > 0 && (
+        <div className="card border-orange-200 dark:border-orange-500/30 bg-orange-50 dark:bg-orange-500/10 text-orange-900 dark:text-orange-200 text-sm">
+          <div className="flex items-start gap-2 mb-3">
+            <History className="w-4 h-4 mt-0.5 shrink-0 text-orange-600 dark:text-orange-400" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold">
+                {pendingCascade.length} طالب{pendingCascade.length > 2 ? 'ًا' : ''} غائب من حصة سابقة
+              </p>
+              <p className="text-xs opacity-90 mt-0.5">
+                نقترح تطبيق غيابهم تلقائيًا في هذه الحصة. يمكنك تعديل أي طالب يدويًا بعد التطبيق.
+              </p>
+            </div>
+            <button
+              onClick={() => setCascadeDismissed(true)}
+              className="p-1 -mt-1 -me-1 rounded hover:bg-orange-100 dark:hover:bg-orange-500/20"
+              aria-label="إغلاق التنبيه"
+            >
+              <XIcon className="w-4 h-4" />
+            </button>
+          </div>
+
+          <ul className="text-xs space-y-1 mb-3 max-h-32 overflow-y-auto">
+            {pendingCascade.slice(0, 8).map((c) => (
+              <li key={c.student_id} className="flex items-center gap-2 px-2 py-1 rounded bg-white/60 dark:bg-black/20">
+                <span className="font-medium truncate flex-1">{c.name}</span>
+                <span className="text-[10px] opacity-70">
+                  حصص: {c.absent_period_numbers.join('، ')}
+                </span>
+              </li>
+            ))}
+            {pendingCascade.length > 8 && (
+              <li className="text-[11px] opacity-70 text-center pt-1">
+                و{pendingCascade.length - 8} طالب{pendingCascade.length - 8 > 2 ? 'ًا' : ''} آخر...
+              </li>
+            )}
+          </ul>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={applyCascade}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-orange-600 text-white text-xs font-medium hover:bg-orange-700"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" /> تطبيق غيابهم تلقائيًا
+            </button>
+            <button
+              onClick={() => setCascadeDismissed(true)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-500/40 text-xs hover:bg-orange-50 dark:hover:bg-orange-500/10"
+            >
+              تجاهل
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Students */}
       <div className="card">
         {!sectionId ? (
@@ -408,7 +549,17 @@ function TeacherEntryPage() {
                         {STATUS_LABEL[st]}
                       </span>
                       <div className="flex-1 min-w-0 text-right">
-                        <p className="font-medium truncate">{fullName}</p>
+                        <p className="font-medium truncate flex items-center gap-1.5">
+                          {fullName}
+                          {cascadeApplied.has(s.id) && (
+                            <span
+                              className="text-[9px] font-normal px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300 border border-orange-200 dark:border-orange-500/40 shrink-0"
+                              title="تم تطبيق هذا الغياب تلقائيًا من حصة سابقة"
+                            >
+                              تلقائي
+                            </span>
+                          )}
+                        </p>
                         <p className="text-[11px] opacity-70 font-mono" dir="ltr">{s.student_id}</p>
                       </div>
                     </button>

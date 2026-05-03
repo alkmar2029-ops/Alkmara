@@ -155,16 +155,72 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // 6. Classify rollups into buckets.
+  // 6. Classify rollups into 6 buckets — granular escape categories
+  // per the school's request:
+  //   🟢 (no bucket — present all day, not surfaced)
+  //   🔴 full_absence       — absent in every recorded period
+  //   🟠 escape_after_first — present in P1 only, absent rest
+  //   🔵 mid_day_departure  — present early periods (P1..Pk, k≥2),
+  //                           absent every period after Pk
+  //   🟡 selective_skip     — non-contiguous pattern OR only 1-2
+  //                           random periods missed (kid skipped a
+  //                           specific teacher's class)
+  //   🟣 dismissal          — already filtered to its own bucket below
+  //
+  // The buckets are mutually exclusive — each student lands in exactly
+  // one. Sort order inside each bucket: most-absent first.
+  type Bucket = Rollup & { category: 'full_absence' | 'escape_after_first' | 'mid_day_departure' | 'selective_skip' };
   const dismissedIds = new Set((dismissals || []).map((d: any) => d.student_id));
-  const fullAbsences: Rollup[] = [];
-  const escapes: Rollup[] = [];
+  const fullAbsences: Bucket[] = [];
+  const escapeAfterFirst: Bucket[] = [];
+  const midDayDeparture: Bucket[] = [];
+  const selectiveSkip: Bucket[] = [];
+
   for (const r of rollups) {
-    if (dismissedIds.has(r.student_id)) continue;  // already in dismissal bucket
+    if (dismissedIds.has(r.student_id)) continue;  // own bucket below
+    if (r.absent_periods.length === 0) continue;   // pure present
+
+    // Compute the period numbers the student WAS present in (within range).
+    const sectionSessions = sectionsToSessions.get(r.section_id) || [];
+    const allPeriodNumbers = sectionSessions
+      .map((s: any) => s.periods?.number)
+      .filter((n: any): n is number => typeof n === 'number')
+      .sort((a, b) => a - b);
+    const absentSet = new Set(r.absent_periods);
+    const presentNumbers = allPeriodNumbers.filter((n) => !absentSet.has(n));
+
+    // Full absence: missed every recorded period in range.
     if (r.absent_periods.length >= r.expected_periods) {
-      fullAbsences.push(r);
-    } else if (r.absent_periods.length > 0) {
-      escapes.push(r);
+      fullAbsences.push({ ...r, category: 'full_absence' });
+      continue;
+    }
+
+    // The student attended at least one period. Check the pattern.
+    const sortedAbsent = [...r.absent_periods].sort((a, b) => a - b);
+    const sortedPresent = [...presentNumbers].sort((a, b) => a - b);
+
+    // Both arrays non-empty here (full_absence handled, present.length > 0).
+    const startsAtP1 = sortedPresent[0] === 1;
+    const lastPresent = sortedPresent[sortedPresent.length - 1];
+    const firstAbsent = sortedAbsent[0];
+    const allAbsentAfterPresent = firstAbsent > lastPresent;
+    // "Contiguous early presence" = the present periods are 1, 2, ..., k
+    // with no gaps. If there's a gap (e.g., present 1,3 missing 2), the
+    // pattern is selective rather than a clean mid-day departure.
+    const presentContiguousFromOne =
+      startsAtP1 && sortedPresent.every((n, i) => n === i + 1);
+
+    if (presentContiguousFromOne && allAbsentAfterPresent) {
+      if (sortedPresent.length === 1) {
+        // Only P1 attended — classic "checked in then ran".
+        escapeAfterFirst.push({ ...r, category: 'escape_after_first' });
+      } else {
+        // Multiple early periods attended, then disappeared — went home.
+        midDayDeparture.push({ ...r, category: 'mid_day_departure' });
+      }
+    } else {
+      // Anything else: scattered absences, skipping specific teachers.
+      selectiveSkip.push({ ...r, category: 'selective_skip' });
     }
   }
 
@@ -198,7 +254,14 @@ export async function GET(request: NextRequest) {
 
   // Sort biggest-impact first inside each list.
   fullAbsences.sort((a, b) => `${a.grade_name} ${a.section_name}`.localeCompare(`${b.grade_name} ${b.section_name}`, 'ar'));
-  escapes.sort((a, b) => b.absent_periods.length - a.absent_periods.length);
+  escapeAfterFirst.sort((a, b) => b.absent_periods.length - a.absent_periods.length);
+  midDayDeparture.sort((a, b) => b.absent_periods.length - a.absent_periods.length);
+  selectiveSkip.sort((a, b) => b.absent_periods.length - a.absent_periods.length);
+
+  // Backwards-compatible "escapes" union — older clients that haven't
+  // updated their UI keep working. The granular buckets are added
+  // alongside, not in place of, the old field.
+  const escapes = [...escapeAfterFirst, ...midDayDeparture, ...selectiveSkip];
 
   // Total students for context — straight count, no RLS surprises since
   // admin/staff are already past requireRole.
@@ -212,11 +275,21 @@ export async function GET(request: NextRequest) {
       stats: {
         total_students: totalStudents ?? 0,
         full_absences: fullAbsences.length,
-        escapes: escapes.length,
+        escapes: escapes.length,                    // legacy total
+        escape_after_first: escapeAfterFirst.length,
+        mid_day_departure: midDayDeparture.length,
+        selective_skip: selectiveSkip.length,
         dismissals: dismissalRows.length,
         incomplete_sections: incompleteSections.length,
       },
       full_absences: fullAbsences,
+      // Granular buckets — each row also has `category` so a single
+      // unified UI list can color-code based on the field.
+      escape_after_first: escapeAfterFirst,
+      mid_day_departure: midDayDeparture,
+      selective_skip: selectiveSkip,
+      // Kept for backwards compatibility with any caller that still
+      // reads `escapes` as a flat array.
       escapes,
       dismissals: dismissalRows,
       incomplete_sections: incompleteSections,

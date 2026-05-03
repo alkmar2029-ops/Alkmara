@@ -74,6 +74,9 @@ export async function POST(request: NextRequest) {
       student_id: a.student_id,
       status: a.status,
       notes: a.notes || null,
+      // Forwarded as-is to the RPC which writes it to period_absences.source.
+      // Defaults to 'manual' on the DB side if absent.
+      source: a.source || 'manual',
     })),
   });
 
