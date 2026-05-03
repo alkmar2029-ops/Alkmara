@@ -38,21 +38,21 @@ interface BulkOutcome {
 
 /**
  * Auto-generate a placeholder email for a teacher when the admin doesn't
- * supply one. Format: teacher.<sanitized-name-token>.<short-id>@school.local
+ * supply one. Must be pure ASCII — Supabase's email validator (gotrue)
+ * rejects non-ASCII local parts with "Unable to validate email address:
+ * invalid format". Format: teacher.<random-base36>@alkmara.school
  *
- * The domain `school.local` is intentionally a non-routable TLD —
- * accounts created via bulk import use email only as a unique login
- * identifier, no actual mail is sent. The admin can change it later
- * from the teachers page if the school issues real email addresses.
+ * Domain note: we use a unique-looking subdomain (`alkmara.school`) so
+ * the placeholder addresses are visually obvious in admin tooling but
+ * still ASCII-clean. No actual mail is delivered — these emails are
+ * login identifiers only and the admin can change them from the
+ * teachers page later.
  */
-function autoEmail(fullName: string): string {
-  const slug = fullName
-    .replace(/[ً-ْٰ]/g, '')   // strip Arabic diacritics
-    .replace(/[^؀-ۿa-zA-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 30) || 'teacher';
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `teacher.${slug}.${rand}@school.local`;
+function autoEmail(_fullName: string): string {
+  // Two random base36 chunks → 12 chars of entropy, lowercase ASCII.
+  const a = Math.random().toString(36).slice(2, 8);
+  const b = Math.random().toString(36).slice(2, 8);
+  return `teacher.${a}${b}@alkmara.school`;
 }
 
 export async function POST(request: NextRequest) {
