@@ -424,6 +424,30 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
     queryFn: async () => (await (await fetch(`/api/period-attendance/session/${sessionId}`)).json()).data,
   });
 
+  // Print state — which categories to include in the printable report.
+  // Defaults: the three "exception" buckets (absent/late/excused). Present
+  // is opt-in because a 30-name list bloats the page; admin can tick it.
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printOpts, setPrintOpts] = useState({
+    absent: true,
+    late: true,
+    excused: true,
+    present: false,
+  });
+  const allSelected =
+    printOpts.absent && printOpts.late && printOpts.excused && printOpts.present;
+  const noneSelected =
+    !printOpts.absent && !printOpts.late && !printOpts.excused && !printOpts.present;
+  const toggleAll = () => {
+    const v = !allSelected;
+    setPrintOpts({ absent: v, late: v, excused: v, present: v });
+  };
+  const doPrint = () => {
+    setPrintOpen(false);
+    // Wait for the dialog to unmount + the print-area to lay out, then fire.
+    setTimeout(() => window.print(), 80);
+  };
+
   const sendWaMut = useMutation({
     mutationFn: async () => {
       const r = await fetch('/api/whatsapp/send-period-absences', {
@@ -553,22 +577,343 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
                 : <><Trash2 className="w-4 h-4" /> حذف الجلسة</>
               }
             </button>
-            {data.summary.absent > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={() => sendWaMut.mutate()}
-                disabled={sendWaMut.isPending}
-                className="btn-primary inline-flex items-center gap-1 text-sm"
+                onClick={() => setPrintOpen(true)}
+                className="inline-flex items-center gap-1 text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
+                title="طباعة كشف الحضور"
               >
-                {sendWaMut.isPending
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال... (~{Math.ceil(data.summary.absent * 5.5)}ث)</>
-                  : <><Send className="w-4 h-4" /> إرسال واتساب لأولياء الغائبين ({data.summary.absent})</>
-                }
+                <Printer className="w-4 h-4" /> طباعة
               </button>
-            )}
+              {data.summary.absent > 0 && (
+                <button
+                  onClick={() => sendWaMut.mutate()}
+                  disabled={sendWaMut.isPending}
+                  className="btn-primary inline-flex items-center gap-1 text-sm"
+                >
+                  {sendWaMut.isPending
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال... (~{Math.ceil(data.summary.absent * 5.5)}ث)</>
+                    : <><Send className="w-4 h-4" /> إرسال واتساب لأولياء الغائبين ({data.summary.absent})</>
+                  }
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Print options sub-dialog — renders above the modal (z-60). */}
+      {printOpen && data && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4"
+          onClick={(e) => {
+            // Stop the click from bubbling up to the outer modal's onClose
+            // — otherwise dismissing the print dialog would also close the
+            // session detail modal.
+            e.stopPropagation();
+            setPrintOpen(false);
+          }}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 max-w-sm w-full p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-base flex items-center gap-2">
+                <Printer className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                ماذا تطبع؟
+              </h3>
+              <button
+                onClick={() => setPrintOpen(false)}
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                aria-label="إغلاق"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <label className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 mb-1">
+              <input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4" />
+              <span className="font-medium">الجميع</span>
+            </label>
+            <div className="border-t border-gray-200 dark:border-gray-700 my-2" />
+
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                <input
+                  type="checkbox"
+                  checked={printOpts.absent}
+                  onChange={(e) => setPrintOpts({ ...printOpts, absent: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <XCircle className="w-4 h-4 text-red-600" />
+                <span className="flex-1">الغائبون</span>
+                <span className="text-xs text-gray-500 font-mono">{data.summary.absent}</span>
+              </label>
+              <label className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                <input
+                  type="checkbox"
+                  checked={printOpts.late}
+                  onChange={(e) => setPrintOpts({ ...printOpts, late: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <ClockIcon className="w-4 h-4 text-yellow-600" />
+                <span className="flex-1">المتأخرون</span>
+                <span className="text-xs text-gray-500 font-mono">{data.summary.late}</span>
+              </label>
+              <label className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                <input
+                  type="checkbox"
+                  checked={printOpts.excused}
+                  onChange={(e) => setPrintOpts({ ...printOpts, excused: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <BadgeCheck className="w-4 h-4 text-blue-600" />
+                <span className="flex-1">المستأذنون</span>
+                <span className="text-xs text-gray-500 font-mono">{data.summary.excused}</span>
+              </label>
+              <label className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                <input
+                  type="checkbox"
+                  checked={printOpts.present}
+                  onChange={(e) => setPrintOpts({ ...printOpts, present: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <CheckCircle2 className="w-4 h-4 text-green-600" />
+                <span className="flex-1">الحاضرون</span>
+                <span className="text-xs text-gray-500 font-mono">{data.summary.present}</span>
+              </label>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setPrintOpen(false)}
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={doPrint}
+                disabled={noneSelected}
+                className="flex-1 btn-primary inline-flex items-center justify-center gap-1 text-sm disabled:opacity-50"
+              >
+                <Printer className="w-4 h-4" /> طباعة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print-only area — hidden on screen, visible only in print preview. */}
+      {data && (
+        <div className="session-print-area" aria-hidden>
+          <div className="print-header">
+            <h1>كشف حضور الحصة</h1>
+            <div className="print-meta">
+              <p><strong>التاريخ:</strong> {data.session.attendance_date}</p>
+              <p><strong>الصف / الشعبة:</strong> {data.session.grade_name} / {data.session.section_name}</p>
+              <p><strong>الحصة:</strong> الحصة {data.session.period_number}</p>
+              <p><strong>المعلم المسجِّل:</strong> {data.session.teacher_name || '—'}</p>
+            </div>
+          </div>
+
+          <table className="print-summary">
+            <thead>
+              <tr>
+                <th>الإجمالي</th>
+                <th>حاضر</th>
+                <th>غائب</th>
+                <th>متأخر</th>
+                <th>مستأذن</th>
+                <th>نسبة الحضور</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{data.summary.total}</td>
+                <td>{data.summary.present}</td>
+                <td>{data.summary.absent}</td>
+                <td>{data.summary.late}</td>
+                <td>{data.summary.excused}</td>
+                <td>
+                  {data.summary.total > 0
+                    ? Math.round((data.summary.present / data.summary.total) * 100) + '٪'
+                    : '—'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {printOpts.absent && data.summary.absent > 0 && (
+            <PrintSection
+              title="الغائبون"
+              students={data.students.filter((s) => s.status === 'absent')}
+            />
+          )}
+          {printOpts.late && data.summary.late > 0 && (
+            <PrintSection
+              title="المتأخرون"
+              students={data.students.filter((s) => s.status === 'late')}
+            />
+          )}
+          {printOpts.excused && data.summary.excused > 0 && (
+            <PrintSection
+              title="المستأذنون"
+              students={data.students.filter((s) => s.status === 'excused')}
+            />
+          )}
+          {printOpts.present && data.summary.present > 0 && (
+            <PrintSection
+              title="الحاضرون"
+              students={data.students.filter((s) => s.status === 'present')}
+            />
+          )}
+
+          <div className="print-footer">
+            <p className="print-stamp">
+              تاريخ الطباعة:{' '}
+              {new Date().toLocaleString('ar-SA-u-ca-gregory', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </p>
+            <div className="print-signatures">
+              <div>توقيع المعلم: ............................</div>
+              <div>توقيع الإدارة: ............................</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print stylesheet — scoped to .session-print-area. */}
+      <style jsx global>{`
+        .session-print-area { display: none; }
+        @media print {
+          body * { visibility: hidden !important; }
+          .session-print-area, .session-print-area * { visibility: visible !important; }
+          .session-print-area {
+            display: block !important;
+            position: absolute;
+            inset: 0;
+            background: white !important;
+            color: black !important;
+            padding: 8mm;
+            font-family: 'Cairo', 'Tajawal', system-ui, sans-serif;
+            font-size: 11pt;
+          }
+          @page { size: A4 portrait; margin: 10mm; }
+          .session-print-area .print-header h1 {
+            text-align: center;
+            font-size: 18pt;
+            margin: 0 0 10pt;
+            font-weight: 800;
+            color: #111827;
+          }
+          .session-print-area .print-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4pt 16pt;
+            margin: 0 0 10pt;
+            padding: 6pt 8pt;
+            background: #f9fafb;
+            border: 0.5pt solid #d4d4d8;
+            border-radius: 3pt;
+          }
+          .session-print-area .print-meta p { margin: 0; font-size: 10pt; }
+          .session-print-area .print-summary {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 12pt;
+          }
+          .session-print-area .print-summary th,
+          .session-print-area .print-summary td {
+            border: 0.5pt solid #9ca3af;
+            padding: 5pt 6pt;
+            text-align: center;
+            font-size: 10pt;
+          }
+          .session-print-area .print-summary th { background: #e5e7eb; font-weight: 700; }
+          .session-print-area .print-section { margin-bottom: 12pt; page-break-inside: avoid; }
+          .session-print-area .print-section h2 {
+            font-size: 13pt;
+            margin: 0 0 6pt;
+            padding: 5pt 8pt;
+            background: #f3f4f6;
+            border-right: 4pt solid #2563eb;
+            font-weight: 700;
+          }
+          .session-print-area .print-section table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          .session-print-area .print-section th,
+          .session-print-area .print-section td {
+            border: 0.5pt solid #9ca3af;
+            padding: 4pt 6pt;
+            font-size: 10pt;
+            text-align: right;
+          }
+          .session-print-area .print-section th { background: #f9fafb; font-weight: 700; }
+          .session-print-area .print-footer {
+            margin-top: 18pt;
+            padding-top: 6pt;
+            border-top: 0.5pt solid #d4d4d8;
+          }
+          .session-print-area .print-stamp {
+            font-size: 8.5pt;
+            color: #6b7280;
+            margin: 0 0 14pt;
+          }
+          .session-print-area .print-signatures {
+            display: flex;
+            justify-content: space-between;
+            gap: 24pt;
+            font-size: 10pt;
+          }
+        }
+      `}</style>
     </div>
+  );
+}
+
+// Single status section in the printed report — table with row numbers,
+// student names, and a blank signature column.
+function PrintSection({
+  title,
+  students,
+}: {
+  title: string;
+  students: SessionDetail['students'];
+}) {
+  return (
+    <section className="print-section">
+      <h2>{title} ({students.length})</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style={{ width: '8%' }}>#</th>
+            <th>اسم الطالب</th>
+            <th style={{ width: '24%' }}>رقم الطالب</th>
+            <th style={{ width: '18%' }}>التوقيع</th>
+          </tr>
+        </thead>
+        <tbody>
+          {students.map((s, i) => (
+            <tr key={s.id}>
+              <td style={{ textAlign: 'center' }}>{i + 1}</td>
+              <td>{s.name}</td>
+              <td style={{ direction: 'ltr', textAlign: 'left', fontFamily: 'monospace' }}>
+                {s.student_id}
+              </td>
+              <td></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 
