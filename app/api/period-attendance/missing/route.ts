@@ -36,9 +36,15 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createServerSupabaseClient();
 
-  // Sections, periods, and recorded sessions in parallel — three independent
-  // reads, no point sequencing them.
-  const [sectionsRes, periodsRes, recordedRes] = await Promise.all([
+  // Sections, periods, recorded sessions, and the schedule for this
+  // day's day-of-week — four independent reads, no point sequencing them.
+  // The schedule lookup tells us "who SHOULD be teaching section X at
+  // period Y on this day" so empty cells in the grid can show the
+  // expected teacher's name even before they record attendance.
+  const dow = new Date(date).getDay();
+  const inSchoolWeek = dow >= 0 && dow <= 4;
+
+  const [sectionsRes, periodsRes, recordedRes, scheduleRes] = await Promise.all([
     supabase
       .from('sections')
       .select('id, grade_id, name, sort_order, grades ( id, name, sort_order )')
@@ -53,6 +59,13 @@ export async function GET(request: NextRequest) {
       .from('period_sessions')
       .select('id, section_id, period_id, absent_count, late_count, excused_count, total_count, recorded_at, recorded_by')
       .eq('attendance_date', date),
+    inSchoolWeek
+      ? supabase
+          .from('teacher_schedule')
+          .select('section_id, period_number, teacher_name, subject, teacher_user_id')
+          .eq('day_of_week', dow)
+          .eq('duty_type', 'class')
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (sectionsRes.error || periodsRes.error || recordedRes.error) {
@@ -117,6 +130,23 @@ export async function GET(request: NextRequest) {
     };
   }
 
+  // Build the expected-teacher map keyed by "<section>:<period_id>".
+  // We need period_id (not period_number) here so the client can look
+  // it up the same way as the `recorded` map. Map period_number → id once.
+  const periodNumberToId = new Map<number, number>();
+  for (const p of periods as any[]) {
+    if (typeof p.number === 'number') periodNumberToId.set(p.number, p.id);
+  }
+  const expected: Record<string, { teacher_name: string; subject: string | null }> = {};
+  for (const s of (scheduleRes.data || []) as any[]) {
+    const periodId = periodNumberToId.get(s.period_number);
+    if (!periodId || !s.section_id) continue;
+    expected[`${s.section_id}:${periodId}`] = {
+      teacher_name: s.teacher_name,
+      subject: s.subject || null,
+    };
+  }
+
   const totalExpected = sections.length * periods.length;
   const totalRecorded = (recordedRes.data || []).length;
   const totalMissing = Math.max(0, totalExpected - totalRecorded);
@@ -128,6 +158,10 @@ export async function GET(request: NextRequest) {
       sections,
       periods,
       recorded,
+      // The teacher_schedule entries for THIS day's day-of-week. Empty
+      // map when the date falls on Friday/Saturday (no school week
+      // entries) or when no schedule was imported yet.
+      expected,
       stats: {
         total_expected: totalExpected,
         total_recorded: totalRecorded,

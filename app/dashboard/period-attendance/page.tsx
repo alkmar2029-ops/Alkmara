@@ -35,11 +35,19 @@ interface RecordedCell {
   recorded_by: string | null;
   teacher_name: string | null;
 }
+interface ExpectedCell {
+  teacher_name: string;
+  subject: string | null;
+}
+
 interface MonitorData {
   date: string;
   sections: SectionRow[];
   periods: PeriodRow[];
   recorded: Record<string, RecordedCell>;
+  // Schedule-derived expected teacher per slot — empty map if no
+  // schedule has been imported. Keyed identically to `recorded`.
+  expected: Record<string, ExpectedCell>;
   stats: {
     total_expected: number;
     total_recorded: number;
@@ -328,17 +336,34 @@ export default function PeriodAttendancePage() {
                       </td>
                       {monitor.periods.map((p) => {
                         const s = monitor.recorded[`${sec.id}:${p.id}`];
+                        const exp = monitor.expected?.[`${sec.id}:${p.id}`];
                         if (!s) {
                           // Missing cell — clickable, opens reminder modal.
+                          // When the smart schedule knows who's expected to
+                          // be teaching this slot, show their name and
+                          // subject so the principal can call/whatsapp the
+                          // right person directly.
                           return (
                             <td key={p.id} className="px-1 py-1 text-center">
                               <button
                                 onClick={() => setMissingTarget({ section: sec, period: p, date })}
-                                className="w-full rounded-md border-2 border-dashed border-red-300 dark:border-red-500/40 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 py-2 text-xs transition-colors group"
-                                title={`جلسة ناقصة — اضغط لتذكير المعلم`}
+                                className="w-full rounded-md border-2 border-dashed border-red-300 dark:border-red-500/40 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 py-1.5 px-1 text-xs transition-colors group"
+                                title={
+                                  exp
+                                    ? `جلسة ناقصة • المعلم المتوقَّع: ${exp.teacher_name}${exp.subject ? ` (${exp.subject})` : ''} — اضغط للتذكير`
+                                    : 'جلسة ناقصة — اضغط للتذكير'
+                                }
                               >
                                 <Bell className="w-3.5 h-3.5 mx-auto mb-0.5 group-hover:animate-pulse" />
                                 <div className="text-[10px] font-medium">لم تُسجَّل</div>
+                                {exp && (
+                                  <div className="text-[9px] text-gray-600 dark:text-gray-400 mt-0.5 leading-tight truncate font-normal">
+                                    {exp.teacher_name}
+                                    {exp.subject && (
+                                      <span className="block opacity-70">{exp.subject}</span>
+                                    )}
+                                  </div>
+                                )}
                               </button>
                             </td>
                           );
