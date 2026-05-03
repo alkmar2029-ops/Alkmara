@@ -1,4 +1,5 @@
 import { sendText, type SendResult } from './wasender-client';
+import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type WhatsappRecipientType = 'parent' | 'teacher' | 'admin' | 'unknown';
@@ -10,7 +11,13 @@ export type WhatsappContextType =
   | 'manual';
 
 export interface SendAndLogParams {
-  supabase: SupabaseClient;
+  /**
+   * @deprecated No longer used — the log now always writes through the
+   * service-role client so RLS doesn't silently drop entries when the
+   * sender is a teacher (whatsapp_messages is staff/admin-only). Left
+   * in the type for backwards compatibility with existing callers.
+   */
+  supabase?: SupabaseClient;
   apiKey: string;
   phone: string;
   message: string;
@@ -26,10 +33,16 @@ export interface SendAndLogParams {
  * Send a WhatsApp message and persist a row in `whatsapp_messages` whether it
  * succeeded or failed. Logging never throws — if the insert fails we still
  * return the underlying send result so callers behave normally.
+ *
+ * The log insert uses the service-role client so it succeeds regardless of
+ * who triggered the send. whatsapp_messages has staff/admin-only RLS, but
+ * teachers can also send (gated upstream by canTeachersSendWhatsapp); their
+ * activity must still appear in the audit log so admins can review it. The
+ * `sent_by` column always records the actual user who triggered the send.
  */
 export async function sendTextAndLog(params: SendAndLogParams): Promise<SendResult> {
   const {
-    supabase, apiKey, phone, message,
+    apiKey, phone, message,
     recipientName = null,
     recipientType = 'unknown',
     templateName = null,
@@ -42,7 +55,8 @@ export async function sendTextAndLog(params: SendAndLogParams): Promise<SendResu
 
   // Best-effort log. Failure to log must not break the send flow.
   try {
-    await supabase.from('whatsapp_messages').insert({
+    const adminClient = createAdminSupabaseClient();
+    await adminClient.from('whatsapp_messages').insert({
       recipient_phone: phone.slice(0, 20),  // matches column length
       recipient_name: recipientName,
       recipient_type: recipientType,
