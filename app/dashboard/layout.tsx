@@ -11,6 +11,7 @@ import {
   Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
   Sun, Moon, Bell, Download, MessageSquarePlus, UserCog, ClipboardCheck, Mail,
   AlertTriangle, UserPlus, LogOut as ExitIcon, Shield, KeyRound, Crown,
+  CalendarDays,
 } from 'lucide-react';
 import UnreadBadge from '@/components/ui/UnreadBadge';
 import PendingRegistrationsBadge from '@/components/ui/PendingRegistrationsBadge';
@@ -37,6 +38,7 @@ const navItems = [
   { path: '/dashboard/admin-registrations', label: 'طلبات الإداريين', icon: UserPlus, superAdminOnly: true },
   { path: '/dashboard/messages', label: 'الرسائل الداخلية', icon: Mail },
   { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
+  { path: '/dashboard/teacher-schedule', label: 'الجدول الذكي', icon: CalendarDays, superAdminOnly: true },
   { path: '/dashboard/daily-attendance', label: 'كشف الغياب والهروب', icon: AlertTriangle },
   { path: '/dashboard/dismissals', label: 'استئذان الطلاب', icon: ExitIcon },
   { path: '/dashboard/reports/builder', label: 'التقارير', icon: BarChart3 },
