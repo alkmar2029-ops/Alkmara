@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Calendar, Search, AlertTriangle, AlertCircle, BadgeCheck, CheckSquare, Square,
   Send, Loader2, RefreshCw, BarChart3, MapPin, Filter, MessageCircle, X,
-  CheckCircle2, XCircle, Printer, TrendingUp, Users,
+  CheckCircle2, XCircle, Printer, TrendingUp, Users, Rocket,
 } from 'lucide-react';
+import CampaignProgressPanel from '@/components/daily-attendance/CampaignProgressPanel';
 
 interface DetectionRow {
   student_id: number;
@@ -84,6 +85,28 @@ export default function DailyAttendancePage() {
   const [selectedMidDay, setSelectedMidDay] = useState<Set<number>>(new Set());
   const [selectedSelective, setSelectedSelective] = useState<Set<number>>(new Set());
   const [showResult, setShowResult] = useState<{ result: SendResult; type: 'absence' | 'escape' } | null>(null);
+
+  // Active background-send campaign id. Auto-attached on page load if
+  // the user already has one running, otherwise set when they click
+  // "Send All". `null` hides the progress panel.
+  const [activeCampaignId, setActiveCampaignId] = useState<number | null>(null);
+
+  // Resume any in-flight campaign on page load — this is what makes
+  // the "keeps running in background" UX work end-to-end. The user
+  // can close the tab, come back hours later, and the panel reappears
+  // showing live progress.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/daily-attendance/campaigns/active');
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!cancelled && d?.data?.id) setActiveCampaignId(d.data.id);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Print dialog state. The 8 toggles map to the 8 sections of the
   // printable A4 sheet. Defaults to "everything on" because that's the
@@ -228,6 +251,55 @@ export default function DailyAttendancePage() {
     }
   };
 
+  // Create a multi-phase background campaign that sends notifications
+  // to every category sequentially. Returns immediately; the worker
+  // drains the queue server-side. UX-wise this is what the admin
+  // wants — fire-and-forget, comes back later to see the result.
+  const startCampaignMut = useMutation({
+    mutationFn: async () => {
+      if (!data) throw new Error('لا توجد بيانات للإرسال');
+      const phases = [
+        { key: 'absence' as const, rows: data.full_absences },
+        { key: 'escape_after_first' as const, rows: data.escape_after_first || [] },
+        { key: 'mid_day_departure' as const, rows: data.mid_day_departure || [] },
+        { key: 'selective_skip' as const, rows: data.selective_skip || [] },
+      ];
+      const payload = {
+        attendance_date: date,
+        phases: phases
+          .filter((p) => p.rows.length > 0)
+          .map((p) => ({
+            key: p.key,
+            recipients: p.rows
+              .filter((r) => !!r.phone)
+              .map((r) => ({
+                student_id: r.student_id,
+                student_name: r.student_name,
+                phone: r.phone,
+                grade_name: r.grade_name,
+                section_name: r.section_name,
+                absent_periods: r.absent_periods,
+              })),
+          })),
+      };
+      const total = payload.phases.reduce((acc, p) => acc + p.recipients.length, 0);
+      if (total === 0) throw new Error('لا يوجد طلاب لديهم أرقام جوال للإرسال');
+      const r = await fetch('/api/daily-attendance/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'فشل بدء الحملة');
+      return d.data as { id: number; total: number };
+    },
+    onSuccess: (d) => {
+      toast.success(`📤 بدأت الحملة (${d.total} رسالة) — تكمل في الخلفية`);
+      setActiveCampaignId(d.id);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   // All three escape sub-categories share the same send endpoint
   // (type='escape'); only the visible bucket and pre-selection differ.
   const sendEscapeBucket = (
@@ -324,6 +396,54 @@ export default function DailyAttendancePage() {
         ) : null
       ) : (
         <>
+          {/* Live progress panel for an in-flight background campaign.
+              Hidden when no campaign is active. Auto-attaches on page
+              load via the /campaigns/active query. */}
+          {activeCampaignId && (
+            <CampaignProgressPanel
+              campaignId={activeCampaignId}
+              onDismiss={() => setActiveCampaignId(null)}
+            />
+          )}
+
+          {/* "Send everything" — single-click campaign for all categories */}
+          {!activeCampaignId && (data.full_absences.length + (data.escape_after_first?.length || 0) + (data.mid_day_departure?.length || 0) + (data.selective_skip?.length || 0)) > 0 && (
+            <div className="card border-blue-200 dark:border-blue-500/30 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-500/10 dark:to-indigo-500/10">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shrink-0">
+                    <Rocket className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base">إرسال إشعارات أولياء الأمور — حملة واحدة</h3>
+                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
+                      🔴 {data.full_absences.length} •
+                      🟠 {data.escape_after_first?.length || 0} •
+                      🔵 {data.mid_day_departure?.length || 0} •
+                      🟡 {data.selective_skip?.length || 0}
+                      {' = '}
+                      <strong>{data.full_absences.length + (data.escape_after_first?.length || 0) + (data.mid_day_departure?.length || 0) + (data.selective_skip?.length || 0)}</strong> طالب
+                      {' • '}
+                      تكمل في الخلفية حتى لو أغلقت التبويب
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!confirm('بدء حملة الإرسال؟ ستُرسل تلقائيًّا للفئات الأربع على التوالي.')) return;
+                    startCampaignMut.mutate();
+                  }}
+                  disabled={startCampaignMut.isPending}
+                  className="inline-flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-50 shrink-0"
+                >
+                  {startCampaignMut.isPending
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ البدء...</>
+                    : <><Send className="w-4 h-4" /> بدء الإرسال للجميع</>}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Stats — 6 categories laid out wide */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
             <Stat label="إجمالي الطلاب" value={data.stats.total_students} tone="gray" />
