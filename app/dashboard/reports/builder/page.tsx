@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   FileText, Calendar, Users, Search, Printer, Loader2,
   CheckCircle2, ClipboardList, Clock, BadgeCheck, MessageSquarePlus, Layers,
@@ -49,6 +50,32 @@ export default function ReportBuilderPage() {
   const [scope, setScope] = useState<Scope>('school');
   const [scopeId, setScopeId] = useState<number | null>(null);
   const [studentSearch, setStudentSearch] = useState('');
+
+  // Pre-fill student scope when opened via /dashboard/reports/builder?student_id=N
+  // (from the student detail page or global search).
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const sid = searchParams.get('student_id');
+    if (!sid) return;
+    const id = parseInt(sid, 10);
+    if (Number.isNaN(id)) return;
+    setScope('student');
+    setScopeId(id);
+    // Pull the student's name into the search box so the picker shows
+    // them as the active selection visually.
+    (async () => {
+      try {
+        const r = await fetch(`/api/students/${id}`);
+        if (!r.ok) return;
+        const { data: s } = await r.json();
+        if (s) {
+          const fullName = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
+          setStudentSearch(fullName);
+        }
+      } catch { /* ignore */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Period scoping for the new "specific period" + "compare two periods"
   // features. periodMode controls which extra inputs the wizard exposes.
