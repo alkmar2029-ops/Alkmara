@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   MessageSquarePlus, Search, Mic, MicOff, Save, X, ThumbsUp, ThumbsDown,
@@ -53,6 +53,44 @@ export default function NotesPage() {
   // Panel is open by default — admins should see exactly who they're about
   // to message before they save. We collapse it only on explicit user action.
   const [showSelectedPanel, setShowSelectedPanel] = useState(true);
+
+  // Pre-select a student when the page is opened with ?student_id=N
+  // (from the student detail page, global search, or anywhere else).
+  // Only fires once on mount — subsequent navigations don't re-add.
+  const searchParams = useSearchParams();
+  const initialStudentId = searchParams.get('student_id');
+  useEffect(() => {
+    if (!initialStudentId) return;
+    const id = parseInt(initialStudentId, 10);
+    if (Number.isNaN(id)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/students/${id}`);
+        if (!r.ok) return;
+        const { data: stu } = await r.json();
+        if (cancelled || !stu) return;
+        setSelectedMap((prev) => {
+          if (prev.has(stu.id)) return prev;
+          const next = new Map(prev);
+          // Match the Student type the rest of the page uses.
+          next.set(stu.id, {
+            id: stu.id,
+            student_id: stu.student_id,
+            first_name: stu.first_name,
+            father_name: stu.father_name,
+            last_name: stu.last_name,
+            section_id: stu.section_id,
+            grades: stu.grades,
+            sections: stu.sections,
+          } as any);
+          return next;
+        });
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Note input state
   const [noteType, setNoteType] = useState<NoteType>('positive');

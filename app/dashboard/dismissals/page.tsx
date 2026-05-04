@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -70,6 +71,23 @@ export default function DismissalsPage() {
   const [tab, setTab] = useState<'today' | 'week' | 'all'>('today');
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  // Pre-selected student id when opened via /dashboard/dismissals?student_id=N
+  // (from the student detail page or global search). Forwarded to the
+  // create modal which fetches the student and pre-fills the picker.
+  const [prefillStudentId, setPrefillStudentId] = useState<number | null>(null);
+
+  // Auto-open the create modal with student pre-filled when the URL
+  // arrives with ?student_id=N. Runs once on mount.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const sid = searchParams.get('student_id');
+    if (!sid) return;
+    const id = parseInt(sid, 10);
+    if (Number.isNaN(id)) return;
+    setPrefillStudentId(id);
+    setShowCreate(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: rows = [], isLoading, isFetching, refetch } = useQuery<DismissalRow[]>({
     queryKey: ['dismissals', tab],
@@ -306,17 +324,42 @@ export default function DismissalsPage() {
       </div>
 
       {showCreate && (
-        <CreateDismissalModal onClose={() => setShowCreate(false)} />
+        <CreateDismissalModal
+          onClose={() => { setShowCreate(false); setPrefillStudentId(null); }}
+          prefillStudentId={prefillStudentId}
+        />
       )}
     </div>
   );
 }
 
 // =================== Create modal ===================
-function CreateDismissalModal({ onClose }: { onClose: () => void }) {
+function CreateDismissalModal({
+  onClose, prefillStudentId,
+}: {
+  onClose: () => void;
+  prefillStudentId?: number | null;
+}) {
   const qc = useQueryClient();
   const [studentSearch, setStudentSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<StudentSearchResult | null>(null);
+
+  // Pre-fill the student when opened from a deep-link with student_id=N.
+  // Runs once on mount; ignored if no prefill id was passed.
+  useEffect(() => {
+    if (!prefillStudentId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/students/${prefillStudentId}`);
+        if (!r.ok) return;
+        const { data } = await r.json();
+        if (!cancelled && data) setSelectedStudent(data);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [reason, setReason] = useState<string>('other');
   const [reasonDetails, setReasonDetails] = useState('');
   const [pickupName, setPickupName] = useState('');
