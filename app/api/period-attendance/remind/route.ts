@@ -4,6 +4,7 @@ import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
 import { normalizePhone } from '@/lib/teachers/credentials';
+import { teacherPortalUrl } from '@/lib/utils/portal-url';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -86,11 +87,9 @@ export async function POST(request: NextRequest) {
   const periodName = period.name || `الحصة ${periodNumber}`;
   const schoolName = (settingsRes.data?.school_name as string) || '';
 
-  // Resolve the teacher portal URL once. Vercel's NEXT_PUBLIC_PORTAL_URL
-  // env var is the source of truth; fall back to the request origin so
-  // local dev/preview deployments still produce clickable links.
-  const portalBase = process.env.NEXT_PUBLIC_PORTAL_URL || request.nextUrl.origin;
-  const portalUrl = `${portalBase.replace(/\/$/, '')}/teacher`;
+  // Resolve the teacher portal URL via the shared helper — always
+  // returns a working /teacher URL even when the env var isn't set.
+  const portalUrl = teacherPortalUrl(request.nextUrl.origin);
 
   // Build a friendly default body. The admin can override via custom_message
   // for tone-sensitive cases (e.g. repeat offender vs. first reminder).

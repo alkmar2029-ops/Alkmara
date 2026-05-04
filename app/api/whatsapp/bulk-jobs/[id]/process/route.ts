@@ -4,6 +4,7 @@ import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
 import { renderTemplate } from '@/lib/whatsapp/template';
 import { normalizePhone } from '@/lib/teachers/credentials';
+import { teacherPortalUrl } from '@/lib/utils/portal-url';
 
 export const dynamic = 'force-dynamic';
 // 5 minutes — Vercel Pro maximum. At 5.5s pacing this drains ~50 messages
@@ -129,15 +130,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       .eq('status', 'queued');
     if (lockErr) continue;  // another worker grabbed it; loop
 
-    // Render the personalized message. We always make a clickable
-    // teacher-portal URL available as a placeholder + append it to the
-    // body when the admin's template forgot to reference it (a
-    // reminder without a one-tap login link is much less useful).
+    // Render the personalized message. The portal URL is always
+    // resolved via the shared helper, so even if NEXT_PUBLIC_PORTAL_URL
+    // isn't configured we still ship the production fallback.
     const teacherName = claimed.teacher_name || 'الأستاذ الفاضل';
-    const portalBase = process.env.NEXT_PUBLIC_PORTAL_URL || '';
-    const portalUrl = portalBase
-      ? `${portalBase.replace(/\/$/, '')}/teacher`
-      : '';
+    const portalUrl = teacherPortalUrl();
     let message = renderTemplate(job.template, {
       teacher_name: teacherName,
       school_name: (settings?.school_name as string) || '',
@@ -145,9 +142,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       date: today,
       portal_url: portalUrl,
     });
-    // If the resulting message has no portal link AND we have one,
-    // append it so the teacher always has a clickable shortcut.
-    if (portalUrl && !message.includes('/teacher')) {
+    // If the rendered message has no portal link, append it so the
+    // teacher always gets a one-tap shortcut.
+    if (!message.includes('/teacher')) {
       message = `${message}\n\n🔗 سجِّل الحضور من هنا:\n${portalUrl}`;
     }
 
