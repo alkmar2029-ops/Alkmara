@@ -189,28 +189,36 @@ export default function GlobalSearch() {
   }, [open, flatRows, focusIdx, query, router]);
 
   if (!open) {
-    // Render the trigger button + invisible mount point.
+    // Render the trigger button. Hidden on small screens — mobile
+    // users can still hit Ctrl+K to open it. flex-1 lets the topbar
+    // give the search button as much room as it has.
     return (
       <button
         onClick={() => setOpen(true)}
-        className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 min-w-[200px]"
+        className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 flex-1 max-w-md"
         aria-label="بحث عالمي"
+        dir="rtl"
       >
-        <Search className="w-4 h-4" />
+        <Search className="w-4 h-4 shrink-0" />
         <span className="flex-1 text-start">بحث...</span>
-        <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700">Ctrl K</kbd>
+        <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 shrink-0">Ctrl K</kbd>
       </button>
     );
   }
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 z-[60] flex items-start justify-center p-4 pt-20"
+      // Use a portal-like high z-index and ensure the backdrop covers
+      // the sidebar (which is z-50). dir="rtl" ensures all child text
+      // and flex layout flows right-to-left consistently.
+      className="fixed inset-0 bg-black/60 z-[100] flex items-start justify-center p-4 pt-16 sm:pt-20"
       onClick={() => setOpen(false)}
+      dir="rtl"
     >
       <div
         className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
+        dir="rtl"
       >
         {/* Input */}
         <div className="flex items-center gap-2 p-3 border-b border-gray-200 dark:border-gray-800">
