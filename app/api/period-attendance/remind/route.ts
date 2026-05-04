@@ -86,8 +86,17 @@ export async function POST(request: NextRequest) {
   const periodName = period.name || `الحصة ${periodNumber}`;
   const schoolName = (settingsRes.data?.school_name as string) || '';
 
+  // Resolve the teacher portal URL once. Vercel's NEXT_PUBLIC_PORTAL_URL
+  // env var is the source of truth; fall back to the request origin so
+  // local dev/preview deployments still produce clickable links.
+  const portalBase = process.env.NEXT_PUBLIC_PORTAL_URL || request.nextUrl.origin;
+  const portalUrl = `${portalBase.replace(/\/$/, '')}/teacher`;
+
   // Build a friendly default body. The admin can override via custom_message
   // for tone-sensitive cases (e.g. repeat offender vs. first reminder).
+  // The login link is appended to BOTH the default body AND any custom
+  // message so the teacher always has a one-tap path back into the
+  // system regardless of how the admin worded the rest.
   const defaultBody = `🔔 تذكير ودّي
 
 السلام عليكم أ. ${teacherName}،
@@ -97,10 +106,19 @@ export async function POST(request: NextRequest) {
 ⏰ الحصة: ${periodNumber} (${periodName})
 📅 التاريخ: ${v.attendance_date}
 
-نأمل تسجيلها في أقرب وقت من بوابة المعلم 🌹
+🔗 سجِّل الحضور الآن من هنا:
+${portalUrl}
 ${schoolName ? `\n— ${schoolName}` : ''}`;
 
-  const messageBody = (v.custom_message && v.custom_message.trim()) || defaultBody;
+  // If the admin provided a custom message, append the login link unless
+  // they already included one (avoid duplicate URLs).
+  const customWithLink = v.custom_message && v.custom_message.trim()
+    ? (v.custom_message.includes('/teacher')
+        ? v.custom_message.trim()
+        : `${v.custom_message.trim()}\n\n🔗 سجِّل الحضور من هنا:\n${portalUrl}`)
+    : null;
+
+  const messageBody = customWithLink || defaultBody;
 
   // 1. Internal message — uses the same `internal_messages` table as the
   // existing in-app inbox so the teacher sees a 🔔 badge.

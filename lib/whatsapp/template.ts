@@ -22,6 +22,9 @@ export interface RenderVars {
   period_name?: string;     // e.g. "الحصة الثالثة"
   period_number?: number | string;
   absence_status?: string;  // "غائب" | "متأخر" | "مستأذن"
+  // Teacher portal URL — used in reminder templates so the teacher
+  // gets a one-tap clickable link inside the WhatsApp message.
+  portal_url?: string;
 }
 
 export const TEMPLATE_PLACEHOLDERS: ReadonlyArray<{ key: keyof RenderVars; label: string; group?: 'common' | 'late' | 'note' }> = [

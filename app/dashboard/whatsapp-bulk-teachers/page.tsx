@@ -30,6 +30,7 @@ const PLACEHOLDERS = [
   { key: '{{school_name}}', label: 'اسم المدرسة' },
   { key: '{{principal_name}}', label: 'اسم المدير' },
   { key: '{{date}}', label: 'تاريخ اليوم' },
+  { key: '{{portal_url}}', label: 'رابط بوابة المعلم' },
 ];
 
 const DEFAULT_TEMPLATE = `🌹 السلام عليكم أ. {{teacher_name}}
@@ -38,6 +39,9 @@ const DEFAULT_TEMPLATE = `🌹 السلام عليكم أ. {{teacher_name}}
 
 نأمل التكرّم بتسجيل حضور الحصص في تطبيق المعلم،
 وذلك لمتابعة دقّة البيانات وتزويد أولياء الأمور بالإشعارات في وقتها.
+
+🔗 سجِّل الحضور من هنا:
+{{portal_url}}
 
 مع جزيل الشكر لتعاونكم 🤝
 — {{school_name}}`;

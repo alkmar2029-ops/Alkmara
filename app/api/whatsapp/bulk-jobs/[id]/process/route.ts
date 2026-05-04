@@ -129,14 +129,27 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       .eq('status', 'queued');
     if (lockErr) continue;  // another worker grabbed it; loop
 
-    // Render the personalized message.
+    // Render the personalized message. We always make a clickable
+    // teacher-portal URL available as a placeholder + append it to the
+    // body when the admin's template forgot to reference it (a
+    // reminder without a one-tap login link is much less useful).
     const teacherName = claimed.teacher_name || 'الأستاذ الفاضل';
-    const message = renderTemplate(job.template, {
+    const portalBase = process.env.NEXT_PUBLIC_PORTAL_URL || '';
+    const portalUrl = portalBase
+      ? `${portalBase.replace(/\/$/, '')}/teacher`
+      : '';
+    let message = renderTemplate(job.template, {
       teacher_name: teacherName,
       school_name: (settings?.school_name as string) || '',
       principal_name: (settings?.principal_name as string) || '',
       date: today,
+      portal_url: portalUrl,
     });
+    // If the resulting message has no portal link AND we have one,
+    // append it so the teacher always has a clickable shortcut.
+    if (portalUrl && !message.includes('/teacher')) {
+      message = `${message}\n\n🔗 سجِّل الحضور من هنا:\n${portalUrl}`;
+    }
 
     // Send. Best-effort — failures are logged on the recipient row.
     const result = await sendTextAndLog({
