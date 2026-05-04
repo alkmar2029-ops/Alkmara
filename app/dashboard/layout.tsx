@@ -59,7 +59,13 @@ const navGroups: NavGroup[] = [
   {
     label: 'الحضور اليومي',
     items: [
-      { path: '/dashboard/attendance', label: 'سجل الحضور', icon: ClipboardList },
+      // /dashboard/attendance (سجل الحضور) is intentionally hidden from
+      // the sidebar — it's a legacy view of the attendance_records
+      // table populated by the fingerprint device, which this school
+      // doesn't currently use. The route + API stay live so the late-
+      // notifications, reports, and device-sync pipelines that share
+      // attendance_records keep working. Re-add this line when a
+      // device gets connected.
       { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
       { path: '/dashboard/daily-attendance', label: 'كشف الغياب والهروب', icon: AlertTriangle },
       { path: '/dashboard/dismissals', label: 'استئذان الطلاب', icon: ExitIcon },
