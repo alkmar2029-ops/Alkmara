@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Plus, Search, Fingerprint, Upload, Users } from 'lucide-react';
+import { Plus, Search, Fingerprint, Upload, Users, Printer } from 'lucide-react';
 import { STAGE_LABELS } from '@/lib/utils/helpers';
 import { useDebounce } from '@/components/hooks/useDebounce';
 import { SkeletonTable } from '@/components/ui/Skeleton';
@@ -115,6 +115,29 @@ export default function StudentsPage() {
           <button onClick={() => setShowImport(true)} className="btn-secondary flex items-center gap-2">
             <Upload className="w-4 h-4" /> استيراد Excel
           </button>
+          {/* Print — scope is inferred from the active filters:
+              section selected → only that section,
+              grade selected   → all students in that grade,
+              neither          → entire school. */}
+          <a
+            href={`/dashboard/students/print${
+              sectionFilter ? `?section_id=${sectionFilter}`
+              : gradeFilter ? `?grade_id=${gradeFilter}`
+              : ''
+            }`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary flex items-center gap-2"
+            title={
+              sectionFilter ? 'طباعة طلاب الشعبة المحددة'
+              : gradeFilter ? 'طباعة طلاب الصف المحدد'
+              : 'طباعة كل طلاب المدرسة'
+            }
+          >
+            <Printer className="w-4 h-4" />
+            طباعة
+            {sectionFilter ? ' (الشعبة)' : gradeFilter ? ' (الصف)' : ' (الكل)'}
+          </a>
           {sectionFilter && sectionDevice && (
             <button onClick={() => pushMutation.mutate()} disabled={pushMutation.isPending}
               className="btn-success flex items-center gap-2">
