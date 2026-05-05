@@ -9,6 +9,7 @@ import {
   CheckCircle2, XCircle, Printer, TrendingUp, Users, Rocket,
 } from 'lucide-react';
 import CampaignProgressPanel from '@/components/daily-attendance/CampaignProgressPanel';
+import StudentDayDrawer from '@/components/daily-attendance/StudentDayDrawer';
 
 interface DetectionRow {
   student_id: number;
@@ -85,6 +86,10 @@ export default function DailyAttendancePage() {
   const [selectedMidDay, setSelectedMidDay] = useState<Set<number>>(new Set());
   const [selectedSelective, setSelectedSelective] = useState<Set<number>>(new Set());
   const [showResult, setShowResult] = useState<{ result: SendResult; type: 'absence' | 'escape' } | null>(null);
+
+  // Drawer state — shows per-period attendance for one student.
+  // Opens when staff clicks a name in any bucket.
+  const [drawerStudentId, setDrawerStudentId] = useState<number | null>(null);
 
   // Active background-send campaign id. Auto-attached on page load if
   // the user already has one running, otherwise set when they click
@@ -500,6 +505,7 @@ export default function DailyAttendancePage() {
             sendLabel="إرسال إشعار غياب"
             showPeriods={false}
             onPrint={() => quickPrintCategory('fullAbsence')}
+            onPickStudent={setDrawerStudentId}
           />
 
           {/* 🟠 Escape after first period */}
@@ -515,6 +521,7 @@ export default function DailyAttendancePage() {
             sendLabel="إرسال إشعار"
             showPeriods={true}
             onPrint={() => quickPrintCategory('escapeAfterFirst')}
+            onPickStudent={setDrawerStudentId}
           />
 
           {/* 🔵 Mid-day departure */}
@@ -530,6 +537,7 @@ export default function DailyAttendancePage() {
             sendLabel="إرسال إشعار"
             showPeriods={true}
             onPrint={() => quickPrintCategory('midDayDeparture')}
+            onPickStudent={setDrawerStudentId}
           />
 
           {/* 🟡 Selective skip */}
@@ -545,6 +553,7 @@ export default function DailyAttendancePage() {
             sendLabel="إرسال إشعار"
             showPeriods={true}
             onPrint={() => quickPrintCategory('selectiveSkip')}
+            onPickStudent={setDrawerStudentId}
           />
 
           {/* Teacher skip-rate analytics — 30-day window. Hidden until
@@ -773,6 +782,16 @@ export default function DailyAttendancePage() {
           </div>
         </div>
       )}
+
+      {/* Per-student day-attendance drawer — opens when a name is
+          clicked in any bucket. */}
+      <StudentDayDrawer
+        studentId={drawerStudentId}
+        date={date}
+        fromPeriod={fromPeriod}
+        toPeriod={toPeriod}
+        onClose={() => setDrawerStudentId(null)}
+      />
 
       {/* Print stylesheet — scoped to .report-print-area. */}
       <style jsx global>{`
@@ -1142,7 +1161,7 @@ function TeacherSkipStats() {
 }
 
 function BucketCard({
-  title, description, tone, rows, selected, setSelected, onSend, sending, sendLabel, showPeriods, onPrint,
+  title, description, tone, rows, selected, setSelected, onSend, sending, sendLabel, showPeriods, onPrint, onPickStudent,
 }: {
   title: string;
   description: string;
@@ -1156,6 +1175,8 @@ function BucketCard({
   showPeriods: boolean;
   /** Optional quick-print handler — renders a small printer icon next to "send". */
   onPrint?: () => void;
+  /** Click on student name → opens the per-student day drawer. */
+  onPickStudent?: (_studentId: number) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -1230,7 +1251,18 @@ function BucketCard({
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-medium text-sm">{r.student_name}</p>
+                  {onPickStudent ? (
+                    <button
+                      type="button"
+                      onClick={() => onPickStudent(r.student_id)}
+                      className="font-medium text-sm text-right hover:underline hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+                      title="عرض تفاصيل الحضور للطالب"
+                    >
+                      {r.student_name}
+                    </button>
+                  ) : (
+                    <p className="font-medium text-sm">{r.student_name}</p>
+                  )}
                   <span className="text-xs px-1.5 py-0.5 rounded bg-white dark:bg-gray-900 border text-gray-600 dark:text-gray-300">
                     {r.grade_name} / {r.section_name}
                   </span>
