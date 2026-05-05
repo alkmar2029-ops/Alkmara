@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import {
   Calendar, Clock, Search, Save, CheckCircle2, Loader2, AlertCircle,
   ChevronDown, Users, RefreshCw, ArrowRight, History, X as XIcon,
+  Activity, ChevronUp,
 } from 'lucide-react';
 import { useClassSession } from '@/lib/hooks/useClassSession';
 import { useMyAssignedSections } from '@/lib/hooks/useMyAssignedSections';
@@ -19,6 +20,28 @@ interface Student {
   first_name: string;
   father_name: string | null;
   last_name: string;
+  // health_info is the JSONB column on students. Teachers see this so
+  // they can spot at-risk students before marking them absent/excused
+  // (مستأذن). Schema: { conditions: string[], notes?: string }
+  health_info?: { conditions?: string[]; notes?: string } | null;
+}
+
+const HEALTH_LABELS: Record<string, { label: string; emoji: string }> = {
+  diabetes:     { label: 'السكري',       emoji: '🩸' },
+  hypertension: { label: 'الضغط',         emoji: '💓' },
+  heart:        { label: 'مشاكل القلب',   emoji: '❤️' },
+  asthma:       { label: 'الربو',         emoji: '🫁' },
+  allergy:      { label: 'حساسية',        emoji: '🌾' },
+  epilepsy:     { label: 'الصرع',         emoji: '⚡' },
+  vision:       { label: 'مشاكل البصر',   emoji: '👁️' },
+  hearing:      { label: 'مشاكل السمع',   emoji: '👂' },
+  other:        { label: 'أخرى',          emoji: '📋' },
+};
+
+function summarizeConditions(codes: string[]): string {
+  return codes
+    .map((c) => HEALTH_LABELS[c]?.label || c)
+    .join('، ');
 }
 
 interface Period { id: number; number: number; name: string; }
@@ -84,6 +107,12 @@ function TeacherEntryPage() {
 
   // status[student_id] — defaults to 'present', set explicitly for non-present.
   const [statuses, setStatuses] = useState<Record<number, PeriodAttendanceStatus>>({});
+
+  // Health-conditions UI state.
+  // - healthBannerExpanded: whether the section-level summary banner is open
+  // - healthDetailsFor: id of the student whose health popover is shown
+  const [healthBannerExpanded, setHealthBannerExpanded] = useState(false);
+  const [healthDetailsFor, setHealthDetailsFor] = useState<number | null>(null);
 
   // Track which student IDs had their 'absent' status applied via the
   // cascade-from-earlier-periods button. Used at save time to mark those
@@ -246,6 +275,26 @@ function TeacherEntryPage() {
     });
   }, [students, search]);
 
+  // ---- Health-conditions derivations ----
+  // Memoize the subset of students with at least one recorded condition.
+  // Drives the section-level summary banner and the per-row badge.
+  const studentsWithHealth = useMemo(
+    () => students.filter((s) => (s.health_info?.conditions?.length || 0) > 0),
+    [students],
+  );
+
+  // Quick lookup so the row renderer doesn't re-scan the array.
+  const healthByStudent = useMemo(() => {
+    const map = new Map<number, { conditions: string[]; notes?: string }>();
+    for (const s of studentsWithHealth) {
+      map.set(s.id, {
+        conditions: s.health_info?.conditions || [],
+        notes: s.health_info?.notes,
+      });
+    }
+    return map;
+  }, [studentsWithHealth]);
+
   // ---- Counts ----
   const counts = useMemo(() => {
     let absent = 0, late = 0, excused = 0;
@@ -260,9 +309,11 @@ function TeacherEntryPage() {
 
   // ---- Cycle through statuses on tap (present → absent → late → excused → present) ----
   const cycleStatus = (id: number) => {
+    let nextStatus: PeriodAttendanceStatus | null = null;
     setStatuses((prev) => {
       const cur = prev[id];
       const next = !cur ? 'absent' : cur === 'absent' ? 'late' : cur === 'late' ? 'excused' : null;
+      nextStatus = next;
       const copy = { ...prev };
       if (next === null) delete copy[id]; else copy[id] = next;
       return copy;
@@ -275,6 +326,28 @@ function TeacherEntryPage() {
       copy.delete(id);
       return copy;
     });
+    // Health-condition warning — fire ONLY when transitioning to the two
+    // statuses where staff might need to know (غائب / مستأذن). Skipping
+    // 'late' keeps the toast focused on consequential decisions; skipping
+    // 'present' keeps it from firing on the cycle-back-to-present tap.
+    const health = healthByStudent.get(id);
+    if (health && (nextStatus === 'absent' || nextStatus === 'excused')) {
+      const action = nextStatus === 'absent' ? 'تسجيل الغياب' : 'الاستئذان';
+      toast(
+        `⚠️ تنبيه قبل ${action}\nحالات: ${summarizeConditions(health.conditions)}${health.notes ? `\n📝 ${health.notes}` : ''}`,
+        {
+          duration: 5500,
+          icon: '🏥',
+          style: {
+            background: '#fef2f2',
+            color: '#7f1d1d',
+            border: '1.5px solid #fca5a5',
+            maxWidth: '420px',
+            whiteSpace: 'pre-line',
+          },
+        },
+      );
+    }
   };
 
   const setAllPresent = () => setStatuses({});
@@ -528,6 +601,73 @@ function TeacherEntryPage() {
               </span>
             </div>
 
+            {/* Health-conditions section banner — only renders when at
+                least one student in this section has recorded conditions.
+                Collapsed by default to keep the page calm; tap to expand
+                and see the affected names + conditions. */}
+            {studentsWithHealth.length > 0 && (
+              <div className="mb-3 rounded-xl border-2 border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setHealthBannerExpanded((v) => !v)}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-right hover:bg-red-100/60 dark:hover:bg-red-500/15 transition-colors"
+                  aria-expanded={healthBannerExpanded}
+                >
+                  <span className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center shrink-0 animate-pulse">
+                    <Activity className="w-4 h-4 text-white" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-red-900 dark:text-red-200">
+                      ⚠️ {studentsWithHealth.length} {studentsWithHealth.length === 1 ? 'طالب لديه' : 'طلاب لديهم'} حالات صحية في هذه الشعبة
+                    </p>
+                    <p className="text-[11px] text-red-700 dark:text-red-300/80">
+                      {healthBannerExpanded ? 'اضغط للإخفاء' : 'اضغط لعرض القائمة'}
+                    </p>
+                  </div>
+                  {healthBannerExpanded
+                    ? <ChevronUp className="w-4 h-4 text-red-700 dark:text-red-300 shrink-0" />
+                    : <ChevronDown className="w-4 h-4 text-red-700 dark:text-red-300 shrink-0" />}
+                </button>
+                {healthBannerExpanded && (
+                  <ul className="px-3 pb-3 space-y-1.5 text-xs">
+                    {studentsWithHealth.map((s) => {
+                      const fullName = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
+                      const conditions = s.health_info?.conditions || [];
+                      return (
+                        <li
+                          key={s.id}
+                          className="flex items-start gap-2 p-2 rounded-lg bg-white/70 dark:bg-black/20 border border-red-200 dark:border-red-500/30"
+                        >
+                          <span className="text-base leading-none mt-0.5">🏥</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-red-900 dark:text-red-200 truncate">{fullName}</p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {conditions.map((c) => {
+                                const info = HEALTH_LABELS[c] || { label: c, emoji: '📋' };
+                                return (
+                                  <span
+                                    key={c}
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-500/20 text-red-800 dark:text-red-300 text-[10px] font-medium border border-red-200 dark:border-red-500/30"
+                                  >
+                                    {info.emoji} {info.label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {s.health_info?.notes && (
+                              <p className="text-[10px] text-red-800 dark:text-red-300 mt-1 bg-white/50 dark:bg-black/20 p-1 rounded">
+                                📝 {s.health_info.notes}
+                              </p>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+
             {/* Legend */}
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">
               انقر مرة → غائب • مرتين → متأخر • ثلاث → مستأذن • أربع → حاضر
@@ -539,6 +679,7 @@ function TeacherEntryPage() {
                 const st = statuses[s.id] || 'present';
                 const tone = STATUS_TONE[st];
                 const fullName = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
+                const health = healthByStudent.get(s.id);
                 return (
                   <li key={s.id}>
                     <button
@@ -551,6 +692,30 @@ function TeacherEntryPage() {
                       <div className="flex-1 min-w-0 text-right">
                         <p className="font-medium truncate flex items-center gap-1.5">
                           {fullName}
+                          {/* Persistent health badge — visible on every
+                              row that has conditions, drives the popover. */}
+                          {health && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setHealthDetailsFor(s.id);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  setHealthDetailsFor(s.id);
+                                }
+                              }}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold shrink-0 animate-pulse cursor-pointer hover:bg-red-600 active:scale-95 border border-red-700 shadow-sm"
+                              title={`حالات صحية: ${summarizeConditions(health.conditions)}`}
+                              aria-label="عرض الحالات الصحية"
+                            >
+                              🏥 {health.conditions.length}
+                            </span>
+                          )}
                           {cascadeApplied.has(s.id) && (
                             <span
                               className="text-[9px] font-normal px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300 border border-orange-200 dark:border-orange-500/40 shrink-0"
@@ -570,6 +735,73 @@ function TeacherEntryPage() {
           </>
         )}
       </div>
+
+      {/* Health-conditions detail modal — opens when the badge next to a
+          name is tapped. Shows the full conditions list + free-text notes
+          (e.g. "needs insulin before lunch", "doctor: 050xxxxxxx"). */}
+      {healthDetailsFor !== null && (() => {
+        const stu = students.find((s) => s.id === healthDetailsFor);
+        if (!stu) return null;
+        const fullName = [stu.first_name, stu.father_name, stu.last_name].filter(Boolean).join(' ');
+        const conditions = stu.health_info?.conditions || [];
+        return (
+          <>
+            <div
+              className="fixed inset-0 bg-black/60 z-50"
+              onClick={() => setHealthDetailsFor(null)}
+            />
+            <div
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92%] max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border-2 border-red-300 dark:border-red-500/50 overflow-hidden"
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="bg-red-500 px-4 py-3 flex items-center gap-2">
+                <span className="text-2xl">🏥</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-white text-base">حالات صحية مسجَّلة</p>
+                  <p className="text-xs text-red-100 truncate">{fullName}</p>
+                </div>
+                <button
+                  onClick={() => setHealthDetailsFor(null)}
+                  className="p-1 rounded-lg hover:bg-red-600 text-white"
+                  aria-label="إغلاق"
+                >
+                  <XIcon className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-2">⚠️ الحالات:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {conditions.map((c) => {
+                      const info = HEALTH_LABELS[c] || { label: c, emoji: '📋' };
+                      return (
+                        <span
+                          key={c}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-100 dark:bg-red-500/20 text-red-800 dark:text-red-300 text-xs font-semibold border border-red-200 dark:border-red-500/40"
+                        >
+                          {info.emoji} {info.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+                {stu.health_info?.notes && (
+                  <div>
+                    <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-1.5">📝 ملاحظات طبية:</p>
+                    <p className="text-sm bg-red-50 dark:bg-red-500/10 p-2.5 rounded-lg border border-red-200 dark:border-red-500/30 text-red-900 dark:text-red-200 leading-relaxed whitespace-pre-line">
+                      {stu.health_info.notes}
+                    </p>
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed border-t border-gray-100 dark:border-gray-800 pt-2">
+                  💡 إذا طلب الطالب الاستئذان أو ظهرت عليه أعراض، تواصل مع الإدارة فوراً
+                </p>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Sticky save bar */}
       {sectionId && students.length > 0 && (
