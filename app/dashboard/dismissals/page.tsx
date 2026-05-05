@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -80,6 +80,14 @@ function todayStr() {
 }
 
 export default function DismissalsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-400">جاري التحميل...</div>}>
+      <DismissalsInner />
+    </Suspense>
+  );
+}
+
+function DismissalsInner() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<'today' | 'week' | 'all'>('today');
   const [search, setSearch] = useState('');

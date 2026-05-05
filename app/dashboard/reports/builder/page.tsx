@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -43,6 +43,14 @@ function startOfMonth(): string {
 }
 
 export default function ReportBuilderPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-400">جاري التحميل...</div>}>
+      <ReportBuilderInner />
+    </Suspense>
+  );
+}
+
+function ReportBuilderInner() {
   // Wizard state
   const [types, setTypes] = useState<Set<ReportType>>(new Set(['comprehensive']));
   const [from, setFrom] = useState(todayStr());

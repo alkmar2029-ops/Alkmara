@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Printer, Loader2, ArrowRight, X } from 'lucide-react';
@@ -34,6 +34,14 @@ interface SchoolInfo { school_name: string; principal_name: string; }
  * attendance, dismissals).
  */
 export default function StudentsPrintPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-400">جاري التحميل...</div>}>
+      <StudentsPrintInner />
+    </Suspense>
+  );
+}
+
+function StudentsPrintInner() {
   const searchParams = useSearchParams();
   const gradeId = searchParams.get('grade_id');
   const sectionId = searchParams.get('section_id');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -36,6 +36,14 @@ const CATEGORY_LABELS: Record<NoteCategory, string> = {
 };
 
 export default function NotesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-400">جاري التحميل...</div>}>
+      <NotesPageInner />
+    </Suspense>
+  );
+}
+
+function NotesPageInner() {
   const router = useRouter();
   const qc = useQueryClient();
 
