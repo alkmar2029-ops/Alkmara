@@ -1,6 +1,19 @@
 import { z } from 'zod';
 import { checkDeviceIp } from '@/lib/utils/ip-allowlist';
 
+// Student health-info shape — kept loose so adding new condition codes
+// later doesn't require schema migrations. The UI surfaces a curated
+// checklist; "other" plus the free-text notes field cover edge cases.
+export const HEALTH_CONDITION_CODES = [
+  'diabetes', 'hypertension', 'heart', 'asthma', 'allergy',
+  'epilepsy', 'vision', 'hearing', 'other',
+] as const;
+
+export const studentHealthInfoSchema = z.object({
+  conditions: z.array(z.string()).max(20).optional().default([]),
+  notes: z.string().max(500).optional().or(z.literal('')),
+}).optional().nullable();
+
 // Student schemas
 export const createStudentSchema = z.object({
   student_id: z.string().length(10, 'رقم الطالب يجب أن يكون 10 أرقام').regex(/^\d+$/, 'رقم الطالب يجب أن يحتوي على أرقام فقط'),
@@ -12,6 +25,7 @@ export const createStudentSchema = z.object({
   grade_id: z.number().int().positive('الصف مطلوب'),
   section_id: z.number().int().positive('الشعبة مطلوبة'),
   notes: z.string().max(500).optional().or(z.literal('')),
+  health_info: studentHealthInfoSchema,
 });
 
 export const updateStudentSchema = createStudentSchema.partial().omit({ student_id: true });

@@ -104,7 +104,23 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: 'حدث خطأ أثناء إضافة الطالب' }, { status: 400 });
+    // Surface the actual Postgres error message so the admin can
+    // diagnose: e.g. "duplicate key value violates unique constraint"
+    // (student_id already exists), "violates foreign key constraint"
+    // (section_id doesn't match), etc. A blanket "حدث خطأ" hid these
+    // for too long.
+    const msg = error.message || '';
+    let userMsg = 'حدث خطأ أثناء إضافة الطالب';
+    if (msg.toLowerCase().includes('duplicate') && msg.includes('student_id')) {
+      userMsg = 'رقم الهوية مستخدم بالفعل لطالب آخر';
+    } else if (msg.toLowerCase().includes('foreign key')) {
+      userMsg = 'الصف أو الشعبة غير موجود في النظام';
+    } else if (msg.toLowerCase().includes('row-level security')) {
+      userMsg = 'لا تملك صلاحية إضافة طالب لهذه الشعبة';
+    } else if (msg) {
+      userMsg = `حدث خطأ: ${msg}`;
+    }
+    return NextResponse.json({ error: userMsg, details: msg }, { status: 400 });
   }
 
   return NextResponse.json({ data }, { status: 201 });

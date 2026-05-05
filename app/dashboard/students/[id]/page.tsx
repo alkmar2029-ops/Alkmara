@@ -23,7 +23,20 @@ interface StudentDetail {
   section_name?: string;
   grades?: { name: string; stage?: string };
   sections?: { name: string };
+  health_info?: { conditions?: string[]; notes?: string } | null;
 }
+
+const HEALTH_LABELS: Record<string, { label: string; emoji: string }> = {
+  diabetes:     { label: 'السكري',       emoji: '🩸' },
+  hypertension: { label: 'الضغط',         emoji: '💓' },
+  heart:        { label: 'مشاكل القلب',   emoji: '❤️' },
+  asthma:       { label: 'الربو',         emoji: '🫁' },
+  allergy:      { label: 'حساسية',        emoji: '🌾' },
+  epilepsy:     { label: 'الصرع',         emoji: '⚡' },
+  vision:       { label: 'مشاكل البصر',   emoji: '👁️' },
+  hearing:      { label: 'مشاكل السمع',   emoji: '👂' },
+  other:        { label: 'أخرى',          emoji: '📋' },
+};
 
 export default function StudentDetailPage() {
   const params = useParams<{ id: string }>();
@@ -77,6 +90,42 @@ export default function StudentDetailPage() {
       >
         <ArrowRight className="w-4 h-4" /> رجوع
       </button>
+
+      {/* Health alert banner — shown when the student has any recorded
+          condition, so it sits ABOVE the identity card and is the first
+          thing staff see. Critical for emergency response. */}
+      {student.health_info?.conditions && student.health_info.conditions.length > 0 && (
+        <div className="card border-2 border-red-300 dark:border-red-500/50 bg-red-50 dark:bg-red-500/10">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center shrink-0">
+              <span className="text-white text-lg">🏥</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-bold text-red-900 dark:text-red-200 mb-1">
+                ⚠️ حالات صحية مسجَّلة — يحتاج عناية خاصة
+              </h2>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {student.health_info.conditions.map((c) => {
+                  const info = HEALTH_LABELS[c] || { label: c, emoji: '📋' };
+                  return (
+                    <span
+                      key={c}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-500/20 text-red-800 dark:text-red-300 text-xs font-medium border border-red-200 dark:border-red-500/30"
+                    >
+                      {info.emoji} {info.label}
+                    </span>
+                  );
+                })}
+              </div>
+              {student.health_info.notes && (
+                <p className="text-xs text-red-800 dark:text-red-300 bg-white/50 dark:bg-black/20 p-2 rounded">
+                  📝 {student.health_info.notes}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Identity card */}
       <div className="card bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-500/10 dark:to-indigo-500/10 border-blue-200 dark:border-blue-500/30">

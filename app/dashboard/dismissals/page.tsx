@@ -44,7 +44,20 @@ interface StudentSearchResult {
   phone: string | null;
   grades?: { name: string };
   sections?: { name: string };
+  health_info?: { conditions?: string[]; notes?: string } | null;
 }
+
+const HEALTH_LABELS: Record<string, { label: string; emoji: string }> = {
+  diabetes:     { label: 'السكري',       emoji: '🩸' },
+  hypertension: { label: 'الضغط',         emoji: '💓' },
+  heart:        { label: 'مشاكل القلب',   emoji: '❤️' },
+  asthma:       { label: 'الربو',         emoji: '🫁' },
+  allergy:      { label: 'حساسية',        emoji: '🌾' },
+  epilepsy:     { label: 'الصرع',         emoji: '⚡' },
+  vision:       { label: 'مشاكل البصر',   emoji: '👁️' },
+  hearing:      { label: 'مشاكل السمع',   emoji: '👂' },
+  other:        { label: 'أخرى',          emoji: '📋' },
+};
 
 const REASON_LABELS: Record<string, string> = {
   medical: '🏥 مراجعة طبية',
@@ -444,21 +457,51 @@ function CreateDismissalModal({
           <div>
             <label className="label flex items-center gap-1"><Users className="w-3.5 h-3.5" /> الطالب *</label>
             {selectedStudent ? (
-              <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 rounded-lg p-3">
-                <div className="w-10 h-10 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center shrink-0">
-                  {selectedStudent.first_name.charAt(0)}
+              <>
+                <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 rounded-lg p-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center shrink-0">
+                    {selectedStudent.first_name.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold">
+                      {[selectedStudent.first_name, selectedStudent.father_name, selectedStudent.last_name].filter(Boolean).join(' ')}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="font-mono" dir="ltr">{selectedStudent.student_id}</span>
+                      {' • '}{selectedStudent.grades?.name} / {selectedStudent.sections?.name}
+                    </p>
+                  </div>
+                  <button onClick={() => { setSelectedStudent(null); setStudentSearch(''); }} className="text-red-500 hover:text-red-700 text-sm">تغيير</button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold">
-                    {[selectedStudent.first_name, selectedStudent.father_name, selectedStudent.last_name].filter(Boolean).join(' ')}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    <span className="font-mono" dir="ltr">{selectedStudent.student_id}</span>
-                    {' • '}{selectedStudent.grades?.name} / {selectedStudent.sections?.name}
-                  </p>
-                </div>
-                <button onClick={() => { setSelectedStudent(null); setStudentSearch(''); }} className="text-red-500 hover:text-red-700 text-sm">تغيير</button>
-              </div>
+                {/* Health alert — surfaces medical conditions so the
+                    deputy contacting the parent knows there's an
+                    underlying condition that may justify the dismissal. */}
+                {selectedStudent.health_info?.conditions && selectedStudent.health_info.conditions.length > 0 && (
+                  <div className="mt-2 border-2 border-red-300 dark:border-red-500/50 bg-red-50 dark:bg-red-500/10 rounded-lg p-2.5">
+                    <p className="text-xs font-bold text-red-900 dark:text-red-200 mb-1">
+                      🏥 ⚠️ هذا الطالب لديه حالات صحية — انتبه!
+                    </p>
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {selectedStudent.health_info.conditions.map((c) => {
+                        const info = HEALTH_LABELS[c] || { label: c, emoji: '📋' };
+                        return (
+                          <span
+                            key={c}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-500/20 text-red-800 dark:text-red-300 text-[10px] font-medium"
+                          >
+                            {info.emoji} {info.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    {selectedStudent.health_info.notes && (
+                      <p className="text-[11px] text-red-800 dark:text-red-300 leading-tight">
+                        📝 {selectedStudent.health_info.notes}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <div className="relative">
