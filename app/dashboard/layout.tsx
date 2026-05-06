@@ -105,6 +105,7 @@ const navGroups: NavGroup[] = [
     label: 'التقارير',
     items: [
       { path: '/dashboard/reports/builder', label: 'التقارير', icon: BarChart3 },
+      { path: '/dashboard/reports/whatsapp', label: 'تقرير الواتساب', icon: MessageCircle, superAdminOnly: true },
     ],
   },
   {
