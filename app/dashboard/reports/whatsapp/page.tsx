@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, Suspense, Fragment } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   MessageCircle, Filter, Search, Calendar, Printer, Loader2,
@@ -15,6 +16,8 @@ interface Msg {
   recipient_name: string | null;
   recipient_type: 'parent' | 'teacher' | 'admin' | 'unknown';
   context_type: string | null;
+  context_id: string | null;
+  template_name: string | null;
   message_body: string;
   status: 'success' | 'failed';
   error_message: string | null;
@@ -23,6 +26,14 @@ interface Msg {
   sender_role: string | null;
   sent_at: string;
 }
+
+// Hint text for "copy-helper" templates — short messages that exist
+// only to give the recipient a clean long-press → copy target. Without
+// this, viewers see a bare value (e.g. just a password) and panic.
+const TEMPLATE_HINT: Record<string, string> = {
+  teacher_password_only: '📌 رسالة قصيرة للنسخ السريع — التعليمات الكاملة + الرابط + البريد في رسالة "بيانات الدخول" التي سُبقَت بها.',
+  teacher_email_only: '📌 رسالة قصيرة للنسخ السريع — التعليمات الكاملة + الرابط + كلمة السر في رسالة "بيانات الدخول" التي سُبقَت بها.',
+};
 
 interface Stats { success: number; failed: number; today: number; last_24h: number }
 
@@ -59,8 +70,16 @@ export default function WhatsappReportPage() {
 }
 
 function ReportInner() {
+  // Pre-fill context_id from URL — supports deep links from the
+  // whatsapp-log page's "related messages" button.
+  const sp = useSearchParams();
+  const urlContextId = sp.get('context_id') || '';
+
   // ---- Filters ----
-  const [from, setFrom] = useState(todayStr());
+  // When opened with a context_id, widen the date window so the user
+  // sees the full sequence (otherwise today's filter might hide older
+  // related messages).
+  const [from, setFrom] = useState(urlContextId ? nDaysAgo(30) : todayStr());
   const [to, setTo] = useState(todayStr());
   const [senderRole, setSenderRole] = useState<'' | 'admin' | 'super_admin' | 'teacher'>('');
   const [sentBy, setSentBy] = useState<string>('');           // specific user_id
@@ -71,6 +90,10 @@ function ReportInner() {
   const [sectionId, setSectionId] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'' | 'success' | 'failed'>('');
   const [contextFilter, setContextFilter] = useState<string>('');
+  // contextId is set when the user clicks "الرسائل المرتبطة" on an
+  // expanded row — surfaces all messages sharing the same context_id.
+  // Initial value comes from the URL (deep link from whatsapp-log).
+  const [contextId, setContextId] = useState<string>(urlContextId);
   const [groupBy, setGroupBy] = useState<'none' | 'day' | 'sender' | 'grade'>('none');
   const [expanded, setExpanded] = useState<number | null>(null);
 
@@ -128,9 +151,10 @@ function ReportInner() {
     if (sectionId && !studentId) p.set('section_id', sectionId);
     if (statusFilter) p.set('status', statusFilter);
     if (contextFilter) p.set('context', contextFilter);
+    if (contextId) p.set('context_id', contextId);
     p.set('limit', '500');
     return p.toString();
-  }, [from, to, senderRole, sentBy, recipientType, studentId, gradeId, sectionId, statusFilter, contextFilter]);
+  }, [from, to, senderRole, sentBy, recipientType, studentId, gradeId, sectionId, statusFilter, contextFilter, contextId]);
 
   const { data, isLoading, isFetching } = useQuery<{ data: Msg[]; total: number; stats: Stats }>({
     queryKey: ['wa-report', queryString],
@@ -173,6 +197,7 @@ function ReportInner() {
     setStudentId(''); setStudentSearch('');
     setGradeId(''); setSectionId('');
     setStatusFilter(''); setContextFilter('');
+    setContextId('');
   };
 
   // Print URL — pass current filters so the print page renders the same set.
@@ -357,7 +382,7 @@ function ReportInner() {
         {/* ---- Results ---- */}
         <section className="space-y-3">
           {/* Active filters chip strip */}
-          {(senderRole || sentBy || recipientType || studentId || gradeId || sectionId || statusFilter || contextFilter) && (
+          {(senderRole || sentBy || recipientType || studentId || gradeId || sectionId || statusFilter || contextFilter || contextId) && (
             <div className="card py-2 flex items-center gap-1.5 flex-wrap text-xs">
               <span className="text-gray-500 dark:text-gray-400">الفلاتر النشطة:</span>
               {senderRole && <Chip text={senderRole === 'teacher' ? 'المعلمون' : 'الإدارة'} />}
@@ -368,6 +393,12 @@ function ReportInner() {
               {sectionId && <Chip text={`/ ${sections.find(s => String(s.id) === sectionId)?.name || ''}`} />}
               {statusFilter && <Chip text={statusFilter === 'success' ? '✅ ناجحة' : '❌ فاشلة'} />}
               {contextFilter && <Chip text={CONTEXT_LABEL[contextFilter] || contextFilter} />}
+              {contextId && (
+                <button onClick={() => setContextId('')} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 text-[11px] border border-purple-200 dark:border-purple-500/30 hover:bg-purple-200 dark:hover:bg-purple-500/30">
+                  🔗 سلسلة مرتبطة
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
           )}
 
@@ -381,7 +412,7 @@ function ReportInner() {
               <p className="text-sm text-gray-500 dark:text-gray-400">لا توجد رسائل مطابقة للفلاتر المحددة</p>
             </div>
           ) : groupBy === 'none' ? (
-            <MessagesTable messages={messages} expanded={expanded} setExpanded={setExpanded} />
+            <MessagesTable messages={messages} expanded={expanded} setExpanded={setExpanded} onShowRelated={setContextId} />
           ) : (
             grouped!.map(([key, items]) => (
               <div key={key} className="card p-0 overflow-hidden">
@@ -389,7 +420,7 @@ function ReportInner() {
                   <h3 className="font-bold text-sm">{key}</h3>
                   <span className="text-xs text-gray-500 dark:text-gray-400">{items.length} رسالة</span>
                 </div>
-                <MessagesTable messages={items} expanded={expanded} setExpanded={setExpanded} compact />
+                <MessagesTable messages={items} expanded={expanded} setExpanded={setExpanded} onShowRelated={setContextId} compact />
               </div>
             ))
           )}
@@ -448,11 +479,12 @@ function Chip({ text }: { text: string }) {
 }
 
 function MessagesTable({
-  messages, expanded, setExpanded, compact = false,
+  messages, expanded, setExpanded, onShowRelated, compact = false,
 }: {
   messages: Msg[];
   expanded: number | null;
   setExpanded: (id: number | null) => void;
+  onShowRelated: (contextId: string) => void;
   compact?: boolean;
 }) {
   return (
@@ -516,13 +548,42 @@ function MessagesTable({
                   </tr>
                   {isOpen && (
                     <tr className="bg-gray-50/60 dark:bg-gray-900/40">
-                      <td colSpan={6} className="px-3 py-3">
+                      <td colSpan={6} className="px-3 py-3 space-y-2">
+                        {/* Template hint — shown only for known
+                            "copy-helper" templates so admins don't get
+                            confused by bare-value messages. */}
+                        {m.template_name && TEMPLATE_HINT[m.template_name] && (
+                          <div className="text-[11px] bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-blue-800 dark:text-blue-300 p-2 rounded">
+                            {TEMPLATE_HINT[m.template_name]}
+                          </div>
+                        )}
+
                         <MessageBodyViewer body={m.message_body} />
+
                         {m.error_message && (
-                          <p className="mt-2 text-[11px] text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10 p-2 rounded">
+                          <p className="text-[11px] text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10 p-2 rounded">
                             خطأ: {m.error_message}
                           </p>
                         )}
+
+                        {/* Related-messages link + raw template name. */}
+                        <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
+                          {m.template_name && (
+                            <span>القالب: <span className="font-mono">{m.template_name}</span></span>
+                          )}
+                          {m.context_id && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onShowRelated(m.context_id!);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-500/25 border border-purple-200 dark:border-purple-500/30"
+                              title="عرض كل الرسائل التي تشترك بنفس السياق (مثلاً السلسلة الكاملة لاعتماد المعلم)"
+                            >
+                              🔗 الرسائل المرتبطة بهذا السياق
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )}

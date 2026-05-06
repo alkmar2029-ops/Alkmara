@@ -35,6 +35,13 @@ const CONTEXT_LABEL: Record<string, string> = {
   note: 'ملاحظة', late: 'تأخير', teacher_credentials: 'بيانات دخول', manual: 'يدوي',
 };
 
+// Hint for "copy-helper" templates that look orphaned in isolation —
+// surfaced inline when a row of that template is expanded.
+const TEMPLATE_HINT: Record<string, string> = {
+  teacher_password_only: '📌 رسالة قصيرة للنسخ السريع — التعليمات الكاملة + الرابط + البريد في رسالة "بيانات الدخول" التي سُبقَت بها.',
+  teacher_email_only: '📌 رسالة قصيرة للنسخ السريع — التعليمات الكاملة + الرابط + كلمة السر في رسالة "بيانات الدخول" التي سُبقَت بها.',
+};
+
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -307,6 +314,14 @@ function MessageRow({ message: m, expanded, onToggle, onResend, resending }: {
 
       {expanded && (
         <div className="mt-3 ms-7 ps-3 border-s-2 border-blue-300 dark:border-blue-500/40">
+          {/* Template hint — clarifies bare copy-helper messages
+              (e.g. teacher_password_only) so admins reviewing the log
+              don't think the message is missing instructions. */}
+          {m.template_name && TEMPLATE_HINT[m.template_name] && (
+            <div className="text-[11px] bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-blue-800 dark:text-blue-300 p-2 rounded mb-2">
+              {TEMPLATE_HINT[m.template_name]}
+            </div>
+          )}
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">نص الرسالة:</p>
           <MessageBodyViewer body={m.message_body} recipientPhone={m.recipient_phone} />
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -315,6 +330,22 @@ function MessageRow({ message: m, expanded, onToggle, onResend, resending }: {
             {m.http_status && <div>HTTP: <code>{m.http_status}</code></div>}
             {m.context_id && <div>Context ID: <code dir="ltr">{m.context_id}</code></div>}
           </div>
+
+          {/* Related-messages link — opens the dedicated report filtered
+              by this message's context_id so the admin sees the full
+              sequence (welcome + email + password) at once. */}
+          {m.context_id && (
+            <a
+              href={`/dashboard/reports/whatsapp?context_id=${encodeURIComponent(m.context_id)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 mt-2 px-2 py-1 rounded text-[11px] bg-purple-50 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-500/25 border border-purple-200 dark:border-purple-500/30"
+              onClick={(e) => e.stopPropagation()}
+              title="عرض كل الرسائل التي تشترك بنفس السياق"
+            >
+              🔗 عرض الرسائل المرتبطة بهذا السياق
+            </a>
+          )}
 
           {/* Resend action — only shown for failed messages */}
           {!isOk && (

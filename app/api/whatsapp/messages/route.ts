@@ -40,6 +40,10 @@ export async function GET(request: NextRequest) {
   const studentId = searchParams.get('student_id');
   const gradeId = searchParams.get('grade_id');
   const sectionId = searchParams.get('section_id');
+  // context_id powers the "related messages" button — fetch the full
+  // sequence that shares this context (e.g. all 3 messages of a single
+  // teacher_credentials send: welcome + email-only + password-only).
+  const contextId = searchParams.get('context_id');
   const statsOnly = searchParams.get('stats_only') === '1';
   const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10) || 100, 500);
   const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10) || 0, 0);
@@ -100,6 +104,7 @@ export async function GET(request: NextRequest) {
     if (sentBy) qb = qb.eq('sent_by', sentBy);
     if (senderUserIds) qb = qb.in('sent_by', senderUserIds);
     if (phoneList) qb = qb.in('recipient_phone', phoneList);
+    if (contextId) qb = qb.eq('context_id', contextId);
     return qb;
   };
 
