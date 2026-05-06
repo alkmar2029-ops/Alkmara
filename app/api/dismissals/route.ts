@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
   const [{ data: student }, { data: deputyProfile }] = await Promise.all([
     supabase
       .from('students')
-      .select(`id, student_id, first_name, father_name, last_name, phone, section_id,
+      .select(`id, student_id, first_name, father_name, last_name, phone, section_id, social_info,
         sections!inner ( id, name, grades!inner ( id, name ) )
       `)
       .eq('id', v.data.student_id)
@@ -118,6 +118,70 @@ export async function POST(request: NextRequest) {
   ]);
   if (!student) {
     return NextResponse.json({ error: 'الطالب غير موجود' }, { status: 404 });
+  }
+
+  // 1b. ENFORCE custody/social-info pickup restrictions.
+  // Compares the submitted pickup_person_name against social_info.blocked_pickup
+  // (substring match, both sides normalized) and against social_info.authorized_pickup.
+  //
+  // Outcomes:
+  //   - blocked_pickup match     → 403 hard block (unless override_blocked_pickup=true; admin only)
+  //   - not in authorized_pickup → 422 soft block (unless override_blocked_pickup=true)
+  //   - everything OK            → proceed
+  const social = (student as any).social_info as {
+    authorized_pickup?: string[];
+    blocked_pickup?: string[];
+  } | null;
+  const pickupName = v.data.pickup_person_name.trim();
+  const norm = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+  const pickupNorm = norm(pickupName);
+
+  if (social) {
+    const blockedHit = (social.blocked_pickup || []).find((n) => {
+      const x = norm(n);
+      return x.length > 0 && (pickupNorm.includes(x) || x.includes(pickupNorm));
+    });
+
+    if (blockedHit && !v.data.override_blocked_pickup) {
+      return NextResponse.json({
+        error: `🛑 تم رفض الاستئذان: "${pickupName}" ضمن قائمة الممنوعين من استلام هذا الطالب (${blockedHit})`,
+        code: 'PICKUP_BLOCKED',
+        blocked_match: blockedHit,
+      }, { status: 403 });
+    }
+
+    // Override path: requires admin role and a written reason.
+    if (blockedHit && v.data.override_blocked_pickup) {
+      if (auth.ctx.role !== 'admin' && auth.ctx.role !== 'super_admin') {
+        return NextResponse.json({
+          error: 'فقط الأدمن يستطيع تجاوز قيود الاستلام',
+          code: 'OVERRIDE_NOT_ALLOWED',
+        }, { status: 403 });
+      }
+      if (!(v.data.override_reason || '').trim()) {
+        return NextResponse.json({
+          error: 'يجب كتابة سبب التجاوز',
+          code: 'OVERRIDE_REASON_REQUIRED',
+        }, { status: 400 });
+      }
+    }
+
+    // Soft block — pickup name not in authorized list AND there IS an
+    // authorized list defined. Empty list means "no restriction".
+    const authorized = (social.authorized_pickup || []).filter((n) => n.trim());
+    if (authorized.length > 0 && !v.data.override_blocked_pickup) {
+      const isAuthorized = authorized.some((n) => {
+        const x = norm(n);
+        return x.length > 0 && (pickupNorm.includes(x) || x.includes(pickupNorm));
+      });
+      if (!isAuthorized) {
+        return NextResponse.json({
+          error: `⚠️ "${pickupName}" غير مدرج ضمن المسموح لهم باستلام هذا الطالب. المسموح: ${authorized.join('، ')}. يحتاج موافقة الأدمن.`,
+          code: 'PICKUP_NOT_AUTHORIZED',
+          authorized_list: authorized,
+        }, { status: 422 });
+      }
+    }
   }
 
   const studentFullName = [student.first_name, student.father_name, student.last_name]
@@ -210,7 +274,7 @@ export async function POST(request: NextRequest) {
 
   await writeAuditLog({
     ctx: auth.ctx,
-    action: 'dismissal.create',
+    action: v.data.override_blocked_pickup ? 'dismissal.create_with_override' : 'dismissal.create',
     targetType: 'dismissal',
     targetId: dismissalId,
     details: {
@@ -218,6 +282,10 @@ export async function POST(request: NextRequest) {
       reason: v.data.reason,
       auto_excused_periods: autoExcusedCount,
       whatsapp_sent: waResult.ok,
+      // Audit trail for legal liability — captures who overrode what.
+      override_blocked_pickup: v.data.override_blocked_pickup || false,
+      override_reason: v.data.override_blocked_pickup ? (v.data.override_reason || null) : null,
+      pickup_person_name: v.data.pickup_person_name,
     },
     request,
   });

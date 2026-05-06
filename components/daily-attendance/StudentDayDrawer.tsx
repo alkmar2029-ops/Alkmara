@@ -28,9 +28,32 @@ interface DayAttendanceData {
     grade_name: string | null;
     section_name: string | null;
     health_info: { conditions?: string[]; notes?: string } | null;
+    social_info?: {
+      custody_type?: string;
+      documentation_status?: string;
+      authorized_pickup?: string[];
+      blocked_pickup?: string[];
+      court_ref?: string;
+      emergency_contact?: { name?: string; phone?: string; relation?: string } | null;
+      notes?: string;
+    } | null;
   };
   periods: PeriodEntry[];
 }
+
+const CUSTODY_LABELS: Record<string, { label: string; emoji: string }> = {
+  father:   { label: 'وصاية الوالد',  emoji: '👨' },
+  mother:   { label: 'وصاية الوالدة', emoji: '👩' },
+  shared:   { label: 'وصاية مشتركة',  emoji: '👨‍👩‍👧' },
+  guardian: { label: 'وصاية أخرى',    emoji: '👤' },
+  other:    { label: 'حالة أخرى',     emoji: '📋' },
+};
+
+const DOCS_LABELS: Record<string, { label: string; emoji: string; cls: string }> = {
+  verified: { label: 'مكتملة',         emoji: '✅', cls: 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/40' },
+  pending:  { label: 'قيد المتابعة',   emoji: '⏳', cls: 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/40' },
+  missing:  { label: 'ناقصة',          emoji: '⚠️', cls: 'bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/40' },
+};
 
 const HEALTH_LABELS: Record<string, { label: string; emoji: string }> = {
   diabetes:     { label: 'السكري',       emoji: '🩸' },
@@ -182,6 +205,65 @@ export default function StudentDayDrawer({
                   </div>
                 </div>
               </div>
+
+              {/* Social/custody alert — placed BEFORE health since pickup
+                  restrictions are usually the more time-sensitive
+                  decision when reviewing an absentee. */}
+              {data.student.social_info && (() => {
+                const s = data.student.social_info;
+                const blocked = (s.blocked_pickup?.length || 0) > 0;
+                const docsMissing = s.documentation_status === 'missing';
+                const tone = blocked
+                  ? 'border-red-300 dark:border-red-500/50 bg-red-50 dark:bg-red-500/10 text-red-900 dark:text-red-200'
+                  : docsMissing
+                    ? 'border-amber-300 dark:border-amber-500/50 bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-200'
+                    : 'border-indigo-300 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-900 dark:text-indigo-200';
+                const custody = s.custody_type ? CUSTODY_LABELS[s.custody_type] : null;
+                const docs = s.documentation_status ? DOCS_LABELS[s.documentation_status] : null;
+                return (
+                  <div className={`rounded-xl border-2 ${tone} p-3`}>
+                    <div className="flex items-start gap-2">
+                      <span className="text-xl">{blocked ? '🛑' : '👨‍👩‍👧'}</span>
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <h3 className="font-bold text-sm">
+                          {blocked ? 'قيود استلام مفروضة' : 'حالة وصاية مسجَّلة'}
+                        </h3>
+                        <div className="flex flex-wrap gap-1">
+                          {custody && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/70 dark:bg-black/20 text-[11px] font-medium border border-current/20">
+                              {custody.emoji} {custody.label}
+                            </span>
+                          )}
+                          {docs && (
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium border ${docs.cls}`}>
+                              {docs.emoji} {docs.label}
+                            </span>
+                          )}
+                        </div>
+                        {(s.authorized_pickup?.length || 0) > 0 && (
+                          <div className="text-[11px]">
+                            <span className="font-semibold">✅ مسموح: </span>
+                            {s.authorized_pickup!.join('، ')}
+                          </div>
+                        )}
+                        {blocked && (
+                          <div className="text-[11px] font-bold">
+                            <span>🛑 ممنوع: </span>
+                            {s.blocked_pickup!.join('، ')}
+                          </div>
+                        )}
+                        {s.emergency_contact && (s.emergency_contact.name || s.emergency_contact.phone) && (
+                          <div className="text-[11px] bg-white/60 dark:bg-black/20 p-1.5 rounded">
+                            📞 {s.emergency_contact.name}
+                            {s.emergency_contact.relation && ` (${s.emergency_contact.relation})`}
+                            {s.emergency_contact.phone && (<> — <span className="font-mono" dir="ltr">{s.emergency_contact.phone}</span></>)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Health alert (if any) */}
               {data.student.health_info?.conditions && data.student.health_info.conditions.length > 0 && (

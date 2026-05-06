@@ -24,6 +24,15 @@ interface Student {
   // they can spot at-risk students before marking them absent/excused
   // (مستأذن). Schema: { conditions: string[], notes?: string }
   health_info?: { conditions?: string[]; notes?: string } | null;
+  // social_info — teachers see ONLY the dismissal-relevant fields
+  // (custody_type, blocked_pickup count, docs status). The free-text
+  // notes are admin-only and never sent to the teacher app.
+  social_info?: {
+    custody_type?: string;
+    documentation_status?: string;
+    authorized_pickup?: string[];
+    blocked_pickup?: string[];
+  } | null;
 }
 
 const HEALTH_LABELS: Record<string, { label: string; emoji: string }> = {
@@ -38,10 +47,27 @@ const HEALTH_LABELS: Record<string, { label: string; emoji: string }> = {
   other:        { label: 'أخرى',          emoji: '📋' },
 };
 
+const CUSTODY_LABELS: Record<string, { label: string; emoji: string }> = {
+  father:   { label: 'وصاية الوالد',  emoji: '👨' },
+  mother:   { label: 'وصاية الوالدة', emoji: '👩' },
+  shared:   { label: 'وصاية مشتركة',  emoji: '👨‍👩‍👧' },
+  guardian: { label: 'وصاية أخرى',    emoji: '👤' },
+  other:    { label: 'حالة أخرى',     emoji: '📋' },
+};
+
 function summarizeConditions(codes: string[]): string {
   return codes
     .map((c) => HEALTH_LABELS[c]?.label || c)
     .join('، ');
+}
+
+// True when the student has restrictions a teacher should respect
+// before allowing them to leave with someone (excused / استئذان).
+function hasPickupRestrictions(s?: Student['social_info']): boolean {
+  if (!s) return false;
+  return (s.blocked_pickup?.length || 0) > 0
+      || s.documentation_status === 'missing'
+      || !!s.custody_type;
 }
 
 interface Period { id: number; number: number; name: string; }
@@ -113,6 +139,9 @@ function TeacherEntryPage() {
   // - healthDetailsFor: id of the student whose health popover is shown
   const [healthBannerExpanded, setHealthBannerExpanded] = useState(false);
   const [healthDetailsFor, setHealthDetailsFor] = useState<number | null>(null);
+  // Social/custody modal — separate from health since the data and the
+  // visual treatment are different (custody is legal-liability stuff).
+  const [socialDetailsFor, setSocialDetailsFor] = useState<number | null>(null);
 
   // Track which student IDs had their 'absent' status applied via the
   // cascade-from-earlier-periods button. Used at save time to mark those
@@ -295,6 +324,22 @@ function TeacherEntryPage() {
     return map;
   }, [studentsWithHealth]);
 
+  // ---- Social/custody derivations ----
+  // Surface only restriction-bearing students (the "who can pick them up"
+  // story). Plain شامل-custody with no restrictions is not flagged on
+  // the row to avoid noise.
+  const studentsWithSocial = useMemo(
+    () => students.filter((s) => hasPickupRestrictions(s.social_info)),
+    [students],
+  );
+  const socialByStudent = useMemo(() => {
+    const map = new Map<number, NonNullable<Student['social_info']>>();
+    for (const s of studentsWithSocial) {
+      if (s.social_info) map.set(s.id, s.social_info);
+    }
+    return map;
+  }, [studentsWithSocial]);
+
   // ---- Counts ----
   const counts = useMemo(() => {
     let absent = 0, late = 0, excused = 0;
@@ -347,6 +392,45 @@ function TeacherEntryPage() {
           },
         },
       );
+    }
+
+    // Social/custody warning — fires only on excused (استئذان) since
+    // that's the path where the student physically leaves with someone.
+    // Always-loud red toast when there are blocked_pickup names, since
+    // the school can be legally liable if that person picks them up.
+    const social = socialByStudent.get(id);
+    if (social && nextStatus === 'excused') {
+      const blocked = (social.blocked_pickup?.length || 0) > 0;
+      const docsMissing = social.documentation_status === 'missing';
+      const lines: string[] = [];
+      if (blocked) {
+        lines.push(`🛑 ممنوع التسليم لـ: ${social.blocked_pickup!.join('، ')}`);
+      }
+      if (social.custody_type) {
+        const c = CUSTODY_LABELS[social.custody_type];
+        if (c) lines.push(`👨‍👩‍👧 ${c.label}`);
+      }
+      if ((social.authorized_pickup?.length || 0) > 0) {
+        lines.push(`✅ المسموح: ${social.authorized_pickup!.join('، ')}`);
+      }
+      if (docsMissing) lines.push('⚠️ الوثائق ناقصة');
+      if (lines.length > 0) {
+        toast(
+          `${blocked ? '🛑 قيود استلام مفروضة' : '⚠️ تحقّق من الوصاية'}\n${lines.join('\n')}\n— تواصل مع الإدارة قبل التسليم`,
+          {
+            duration: 7000,
+            icon: blocked ? '🛑' : '👨‍👩‍👧',
+            style: {
+              background: blocked ? '#fef2f2' : '#eff6ff',
+              color: blocked ? '#7f1d1d' : '#1e3a8a',
+              border: blocked ? '2px solid #ef4444' : '1.5px solid #93c5fd',
+              maxWidth: '440px',
+              whiteSpace: 'pre-line',
+              fontWeight: blocked ? 600 : 400,
+            },
+          },
+        );
+      }
     }
   };
 
@@ -716,6 +800,40 @@ function TeacherEntryPage() {
                               🏥 {health.conditions.length}
                             </span>
                           )}
+                          {/* Social/custody badge — shown only for
+                              students with pickup restrictions. The
+                              shield icon distinguishes it visually from
+                              the health badge. */}
+                          {socialByStudent.has(s.id) && (() => {
+                            const soc = socialByStudent.get(s.id)!;
+                            const blocked = (soc.blocked_pickup?.length || 0) > 0;
+                            return (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSocialDetailsFor(s.id);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    setSocialDetailsFor(s.id);
+                                  }
+                                }}
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-white text-[10px] font-bold shrink-0 cursor-pointer active:scale-95 border shadow-sm ${
+                                  blocked
+                                    ? 'bg-red-700 hover:bg-red-800 border-red-900 animate-pulse'
+                                    : 'bg-indigo-600 hover:bg-indigo-700 border-indigo-800'
+                                }`}
+                                title={blocked ? 'قيود استلام مفروضة' : 'حالة وصاية مسجَّلة'}
+                                aria-label="عرض حالة الوصاية"
+                              >
+                                {blocked ? '🛑' : '👨‍👩‍👧'}
+                              </span>
+                            );
+                          })()}
                           {cascadeApplied.has(s.id) && (
                             <span
                               className="text-[9px] font-normal px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300 border border-orange-200 dark:border-orange-500/40 shrink-0"
@@ -796,6 +914,89 @@ function TeacherEntryPage() {
                 )}
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed border-t border-gray-100 dark:border-gray-800 pt-2">
                   💡 إذا طلب الطالب الاستئذان أو ظهرت عليه أعراض، تواصل مع الإدارة فوراً
+                </p>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* Social/custody detail modal — separate visual treatment from
+          health (different liability story). Tone shifts to red when
+          there's an active blocked_pickup restriction. */}
+      {socialDetailsFor !== null && (() => {
+        const stu = students.find((s) => s.id === socialDetailsFor);
+        if (!stu || !stu.social_info) return null;
+        const fullName = [stu.first_name, stu.father_name, stu.last_name].filter(Boolean).join(' ');
+        const soc = stu.social_info;
+        const blocked = (soc.blocked_pickup?.length || 0) > 0;
+        const headerBg = blocked ? 'bg-red-600' : 'bg-indigo-600';
+        const borderTone = blocked
+          ? 'border-red-300 dark:border-red-500/50'
+          : 'border-indigo-300 dark:border-indigo-500/50';
+        const custody = soc.custody_type ? CUSTODY_LABELS[soc.custody_type] : null;
+        return (
+          <>
+            <div className="fixed inset-0 bg-black/60 z-50" onClick={() => setSocialDetailsFor(null)} />
+            <div
+              className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92%] max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border-2 ${borderTone} overflow-hidden`}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className={`${headerBg} px-4 py-3 flex items-center gap-2`}>
+                <span className="text-2xl">{blocked ? '🛑' : '👨‍👩‍👧'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-white text-base">
+                    {blocked ? 'قيود استلام مفروضة' : 'حالة وصاية مسجَّلة'}
+                  </p>
+                  <p className="text-xs opacity-90 text-white truncate">{fullName}</p>
+                </div>
+                <button
+                  onClick={() => setSocialDetailsFor(null)}
+                  className="p-1 rounded-lg hover:bg-black/20 text-white"
+                  aria-label="إغلاق"
+                >
+                  <XIcon className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-4 space-y-3 text-sm">
+                {custody && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{custody.emoji}</span>
+                    <span className="font-semibold">{custody.label}</span>
+                  </div>
+                )}
+                {(soc.authorized_pickup?.length || 0) > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-1">✅ المسموح بالاستلام:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {soc.authorized_pickup!.map((n) => (
+                        <span key={n} className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs border border-emerald-200 dark:border-emerald-500/30">
+                          {n}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {blocked && (
+                  <div>
+                    <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-1">🛑 ممنوع التسليم لـ:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {soc.blocked_pickup!.map((n) => (
+                        <span key={n} className="inline-flex items-center px-2 py-0.5 rounded bg-red-100 dark:bg-red-500/20 text-red-800 dark:text-red-300 text-xs font-bold border border-red-200 dark:border-red-500/30">
+                          {n}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {soc.documentation_status === 'missing' && (
+                  <p className="text-xs bg-amber-50 dark:bg-amber-500/10 p-2 rounded border border-amber-200 dark:border-amber-500/30 text-amber-800 dark:text-amber-300">
+                    ⚠️ الوثائق ناقصة — راجع الإدارة قبل أي قرار
+                  </p>
+                )}
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed border-t border-gray-100 dark:border-gray-800 pt-2">
+                  💡 إذا طلب الطالب الاستئذان، تحقّق من هوية المستلم وتواصل مع الإدارة قبل التسليم
                 </p>
               </div>
             </div>

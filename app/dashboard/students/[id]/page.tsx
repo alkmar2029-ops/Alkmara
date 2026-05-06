@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   ArrowRight, User, Phone, Hash, BookOpen, MessageCircle,
   Loader2, AlertCircle, MessageSquarePlus, LogOut as ExitIcon,
-  ClipboardCheck, Send, BarChart3,
+  ClipboardCheck, Send, BarChart3, Shield, ShieldAlert, FileText, UserCheck, UserX,
 } from 'lucide-react';
 
 interface StudentDetail {
@@ -24,7 +24,30 @@ interface StudentDetail {
   grades?: { name: string; stage?: string };
   sections?: { name: string };
   health_info?: { conditions?: string[]; notes?: string } | null;
+  social_info?: {
+    custody_type?: string;
+    documentation_status?: string;
+    authorized_pickup?: string[];
+    blocked_pickup?: string[];
+    court_ref?: string;
+    emergency_contact?: { name?: string; phone?: string; relation?: string } | null;
+    notes?: string;
+  } | null;
 }
+
+const CUSTODY_LABELS: Record<string, { label: string; emoji: string }> = {
+  father:   { label: 'وصاية الوالد',  emoji: '👨' },
+  mother:   { label: 'وصاية الوالدة', emoji: '👩' },
+  shared:   { label: 'وصاية مشتركة',  emoji: '👨‍👩‍👧' },
+  guardian: { label: 'وصاية أخرى',    emoji: '👤' },
+  other:    { label: 'حالة أخرى',     emoji: '📋' },
+};
+
+const DOCS_LABELS: Record<string, { label: string; emoji: string; cls: string }> = {
+  verified: { label: 'مكتملة',         emoji: '✅', cls: 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/40' },
+  pending:  { label: 'قيد المتابعة',   emoji: '⏳', cls: 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/40' },
+  missing:  { label: 'ناقصة',          emoji: '⚠️', cls: 'bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/40' },
+};
 
 const HEALTH_LABELS: Record<string, { label: string; emoji: string }> = {
   diabetes:     { label: 'السكري',       emoji: '🩸' },
@@ -126,6 +149,109 @@ export default function StudentDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Social/custody banner — sits right under health and above
+          identity. Color = severity: red if there's a blocked_pickup
+          (legal restriction), amber if docs are missing, indigo otherwise. */}
+      {student.social_info && (() => {
+        const s = student.social_info;
+        const hasBlocks = (s.blocked_pickup?.length || 0) > 0;
+        const docsMissing = s.documentation_status === 'missing';
+        const tone = hasBlocks
+          ? 'border-red-300 dark:border-red-500/50 bg-red-50 dark:bg-red-500/10'
+          : docsMissing
+            ? 'border-amber-300 dark:border-amber-500/50 bg-amber-50 dark:bg-amber-500/10'
+            : 'border-indigo-300 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10';
+        const iconBg = hasBlocks ? 'bg-red-500' : docsMissing ? 'bg-amber-500' : 'bg-indigo-500';
+        const Icon = hasBlocks ? ShieldAlert : Shield;
+        const titleColor = hasBlocks
+          ? 'text-red-900 dark:text-red-200'
+          : docsMissing
+            ? 'text-amber-900 dark:text-amber-200'
+            : 'text-indigo-900 dark:text-indigo-200';
+        const custody = s.custody_type ? CUSTODY_LABELS[s.custody_type] : null;
+        const docs = s.documentation_status ? DOCS_LABELS[s.documentation_status] : null;
+        return (
+          <div className={`card border-2 ${tone}`}>
+            <div className="flex items-start gap-3">
+              <div className={`w-10 h-10 rounded-full ${iconBg} flex items-center justify-center shrink-0`}>
+                <Icon className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-2">
+                <div>
+                  <h2 className={`font-bold ${titleColor}`}>
+                    {hasBlocks ? '🛑 قيود استلام مفروضة — راجع قبل الاستئذان' : '👨‍👩‍👧 الحالة الاجتماعية / الوصاية'}
+                  </h2>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                    {custody && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-black/20 border border-current/20 text-xs font-medium">
+                        {custody.emoji} {custody.label}
+                      </span>
+                    )}
+                    {docs && (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${docs.cls}`}>
+                        {docs.emoji} الوثائق: {docs.label}
+                      </span>
+                    )}
+                    {s.court_ref && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-black/20 border border-current/20 text-xs font-mono">
+                        <FileText className="w-3 h-3" /> {s.court_ref}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {(s.authorized_pickup?.length || 0) > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-1 flex items-center gap-1">
+                      <UserCheck className="w-3.5 h-3.5" /> مسموح بالاستلام:
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {s.authorized_pickup!.map((name) => (
+                        <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs border border-emerald-200 dark:border-emerald-500/30">
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(s.blocked_pickup?.length || 0) > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-1 flex items-center gap-1">
+                      <UserX className="w-3.5 h-3.5" /> 🛑 ممنوع تسليمه لـ:
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {s.blocked_pickup!.map((name) => (
+                        <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 dark:bg-red-500/20 text-red-800 dark:text-red-300 text-xs font-bold border border-red-200 dark:border-red-500/30">
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {s.emergency_contact && (s.emergency_contact.name || s.emergency_contact.phone) && (
+                  <div className="text-xs text-gray-700 dark:text-gray-300 bg-white/60 dark:bg-black/20 p-2 rounded">
+                    <span className="font-semibold">📞 طوارئ بديل: </span>
+                    {s.emergency_contact.name}
+                    {s.emergency_contact.relation && ` (${s.emergency_contact.relation})`}
+                    {s.emergency_contact.phone && (
+                      <> — <span className="font-mono" dir="ltr">{s.emergency_contact.phone}</span></>
+                    )}
+                  </div>
+                )}
+
+                {s.notes && (
+                  <p className="text-xs text-gray-700 dark:text-gray-300 bg-white/60 dark:bg-black/20 p-2 rounded whitespace-pre-line">
+                    🔒 {s.notes}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Identity card */}
       <div className="card bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-500/10 dark:to-indigo-500/10 border-blue-200 dark:border-blue-500/30">

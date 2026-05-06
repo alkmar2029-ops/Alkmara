@@ -14,6 +14,27 @@ export const studentHealthInfoSchema = z.object({
   notes: z.string().max(500).optional().or(z.literal('')),
 }).optional().nullable();
 
+// Custody / social-info shape — the schema is intentionally permissive
+// so the form can grow without migrations. The dismissal blocking flow
+// (Phase C) reads `blocked_pickup` for hard blocks and
+// `authorized_pickup` for soft warnings.
+export const CUSTODY_TYPES = ['father', 'mother', 'shared', 'guardian', 'other'] as const;
+export const DOCUMENTATION_STATUS = ['verified', 'pending', 'missing'] as const;
+
+export const studentSocialInfoSchema = z.object({
+  custody_type: z.enum(CUSTODY_TYPES).optional().nullable(),
+  authorized_pickup: z.array(z.string().max(100)).max(20).optional().default([]),
+  blocked_pickup: z.array(z.string().max(100)).max(20).optional().default([]),
+  documentation_status: z.enum(DOCUMENTATION_STATUS).optional().nullable(),
+  court_ref: z.string().max(100).optional().or(z.literal('')),
+  emergency_contact: z.object({
+    name: z.string().max(100).optional().or(z.literal('')),
+    phone: z.string().max(20).optional().or(z.literal('')),
+    relation: z.string().max(50).optional().or(z.literal('')),
+  }).optional().nullable(),
+  notes: z.string().max(1000).optional().or(z.literal('')),
+}).optional().nullable();
+
 // Student schemas
 export const createStudentSchema = z.object({
   student_id: z.string().length(10, 'رقم الطالب يجب أن يكون 10 أرقام').regex(/^\d+$/, 'رقم الطالب يجب أن يحتوي على أرقام فقط'),
@@ -26,6 +47,7 @@ export const createStudentSchema = z.object({
   section_id: z.number().int().positive('الشعبة مطلوبة'),
   notes: z.string().max(500).optional().or(z.literal('')),
   health_info: studentHealthInfoSchema,
+  social_info: studentSocialInfoSchema,
 });
 
 export const updateStudentSchema = createStudentSchema.partial().omit({ student_id: true });
@@ -209,6 +231,11 @@ export const createDismissalSchema = z.object({
   notes: z.string().max(500).optional(),
   send_whatsapp: z.boolean().optional().default(true),
   auto_excuse_periods: z.boolean().optional().default(true),
+  // When the student has social_info.blocked_pickup or other restrictions,
+  // the API enforces them. Admin can override by passing both flags below.
+  // The override (and its reason) goes to the audit log.
+  override_blocked_pickup: z.boolean().optional().default(false),
+  override_reason: z.string().max(500).optional(),
 });
 
 export const updateTeacherSchema = z.object({

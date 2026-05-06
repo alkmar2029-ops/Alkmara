@@ -54,7 +54,7 @@ export async function GET(
   // 1. Student basics + section.
   const { data: student, error: stuErr } = await supabase
     .from('students')
-    .select('id, student_id, first_name, father_name, last_name, phone, section_id, health_info, grades(name), sections(name)')
+    .select('id, student_id, first_name, father_name, last_name, phone, section_id, health_info, social_info, grades(name), sections(name)')
     .eq('id', studentId)
     .single();
 
@@ -180,6 +180,7 @@ export async function GET(
         grade_name: (student as any).grades?.name ?? null,
         section_name: (student as any).sections?.name ?? null,
         health_info: student.health_info,
+        social_info: (student as any).social_info ?? null,
       },
       periods,
     },

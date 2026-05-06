@@ -14,14 +14,14 @@ export async function GET() {
   // Super admin sees everything — UI uses this to skip the "scope" banner.
   if (ctx.role === 'super_admin') {
     return NextResponse.json({
-      data: { is_super_admin: true, sections: [] },
+      data: { is_super_admin: true, role: 'super_admin', sections: [] },
     }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
   // Non-admins fall through with empty data — they don't have assignments.
   if (ctx.role !== 'admin') {
     return NextResponse.json({
-      data: { is_super_admin: false, sections: [] },
+      data: { is_super_admin: false, role: ctx.role, sections: [] },
     });
   }
 
@@ -55,6 +55,6 @@ export async function GET() {
     );
 
   return NextResponse.json({
-    data: { is_super_admin: false, sections },
+    data: { is_super_admin: false, role: 'admin', sections },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

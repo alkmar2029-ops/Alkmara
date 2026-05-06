@@ -17,6 +17,19 @@ export async function GET(request: NextRequest) {
   const rawSearch = searchParams.get('search');
   const grade_id = searchParams.get('grade_id');
   const section_id = searchParams.get('section_id');
+  // Special-conditions filters (Phase B):
+  //   has_health=1                 → at least one health condition
+  //   health_condition=diabetes    → specific condition (uses GIN index)
+  //   has_social=1                 → any social_info present
+  //   custody_type=father|...      → specific custody type
+  //   docs_status=missing|...      → specific docs status
+  //   has_blocked_pickup=1         → has at least one blocked_pickup name
+  const hasHealth = searchParams.get('has_health');
+  const healthCondition = searchParams.get('health_condition');
+  const hasSocial = searchParams.get('has_social');
+  const custodyType = searchParams.get('custody_type');
+  const docsStatus = searchParams.get('docs_status');
+  const hasBlockedPickup = searchParams.get('has_blocked_pickup');
   const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
   const limit = Math.min(
     Math.max(1, parseInt(searchParams.get('limit') || String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE),
@@ -48,14 +61,32 @@ export async function GET(request: NextRequest) {
   if (grade_id) query = query.eq('grade_id', grade_id);
   if (section_id) query = query.eq('section_id', section_id);
 
+  // Special-conditions filters. Push to SQL where possible; the partial
+  // indexes from 2026_05_05/06 migrations make the JSON-key filters fast.
+  if (hasHealth === '1') query = query.not('health_info', 'is', null);
+  if (healthCondition) {
+    query = query.contains('health_info', { conditions: [healthCondition] });
+  }
+  if (hasSocial === '1') query = query.not('social_info', 'is', null);
+  if (custodyType) query = query.eq('social_info->>custody_type', custodyType);
+  if (docsStatus)  query = query.eq('social_info->>documentation_status', docsStatus);
+
   const { data, count, error } = await query;
   if (error) return NextResponse.json({ error: 'حدث خطأ أثناء جلب بيانات الطلاب' }, { status: 400 });
+
+  // has_blocked_pickup runs as a JS post-filter — PostgREST has no
+  // jsonb_array_length operator and the relevant subset is tiny
+  // (kids with active legal restrictions). count is approximate when
+  // this filter is applied.
+  const blockedFiltered = hasBlockedPickup === '1'
+    ? (data || []).filter((s: any) => (s.social_info?.blocked_pickup?.length || 0) > 0)
+    : (data || []);
 
   // Keep grades + sections nested objects on the response so callers
   // that read s.grades?.name / s.sections?.name (notes page, dismissal
   // form, etc.) display correctly. Also expose flat grade_name/
   // section_name for callers that prefer those.
-  const students = (data || []).map((s: any) => ({
+  const students = blockedFiltered.map((s: any) => ({
     ...s,
     grade_name: s.grades?.name,
     grade_stage: s.grades?.stage,
@@ -64,10 +95,10 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     data: students,
-    total: count || 0,
+    total: hasBlockedPickup === '1' ? students.length : (count || 0),
     page,
     limit,
-    totalPages: Math.ceil((count || 0) / limit),
+    totalPages: Math.ceil((hasBlockedPickup === '1' ? students.length : (count || 0)) / limit),
   });
 }
 

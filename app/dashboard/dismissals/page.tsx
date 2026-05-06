@@ -45,7 +45,24 @@ interface StudentSearchResult {
   grades?: { name: string };
   sections?: { name: string };
   health_info?: { conditions?: string[]; notes?: string } | null;
+  social_info?: {
+    custody_type?: string;
+    documentation_status?: string;
+    authorized_pickup?: string[];
+    blocked_pickup?: string[];
+    court_ref?: string;
+    emergency_contact?: { name?: string; phone?: string; relation?: string } | null;
+    notes?: string;
+  } | null;
 }
+
+const CUSTODY_LABELS: Record<string, { label: string; emoji: string }> = {
+  father:   { label: 'وصاية الوالد',  emoji: '👨' },
+  mother:   { label: 'وصاية الوالدة', emoji: '👩' },
+  shared:   { label: 'وصاية مشتركة',  emoji: '👨‍👩‍👧' },
+  guardian: { label: 'وصاية أخرى',    emoji: '👤' },
+  other:    { label: 'حالة أخرى',     emoji: '📋' },
+};
 
 const HEALTH_LABELS: Record<string, { label: string; emoji: string }> = {
   diabetes:     { label: 'السكري',       emoji: '🩸' },
@@ -390,6 +407,25 @@ function CreateDismissalModal({
   const [notes, setNotes] = useState('');
   const [sendWhatsapp, setSendWhatsapp] = useState(true);
   const [autoExcuse, setAutoExcuse] = useState(true);
+  // Override flow — only relevant when API rejects with PICKUP_BLOCKED
+  // or PICKUP_NOT_AUTHORIZED. Admin can re-submit with override=true and a reason.
+  const [overrideMode, setOverrideMode] = useState<{ kind: 'blocked' | 'not_authorized'; message: string } | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
+
+  // Current user role — needed to gate the "تجاوز" button (admin only).
+  // Reuses the existing /api/admin-assignments/me endpoint which already
+  // returns role + is_super_admin without requiring a new route.
+  const { data: meRole } = useQuery<string | null>({
+    queryKey: ['me-role-dismissal'],
+    queryFn: async () => {
+      const r = await fetch('/api/admin-assignments/me');
+      if (!r.ok) return null;
+      const d = await r.json();
+      return d?.data?.role || null;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const canOverride = meRole === 'admin' || meRole === 'super_admin';
 
   const { data: students = [] } = useQuery<StudentSearchResult[]>({
     queryKey: ['students-search-dismissal', studentSearch],
@@ -420,15 +456,26 @@ function CreateDismissalModal({
           notes: notes || undefined,
           send_whatsapp: sendWhatsapp,
           auto_excuse_periods: autoExcuse,
+          // Pass override flags only when user is in override mode (set after
+          // a 403/422 response from the API).
+          override_blocked_pickup: overrideMode !== null,
+          override_reason: overrideMode !== null ? overrideReason.trim() : undefined,
         }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'فشل الحفظ');
+      if (!r.ok) {
+        // Special handling for the social/custody error codes — show the
+        // override flow instead of a plain toast.
+        const err = new Error(d.error || 'فشل الحفظ') as Error & { code?: string };
+        err.code = d.code;
+        throw err;
+      }
       return d.data as { id: number; auto_excused_periods: number; whatsapp_sent: boolean; whatsapp_error: string | null };
     },
     onSuccess: (d) => {
       qc.invalidateQueries({ queryKey: ['dismissals'] });
       const parts: string[] = ['تم تسجيل الاستئذان'];
+      if (overrideMode !== null) parts.push('🔓 بتجاوز إداري');
       if (d.auto_excused_periods > 0) parts.push(`${d.auto_excused_periods} حصة مستأذَنة`);
       if (d.whatsapp_sent) parts.push('واتساب ✓');
       else if (d.whatsapp_error) parts.push(`واتساب ✗`);
@@ -437,7 +484,18 @@ function CreateDismissalModal({
       window.open(`/dashboard/dismissals/${d.id}/print`, '_blank');
       onClose();
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      // Surface the override flow only for the social-info error codes.
+      if (e.code === 'PICKUP_BLOCKED') {
+        setOverrideMode({ kind: 'blocked', message: e.message });
+        return;
+      }
+      if (e.code === 'PICKUP_NOT_AUTHORIZED') {
+        setOverrideMode({ kind: 'not_authorized', message: e.message });
+        return;
+      }
+      toast.error(e.message);
+    },
   });
 
   const canSubmit = !!selectedStudent && pickupName.trim().length >= 2 && !submitMut.isPending;
@@ -445,7 +503,7 @@ function CreateDismissalModal({
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col"
+        className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -481,6 +539,73 @@ function CreateDismissalModal({
                   </div>
                   <button onClick={() => { setSelectedStudent(null); setStudentSearch(''); }} className="text-red-500 hover:text-red-700 text-sm">تغيير</button>
                 </div>
+                {/* Custody/social alert — placed BEFORE health since
+                    these are pickup-blocking restrictions. Tone shifts to
+                    red when blocked_pickup names exist. */}
+                {selectedStudent.social_info && (() => {
+                  const s = selectedStudent.social_info;
+                  const blocked = (s.blocked_pickup?.length || 0) > 0;
+                  const docsMissing = s.documentation_status === 'missing';
+                  const tone = blocked
+                    ? 'border-red-300 dark:border-red-500/50 bg-red-50 dark:bg-red-500/10 text-red-900 dark:text-red-200'
+                    : docsMissing
+                      ? 'border-amber-300 dark:border-amber-500/50 bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-200'
+                      : 'border-indigo-300 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-900 dark:text-indigo-200';
+                  const custody = s.custody_type ? CUSTODY_LABELS[s.custody_type] : null;
+                  return (
+                    <div className={`mt-2 border-2 ${tone} rounded-lg p-2.5 space-y-1.5`}>
+                      <p className="text-xs font-bold flex items-center gap-1">
+                        {blocked ? '🛑 قيود استلام مفروضة — تحقّق قبل التسليم' : '👨‍👩‍👧 حالة وصاية مسجَّلة'}
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {custody && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/70 dark:bg-black/20 text-[10px] font-medium border border-current/20">
+                            {custody.emoji} {custody.label}
+                          </span>
+                        )}
+                        {docsMissing && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] font-medium border border-amber-200 dark:border-amber-500/30">
+                            ⚠️ الوثائق ناقصة
+                          </span>
+                        )}
+                      </div>
+                      {(s.authorized_pickup?.length || 0) > 0 && (
+                        <div className="text-[11px]">
+                          <span className="font-semibold">✅ المسموح: </span>
+                          {s.authorized_pickup!.map((n, i) => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => setPickupName(n)}
+                              className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-500/30 border border-emerald-200 dark:border-emerald-500/30 cursor-pointer"
+                              title="ضغطة لاختياره كمستلم"
+                            >
+                              {n}{i < s.authorized_pickup!.length - 1 ? '' : ''}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {blocked && (
+                        <div className="text-[11px] font-bold">
+                          <span>🛑 ممنوع التسليم لـ: </span>
+                          {s.blocked_pickup!.map((n) => (
+                            <span key={n} className="inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded bg-red-100 dark:bg-red-500/20 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-500/30">
+                              {n}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {s.emergency_contact && (s.emergency_contact.name || s.emergency_contact.phone) && (
+                        <div className="text-[11px] bg-white/60 dark:bg-black/20 p-1.5 rounded">
+                          📞 طوارئ بديل: {s.emergency_contact.name}
+                          {s.emergency_contact.relation && ` (${s.emergency_contact.relation})`}
+                          {s.emergency_contact.phone && (<> — <span className="font-mono" dir="ltr">{s.emergency_contact.phone}</span></>)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Health alert — surfaces medical conditions so the
                     deputy contacting the parent knows there's an
                     underlying condition that may justify the dismissal. */}
@@ -673,6 +798,88 @@ function CreateDismissalModal({
             }
           </button>
         </div>
+
+        {/* Override dialog — appears when API rejects with PICKUP_BLOCKED
+            or PICKUP_NOT_AUTHORIZED. Plain admins/staff get a dead-end
+            "contact admin" message; admins get the override flow with a
+            mandatory reason that goes into the audit log. */}
+        {overrideMode && (
+          <div
+            className="absolute inset-0 bg-black/70 z-10 flex items-center justify-center p-4"
+            onClick={() => setOverrideMode(null)}
+          >
+            <div
+              className={`w-full max-w-md rounded-xl shadow-2xl border-2 overflow-hidden ${
+                overrideMode.kind === 'blocked'
+                  ? 'bg-white dark:bg-gray-900 border-red-400 dark:border-red-500/60'
+                  : 'bg-white dark:bg-gray-900 border-amber-400 dark:border-amber-500/60'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={`px-4 py-3 ${overrideMode.kind === 'blocked' ? 'bg-red-600' : 'bg-amber-600'} text-white flex items-center gap-2`}>
+                <span className="text-2xl">{overrideMode.kind === 'blocked' ? '🛑' : '⚠️'}</span>
+                <h3 className="font-bold text-base flex-1">
+                  {overrideMode.kind === 'blocked' ? 'تم منع الاستئذان' : 'المُستلِم غير مُصرّح له'}
+                </h3>
+                <button onClick={() => setOverrideMode(null)} className="p-1 rounded hover:bg-black/20">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-sm text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-800/60 p-2 rounded leading-relaxed">
+                  {overrideMode.message}
+                </p>
+
+                {canOverride ? (
+                  <>
+                    <div>
+                      <label className="label text-xs flex items-center gap-1 text-red-700 dark:text-red-400">
+                        🔓 سبب التجاوز (إلزامي — يُسجَّل في سجل التدقيق)
+                      </label>
+                      <textarea
+                        value={overrideReason}
+                        onChange={(e) => setOverrideReason(e.target.value)}
+                        rows={3}
+                        placeholder="مثلاً: تم التأكد عبر مكالمة هاتفية مع الوالدة وتم تأكيد التفويض..."
+                        className="input text-sm"
+                        maxLength={500}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        onClick={() => setOverrideMode(null)}
+                        className="px-3 py-2 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+                      >
+                        رجوع
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (overrideReason.trim().length < 10) {
+                            toast.error('السبب يجب أن يكون 10 أحرف فأكثر');
+                            return;
+                          }
+                          submitMut.mutate();
+                        }}
+                        disabled={submitMut.isPending}
+                        className="px-3 py-2 rounded-lg text-sm bg-red-600 hover:bg-red-700 text-white inline-flex items-center gap-1"
+                      >
+                        {submitMut.isPending
+                          ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ التجاوز...</>
+                          : <>🔓 تجاوز وحفظ</>
+                        }
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-2.5 rounded">
+                    ℹ️ لا تملك صلاحية تجاوز قيود الاستلام — تواصل مع الأدمن لتنفيذ هذا الاستئذان
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
