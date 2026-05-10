@@ -110,6 +110,7 @@ const navGroups: NavGroup[] = [
     items: [
       { path: '/dashboard/whatsapp', label: 'إعدادات WhatsApp', icon: MessageCircle, superAdminOnly: true },
       { path: '/dashboard/whatsapp-bulk-teachers', label: 'تذكير جماعي للمعلمين', icon: MessageCircle, superAdminOnly: true },
+      { path: '/dashboard/whatsapp-bulk-parents', label: 'إعلانات جماعية لأولياء الأمور', icon: MessageCircle, superAdminOnly: true },
       { path: '/dashboard/whatsapp-log', label: 'سجل المحادثات', icon: MessageCircle, superAdminOnly: true },
       { path: '/dashboard/whatsapp-issues', label: 'أرقام تحتاج تحديث', icon: AlertTriangle, superAdminOnly: true },
     ],

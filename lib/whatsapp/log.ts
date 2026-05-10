@@ -8,7 +8,8 @@ export type WhatsappContextType =
   | 'late'
   | 'teacher_credentials'
   | 'teacher_registration_confirmation'
-  | 'manual';
+  | 'manual'
+  | 'bulk_announcement';   // bulk parent broadcast (school announcements)
 
 export interface SendAndLogParams {
   /**
