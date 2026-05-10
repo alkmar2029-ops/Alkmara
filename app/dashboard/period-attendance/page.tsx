@@ -524,12 +524,54 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
     setTimeout(() => window.print(), 80);
   };
 
+  // Per-student WhatsApp selection — defaults to "all absentees with a
+  // phone selected" so the existing one-click flow is preserved. The
+  // admin can untick anyone they don't want notified (e.g. they already
+  // contacted the parent in person).
+  const [waSelected, setWaSelected] = useState<Set<number>>(new Set());
+  const absentees = useMemo(
+    () => (data?.students || []).filter((s) => s.status === 'absent'),
+    [data],
+  );
+  // Re-seed when the dataset changes — every absentee with a phone gets
+  // ticked; missing-phone rows stay unticked since they can't receive.
+  useEffect(() => {
+    const next = new Set<number>();
+    for (const s of absentees) {
+      if ((s as any).phone) next.add(s.id);
+    }
+    setWaSelected(next);
+  }, [absentees]);
+
+  const toggleWa = (id: number) => {
+    setWaSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const setAllWa = (checked: boolean) => {
+    if (!checked) { setWaSelected(new Set()); return; }
+    const next = new Set<number>();
+    for (const s of absentees) {
+      if ((s as any).phone) next.add(s.id);
+    }
+    setWaSelected(next);
+  };
+
   const sendWaMut = useMutation({
     mutationFn: async () => {
+      const ids = Array.from(waSelected);
+      if (ids.length === 0) throw new Error('لم يتم اختيار أي طالب للإرسال');
       const r = await fetch('/api/whatsapp/send-period-absences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, statuses: ['absent'] }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          statuses: ['absent'],
+          student_ids: ids,
+        }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'فشل الإرسال');
@@ -637,8 +679,21 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
                 <SummaryPill icon={BadgeCheck}   label="مستأذن" value={data.summary.excused} tone="blue" />
               </div>
 
-              {/* Lists by status */}
-              <StudentList title="غائبون" students={data.students.filter((s) => s.status === 'absent')} tone="red" />
+              {/* Lists by status — only the absentees get the per-student
+                  WhatsApp checkboxes since the bottom "إرسال غياب"
+                  button targets that bucket. Late/excused stay
+                  read-only. */}
+              <StudentList
+                title="غائبون"
+                students={absentees}
+                tone="red"
+                selection={{
+                  selected: waSelected,
+                  onToggle: toggleWa,
+                  onToggleAll: setAllWa,
+                  label: 'إرسال واتساب',
+                }}
+              />
               <StudentList title="متأخرون" students={data.students.filter((s) => s.status === 'late')} tone="yellow" />
               <StudentList title="مستأذنون" students={data.students.filter((s) => s.status === 'excused')} tone="blue" />
               <details className="text-sm">
@@ -684,12 +739,13 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
               {data.summary.absent > 0 && (
                 <button
                   onClick={() => sendWaMut.mutate()}
-                  disabled={sendWaMut.isPending}
+                  disabled={sendWaMut.isPending || waSelected.size === 0}
                   className="btn-primary inline-flex items-center gap-1 text-sm"
+                  title={waSelected.size === 0 ? 'حدد طالباً واحداً على الأقل من قائمة الغائبين' : ''}
                 >
                   {sendWaMut.isPending
-                    ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال... (~{Math.ceil(data.summary.absent * 5.5)}ث)</>
-                    : <><Send className="w-4 h-4" /> إرسال واتساب لأولياء الغائبين ({data.summary.absent})</>
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال... (~{Math.ceil(waSelected.size * 5.5)}ث)</>
+                    : <><Send className="w-4 h-4" /> إرسال إشعار غياب ({waSelected.size})</>
                   }
                 </button>
               )}
@@ -1029,10 +1085,18 @@ function SummaryPill({ icon: Icon, label, value, tone }: { icon: any; label: str
   );
 }
 
-function StudentList({ title, students, tone }: {
+function StudentList({ title, students, tone, selection }: {
   title: string;
-  students: Array<{ id: number; name: string; student_id: string; notes: string | null }>;
+  students: Array<{ id: number; name: string; student_id: string; notes: string | null; phone?: string | null }>;
   tone: 'red' | 'yellow' | 'blue';
+  /** When provided, renders a per-row checkbox + a "select all" header
+      checkbox that controls which students get the WhatsApp send. */
+  selection?: {
+    selected: Set<number>;
+    onToggle: (_id: number) => void;
+    onToggleAll: (_checked: boolean) => void;
+    label: string;  // e.g. "إرسال واتساب"
+  };
 }) {
   if (students.length === 0) return null;
   const cls = {
@@ -1040,19 +1104,55 @@ function StudentList({ title, students, tone }: {
     yellow: 'text-yellow-700 dark:text-yellow-400',
     blue:   'text-blue-700 dark:text-blue-400',
   }[tone];
+
+  // For selection mode, count how many of the rows are eligible
+  // (have a phone) to decide checkbox header behaviour.
+  const withPhone = selection ? students.filter((s) => !!s.phone) : [];
+  const allWithPhoneSelected =
+    selection && withPhone.length > 0 && withPhone.every((s) => selection.selected.has(s.id));
+  const selectedCount = selection ? students.filter((s) => selection.selected.has(s.id)).length : 0;
+
   return (
     <div>
-      <h4 className={`font-semibold text-sm ${cls} mb-2 flex items-center gap-2`}>
-        <ChevronLeft className="w-3 h-3" /> {title} ({students.length})
+      <h4 className={`font-semibold text-sm ${cls} mb-2 flex items-center justify-between gap-2`}>
+        <span className="flex items-center gap-2">
+          <ChevronLeft className="w-3 h-3" /> {title} ({students.length})
+        </span>
+        {selection && (
+          <label className="flex items-center gap-1.5 text-xs font-normal cursor-pointer text-gray-600 dark:text-gray-400">
+            <input
+              type="checkbox"
+              checked={allWithPhoneSelected}
+              onChange={(e) => selection.onToggleAll(e.target.checked)}
+              className="w-3.5 h-3.5"
+            />
+            <span>{selection.label} ({selectedCount}/{withPhone.length})</span>
+          </label>
+        )}
       </h4>
       <ul className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
-        {students.map((s) => (
-          <li key={s.id} className="py-1.5 flex items-center gap-2">
-            <span className="font-mono text-xs text-gray-500 dark:text-gray-400 w-24 shrink-0" dir="ltr">{s.student_id}</span>
-            <span className="flex-1 truncate text-gray-900 dark:text-gray-100">{s.name}</span>
-            {s.notes && <span className="text-xs text-gray-500 dark:text-gray-400 italic">({s.notes})</span>}
-          </li>
-        ))}
+        {students.map((s) => {
+          const noPhone = selection && !s.phone;
+          const checked = selection ? selection.selected.has(s.id) : false;
+          return (
+            <li key={s.id} className={`py-1.5 flex items-center gap-2 ${noPhone ? 'opacity-50' : ''}`}>
+              {selection && (
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={!!noPhone}
+                  onChange={() => selection.onToggle(s.id)}
+                  className="w-4 h-4 shrink-0"
+                  title={noPhone ? 'لا يمكن الإرسال — رقم الجوال غير متوفر' : 'تحديد/إلغاء الإرسال'}
+                />
+              )}
+              <span className="font-mono text-xs text-gray-500 dark:text-gray-400 w-24 shrink-0" dir="ltr">{s.student_id}</span>
+              <span className="flex-1 truncate text-gray-900 dark:text-gray-100">{s.name}</span>
+              {noPhone && <span className="text-[10px] text-amber-600 dark:text-amber-400">بدون جوال</span>}
+              {s.notes && <span className="text-xs text-gray-500 dark:text-gray-400 italic">({s.notes})</span>}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

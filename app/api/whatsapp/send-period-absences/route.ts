@@ -12,6 +12,10 @@ const schema = z.object({
   session_id: z.number().int().positive(),
   // Optional: only send to specific statuses (default: absent only)
   statuses: z.array(z.enum(['absent', 'late', 'excused'])).optional(),
+  // Optional whitelist of student ids — when provided, the send is
+  // restricted to these students only (within the matching statuses).
+  // Powers the per-student checkbox UI in the session-details modal.
+  student_ids: z.array(z.number().int().positive()).optional(),
 });
 
 const STATUS_LABEL: Record<string, string> = {
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 4. Pull absences with student info.
-  const { data: absences } = await supabase
+  let absencesQuery = supabase
     .from('period_absences')
     .select(`
       status, notes,
@@ -85,6 +89,10 @@ export async function POST(request: NextRequest) {
     `)
     .eq('session_id', session.id)
     .in('status', targetStatuses);
+  if (v.data.student_ids && v.data.student_ids.length > 0) {
+    absencesQuery = absencesQuery.in('student_id', v.data.student_ids);
+  }
+  const { data: absences } = await absencesQuery;
 
   if (!absences || absences.length === 0) {
     return NextResponse.json({ error: 'لا يوجد طلاب بحالة الغياب المختارة' }, { status: 404 });
