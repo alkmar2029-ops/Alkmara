@@ -76,6 +76,9 @@ const navGroups: NavGroup[] = [
     label: 'الجدول الذكي',
     items: [
       { path: '/dashboard/teacher-schedule', label: 'الجدول الذكي', icon: CalendarDays, superAdminOnly: true },
+      // Supervision schedule — visible to everyone (the today view is
+      // safe for teachers too); edit pages gate themselves internally.
+      { path: '/dashboard/supervision', label: 'إشراف الفسحة', icon: Shield },
     ],
   },
   {
