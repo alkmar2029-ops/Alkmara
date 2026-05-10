@@ -4,12 +4,6 @@
   "buildCommand": "next build",
   "installCommand": "npm install --include=optional --no-audit",
   "regions": ["fra1"],
-  "crons": [
-    {
-      "path": "/api/whatsapp/bulk-jobs/sweep-scheduled",
-      "schedule": "* * * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/sw.js",
