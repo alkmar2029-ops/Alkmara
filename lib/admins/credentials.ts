@@ -13,22 +13,34 @@ interface MessageParams {
   password: string;
   portalUrl: string;
   schoolName?: string;
+  /** Optional pre-formatted lines like "✅ تسجيل الحضور" — when present
+   *  these are rendered as a "Your permissions" section so the new admin
+   *  knows exactly what they can do. */
+  permissionLines?: string[];
+  /** Profile label, e.g. "وكيل شؤون طلاب". Used as a friendlier descriptor. */
+  profileLabel?: string;
 }
 
 /**
  * Welcome message for a freshly approved admin. Mirrors the teacher
  * welcome but framed for an administrative audience — they're joining
  * the management team, not the teaching corps.
+ *
+ * When permissionLines are passed, an "أنت تستطيع" section is rendered
+ * so the user has a clear picture of their capabilities up front
+ * instead of discovering them by trial and error.
  */
 function buildAdminWelcomeMessage(p: MessageParams): string {
   const school = p.schoolName ? ` في ${p.schoolName}` : '';
+  const profileLine = p.profileLabel ? `\n\n🎯 صفتك: *${p.profileLabel}*` : '';
+  const permsSection = p.permissionLines && p.permissionLines.length > 0
+    ? `\n\n📋 صلاحياتك في النظام:\n${p.permissionLines.join('\n')}`
+    : '';
+
   return `🌟 أهلاً وسهلاً بك أستاذنا الفاضل ${p.fullName} 🌹
 
 🎉 يسعدنا اعتماد طلب انضمامكم لفريق إدارة${school}،
-ونرحّب بكم ضمن الفريق المسؤول عن متابعة أبنائنا الطلاب 🤝
-
-🛡️ سيتم تخصيص نطاقكم الإداري (الصفوف/الشعب) من قبل المدير،
-ولن تروا البيانات إلا بعد التخصيص — هذا لضمان خصوصية الطلاب.
+ونرحّب بكم ضمن الفريق المسؤول عن متابعة أبنائنا الطلاب 🤝${profileLine}${permsSection}
 
 📋 بيانات الدخول للوحة الإدارة:
 
@@ -44,9 +56,13 @@ ${p.portalUrl}
 💡 ستصلك رسالتان قصيرتان بعد قليل تحويان البريد وكلمة السر منفصلين —
 اضغط مطوَّلاً على أيٍّ منهما ثم اختر "نسخ" للصقه مباشرة في صفحة الدخول.
 
+⚡ خطوات الدخول السريعة:
+1️⃣ افتح الرابط من المتصفح
+2️⃣ أدخل بريدك وكلمة السر
+3️⃣ غيّر كلمة السر فوراً من «الإعدادات» ← «ملفي»
+
 📱 لتجربة أفضل:
-• افتح الرابط من المتصفح ثم اضغط «إضافة إلى الشاشة الرئيسية» ليعمل كتطبيق.
-• يمكنك تغيير كلمة السر من إعدادات حسابك بعد الدخول.
+• اضغط «إضافة إلى الشاشة الرئيسية» في المتصفح ليعمل كتطبيق.
 
 🤲 نسأل الله لكم التوفيق والسداد في رسالتكم،
 وأن يبارك في جهودكم لخدمة طلابنا.
@@ -65,6 +81,11 @@ export interface SendAdminCredentialsParams {
   schoolName?: string;
   adminUserId?: string | null;
   sentBy?: string | null;
+  /** Optional list of "✅ Permission name" lines — rendered in the
+   *  welcome message so the new admin sees their capabilities. */
+  permissionLines?: string[];
+  /** Optional profile name (e.g. "وكيل شؤون طلاب"). */
+  profileLabel?: string;
 }
 
 /**
@@ -100,6 +121,8 @@ export async function sendAdminCredentialsViaWhatsapp(
     password: params.password,
     portalUrl: params.portalUrl,
     schoolName: params.schoolName,
+    permissionLines: params.permissionLines,
+    profileLabel: params.profileLabel,
   });
 
   const send = (body: string, templateName: string) => sendTextAndLog({

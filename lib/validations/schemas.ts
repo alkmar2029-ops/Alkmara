@@ -192,6 +192,106 @@ export const createTeacherSchema = z.object({
   phone: z.string().regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح'),
 });
 
+// === Admin user creation + per-admin permissions ===
+//
+// Each permission key is a self-explanatory snake_case capability. The
+// list lives next to the schema so server + UI share one source of truth.
+export const PERMISSION_KEYS = [
+  'take_attendance',
+  'manage_dismissals',
+  'write_notes',
+  'send_whatsapp',
+  'view_reports',
+  'manage_students',
+  'manage_users',
+  'override_pickup',
+  'manage_schedule',
+  'manage_settings',
+] as const;
+export type PermissionKey = typeof PERMISSION_KEYS[number];
+
+// Arabic labels for UI surfaces (form chips + WhatsApp message body).
+export const PERMISSION_LABELS: Record<PermissionKey, { label: string; emoji: string }> = {
+  take_attendance:   { label: 'تسجيل الحضور (يومي وحصص)',          emoji: '✅' },
+  manage_dismissals: { label: 'إصدار وإلغاء الاستئذانات',          emoji: '🚪' },
+  write_notes:       { label: 'كتابة الملاحظات الإدارية',          emoji: '📝' },
+  send_whatsapp:     { label: 'إرسال رسائل واتساب يدوية وجماعية', emoji: '💬' },
+  view_reports:      { label: 'عرض التقارير',                       emoji: '📊' },
+  manage_students:   { label: 'إدارة الطلاب (إضافة/تعديل/حذف)',    emoji: '👥' },
+  manage_users:      { label: 'إدارة المعلمين والإداريين',         emoji: '👤' },
+  override_pickup:   { label: 'تجاوز قيود استلام الطلاب',          emoji: '🔓' },
+  manage_schedule:   { label: 'إدارة الجدول الذكي والتعيينات',     emoji: '📅' },
+  manage_settings:   { label: 'إعدادات المدرسة والواتساب والأجهزة', emoji: '⚙️' },
+};
+
+// Predefined profiles — quick-start templates. The form pre-selects
+// these toggles when the user picks a profile, then individual toggles
+// can override.
+export const PERMISSION_PROFILES: Record<string, {
+  label: string; emoji: string; description: string;
+  permissions: Record<PermissionKey, boolean>;
+}> = {
+  full_admin: {
+    label: 'مدير عام',
+    emoji: '👑',
+    description: 'صلاحيات كاملة — مماثلة للمدير الرئيسي',
+    permissions: PERMISSION_KEYS.reduce((acc, k) => ({ ...acc, [k]: true }), {} as Record<PermissionKey, boolean>),
+  },
+  student_affairs: {
+    label: 'وكيل شؤون طلاب',
+    emoji: '🏫',
+    description: 'الحضور والاستئذانات والملاحظات والواتساب والتقارير',
+    permissions: {
+      take_attendance: true, manage_dismissals: true, write_notes: true,
+      send_whatsapp: true, view_reports: true,
+      manage_students: false, manage_users: false, override_pickup: false,
+      manage_schedule: false, manage_settings: false,
+    },
+  },
+  counselor: {
+    label: 'مرشد طلابي',
+    emoji: '📝',
+    description: 'كتابة الملاحظات الإدارية وقراءة التقارير فقط',
+    permissions: {
+      write_notes: true, view_reports: true,
+      take_attendance: false, manage_dismissals: false, send_whatsapp: false,
+      manage_students: false, manage_users: false, override_pickup: false,
+      manage_schedule: false, manage_settings: false,
+    },
+  },
+  observer: {
+    label: 'مراقب',
+    emoji: '👁️',
+    description: 'قراءة التقارير فقط — لا يستطيع تعديل أي بيانات',
+    permissions: {
+      view_reports: true,
+      take_attendance: false, manage_dismissals: false, write_notes: false,
+      send_whatsapp: false, manage_students: false, manage_users: false,
+      override_pickup: false, manage_schedule: false, manage_settings: false,
+    },
+  },
+};
+
+const permissionsRecord = z.object(
+  PERMISSION_KEYS.reduce((acc, k) => ({ ...acc, [k]: z.boolean().optional().default(false) }), {} as any),
+).strict();
+
+export const userPermissionsSchema = permissionsRecord.optional().nullable();
+
+export const createAdminSchema = z.object({
+  email: z.string().email('بريد إلكتروني غير صالح'),
+  full_name: z.string().min(2, 'الاسم مطلوب').max(200),
+  phone: z.string().regex(/^(9665\d{8}|05\d{8})$/, 'رقم الجوال غير صالح'),
+  // Optional profile id — server uses it for the audit log only;
+  // permissions object below is the source of truth.
+  profile: z.string().max(50).optional(),
+  permissions: userPermissionsSchema,
+});
+
+export const updateAdminPermissionsSchema = z.object({
+  permissions: userPermissionsSchema,
+});
+
 // Public teacher self-registration (no auth required).
 // `website` is a honeypot — invisible to humans, irresistible to bots. Any
 // non-empty value means automated submission; we silently drop those.

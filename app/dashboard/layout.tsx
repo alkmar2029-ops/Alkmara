@@ -86,17 +86,14 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: 'المعلمون',
+    label: 'المستخدمون',
     items: [
-      { path: '/dashboard/teachers', label: 'المعلمون', icon: UserCog, superAdminOnly: true },
+      // Unified entry — covers both teachers + admins via tabs.
+      // /dashboard/teachers stays alive as a legacy route (no sidebar entry).
+      { path: '/dashboard/users', label: 'المعلمون والإداريون', icon: UserCog, superAdminOnly: true },
       { path: '/dashboard/teacher-assignments', label: 'تعيين الشعب للمعلمين', icon: UserCog, superAdminOnly: true },
       { path: '/dashboard/teacher-registrations', label: 'طلبات انضمام المعلمين', icon: UserPlus, superAdminOnly: true },
-    ],
-  },
-  {
-    label: 'الإداريون',
-    items: [
-      { path: '/dashboard/admin-assignments', label: 'تعيين الإداريين', icon: Shield, superAdminOnly: true },
+      { path: '/dashboard/admin-assignments', label: 'تعيين نطاق الإداريين', icon: Shield, superAdminOnly: true },
       { path: '/dashboard/admin-invite-codes', label: 'رموز دعوة الإداريين', icon: KeyRound, superAdminOnly: true },
       { path: '/dashboard/admin-registrations', label: 'طلبات الإداريين', icon: UserPlus, superAdminOnly: true },
     ],
