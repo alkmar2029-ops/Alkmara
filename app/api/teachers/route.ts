@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
+import { writeAuditLog } from '@/lib/supabase/auth';
+import { requireManageUsers } from '@/lib/personas/auth-gate';
 import { createTeacherSchema, validateBody } from '@/lib/validations/schemas';
 import {
   generatePassword,
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 // GET — list teachers (admin only). Joins auth.users for email & created_at.
 export async function GET() {
-  const auth = await requireRole(['admin']);
+  const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 
   const admin = createAdminSupabaseClient();
@@ -44,7 +45,7 @@ export async function GET() {
 // On WhatsApp failure we keep the account but return the credentials so admin
 // can copy them manually from the response.
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(['admin']);
+  const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 
   let body: unknown;

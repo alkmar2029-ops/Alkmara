@@ -10,12 +10,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError('');
     setLoading(true);
 
     try {
@@ -47,14 +49,14 @@ export default function LoginPage() {
       router.push(role === 'teacher' ? '/teacher' : '/dashboard');
       router.refresh();
     } catch {
-      toast.error('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      setFormError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-900 dark:to-gray-950 p-4 px-4">
+    <main id="main" tabIndex={-1} className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-900 dark:to-gray-950 p-4 px-4">
       <div className="w-full max-w-md">
         <div className="card">
           <div className="text-center mb-8">
@@ -64,39 +66,66 @@ export default function LoginPage() {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {process.env.NEXT_PUBLIC_TEACHER_ONLY === 'true' ? 'بوابة المعلم' : 'نظام حضور الطلاب'}
             </h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-gray-600 dark:text-gray-300 mt-1">
               {process.env.NEXT_PUBLIC_TEACHER_ONLY === 'true' ? 'تسجيل غياب الحصص' : 'ZKTeco MB2000'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">البريد الإلكتروني</label>
+              <label className="label" htmlFor="email">البريد الإلكتروني</label>
               <input
+                id="email"
+                name="email"
                 type="email"
+                autoComplete="email"
+                inputMode="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (formError) setFormError('');
+                }}
                 className="input"
                 placeholder="admin@example.com"
                 required
                 disabled={loading}
+                aria-invalid={!!formError}
+                aria-describedby={formError ? 'login-error' : undefined}
               />
             </div>
             <div>
-              <label className="label">كلمة المرور</label>
+              <label className="label" htmlFor="password">كلمة المرور</label>
               <div className="relative">
                 <input
+                  id="password"
+                  name="password"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (formError) setFormError('');
+                  }}
                   className="input ps-10"
                   required
                   disabled={loading}
+                  aria-invalid={!!formError}
+                  aria-describedby={formError ? 'login-error' : undefined}
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-600 dark:text-gray-300"
+                  aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {formError && (
+                <p id="login-error" className="mt-2 text-sm text-red-700 dark:text-red-400" role="alert">
+                  {formError}
+                </p>
+              )}
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full">
               {loading ? 'جاري الدخول...' : 'تسجيل الدخول'}
@@ -104,6 +133,6 @@ export default function LoginPage() {
           </form>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

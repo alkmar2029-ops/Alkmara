@@ -12,7 +12,7 @@
 // from the server's perspective, so all data is consistently anchored
 // to local school time.
 
-const SCHOOL_TZ = 'Asia/Riyadh';
+export const SCHOOL_TZ = 'Asia/Riyadh';
 
 /**
  * Today's date in school timezone, formatted as YYYY-MM-DD.

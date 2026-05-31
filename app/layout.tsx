@@ -58,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 min-h-screen transition-colors">
+        <a href="#main" className="skip-link">تخطى إلى المحتوى الرئيسي</a>
         <Providers>
           <ErrorBoundary>
             {children}

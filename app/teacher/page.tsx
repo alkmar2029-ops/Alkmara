@@ -1,18 +1,19 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
-  Calendar, Clock, Search, Save, CheckCircle2, Loader2, AlertCircle,
-  ChevronDown, Users, RefreshCw, ArrowRight, History, X as XIcon,
+  Calendar, Clock, Search, Save, CheckCircle2, Loader2,
+  ChevronDown, Users, RefreshCw, History, X as XIcon,
   Activity, ChevronUp,
 } from 'lucide-react';
 import { useClassSession } from '@/lib/hooks/useClassSession';
 import { useMyAssignedSections } from '@/lib/hooks/useMyAssignedSections';
 import NoAssignmentsEmpty from '@/components/teacher/NoAssignmentsEmpty';
 import type { PeriodAttendanceStatus } from '@/lib/types/database';
+import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
 interface Student {
   id: number;
@@ -142,6 +143,16 @@ function TeacherEntryPage() {
   // Social/custody modal — separate from health since the data and the
   // visual treatment are different (custody is legal-liability stuff).
   const [socialDetailsFor, setSocialDetailsFor] = useState<number | null>(null);
+  const closeHealthDetails = useCallback(() => setHealthDetailsFor(null), []);
+  const closeSocialDetails = useCallback(() => setSocialDetailsFor(null), []);
+  const healthDialogRef = useFocusTrap<HTMLDivElement>(
+    healthDetailsFor !== null,
+    closeHealthDetails,
+  );
+  const socialDialogRef = useFocusTrap<HTMLDivElement>(
+    socialDetailsFor !== null,
+    closeSocialDetails,
+  );
 
   // Track which student IDs had their 'absent' status applied via the
   // cascade-from-earlier-periods button. Used at save time to mark those
@@ -866,21 +877,25 @@ function TeacherEntryPage() {
           <>
             <div
               className="fixed inset-0 bg-black/60 z-50"
-              onClick={() => setHealthDetailsFor(null)}
+              onClick={closeHealthDetails}
             />
             <div
+              ref={healthDialogRef}
+              tabIndex={-1}
               className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92%] max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border-2 border-red-300 dark:border-red-500/50 overflow-hidden"
               role="dialog"
               aria-modal="true"
+              aria-labelledby="health-dialog-title"
             >
               <div className="bg-red-500 px-4 py-3 flex items-center gap-2">
-                <span className="text-2xl">🏥</span>
+                <span className="text-2xl" aria-hidden="true">🏥</span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-white text-base">حالات صحية مسجَّلة</p>
+                  <p id="health-dialog-title" className="font-bold text-white text-base">حالات صحية مسجَّلة</p>
                   <p className="text-xs text-red-100 truncate">{fullName}</p>
                 </div>
                 <button
-                  onClick={() => setHealthDetailsFor(null)}
+                  type="button"
+                  onClick={closeHealthDetails}
                   className="p-1 rounded-lg hover:bg-red-600 text-white"
                   aria-label="إغلاق"
                 >
@@ -898,7 +913,7 @@ function TeacherEntryPage() {
                           key={c}
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-100 dark:bg-red-500/20 text-red-800 dark:text-red-300 text-xs font-semibold border border-red-200 dark:border-red-500/40"
                         >
-                          {info.emoji} {info.label}
+                          <span aria-hidden="true">{info.emoji}</span> {info.label}
                         </span>
                       );
                     })}
@@ -937,22 +952,26 @@ function TeacherEntryPage() {
         const custody = soc.custody_type ? CUSTODY_LABELS[soc.custody_type] : null;
         return (
           <>
-            <div className="fixed inset-0 bg-black/60 z-50" onClick={() => setSocialDetailsFor(null)} />
+            <div className="fixed inset-0 bg-black/60 z-50" onClick={closeSocialDetails} />
             <div
+              ref={socialDialogRef}
+              tabIndex={-1}
               className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[92%] max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border-2 ${borderTone} overflow-hidden`}
               role="dialog"
               aria-modal="true"
+              aria-labelledby="social-dialog-title"
             >
               <div className={`${headerBg} px-4 py-3 flex items-center gap-2`}>
-                <span className="text-2xl">{blocked ? '🛑' : '👨‍👩‍👧'}</span>
+                <span className="text-2xl" aria-hidden="true">{blocked ? '🛑' : '👨‍👩‍👧'}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-white text-base">
+                  <p id="social-dialog-title" className="font-bold text-white text-base">
                     {blocked ? 'قيود استلام مفروضة' : 'حالة وصاية مسجَّلة'}
                   </p>
                   <p className="text-xs opacity-90 text-white truncate">{fullName}</p>
                 </div>
                 <button
-                  onClick={() => setSocialDetailsFor(null)}
+                  type="button"
+                  onClick={closeSocialDetails}
                   className="p-1 rounded-lg hover:bg-black/20 text-white"
                   aria-label="إغلاق"
                 >

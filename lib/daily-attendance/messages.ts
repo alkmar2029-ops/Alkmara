@@ -3,6 +3,7 @@
 // worker so both flows produce identical text.
 
 import type { PhaseKey } from './campaign-types';
+import { AR_DATE_LOCALE, SCHOOL_TZ } from '@/lib/utils/date-format';
 
 interface MessageArgs {
   studentName: string;
@@ -15,7 +16,8 @@ interface MessageArgs {
 
 function formatDate(date: string): string {
   try {
-    return new Date(date).toLocaleDateString('ar-SA-u-ca-gregory', {
+    return new Date(date).toLocaleDateString(AR_DATE_LOCALE, {
+      timeZone: SCHOOL_TZ,
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     });
   } catch {

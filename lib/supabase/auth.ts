@@ -22,17 +22,24 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   const isValidRole = (r: unknown): r is UserRole =>
     r === 'super_admin' || r === 'admin' || r === 'staff' || r === 'viewer' || r === 'teacher';
 
-  let role: UserRole = isValidRole(metaRole) ? metaRole : 'viewer';
-
-  if (!metaRole) {
-    const { data: profile } = await supabase
+  let role: UserRole;
+  if (isValidRole(metaRole)) {
+    role = metaRole;
+  } else {
+    // No trusted role in the JWT app_metadata — fall back to user_profiles.
+    // If that read errors or yields no valid role, fail CLOSED (return null →
+    // 401) instead of silently defaulting to 'viewer'. The old default
+    // over-granted read access to any user whose role we couldn't actually
+    // determine (e.g. a transient DB error during the profile lookup). (AUTH-10)
+    const { data: profile, error } = await supabase
       .from('user_profiles')
       .select('role')
       .eq('user_id', user.id)
       .maybeSingle();
-    if (isValidRole(profile?.role)) {
-      role = profile!.role as UserRole;
+    if (error || !isValidRole(profile?.role)) {
+      return null;
     }
+    role = profile!.role as UserRole;
   }
 
   return { userId: user.id, email: user.email ?? null, role };

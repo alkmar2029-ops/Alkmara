@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, Suspense } from 'react';
+import { useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -8,6 +8,7 @@ import {
   Loader2, Printer, ArrowRight, FileText, ClipboardList, Clock,
   BadgeCheck, MessageSquarePlus, AlertTriangle,
 } from 'lucide-react';
+import { AR_DATE_LOCALE, SCHOOL_TZ, formatDate, formatTime, formatDateTime } from '@/lib/utils/date-format';
 
 const TYPE_LABELS: Record<string, string> = {
   attendance_daily:  'الغياب اليومي',
@@ -26,7 +27,8 @@ const STATUS_LABEL: Record<string, string> = {
 function formatDateAr(d?: string): string {
   if (!d) return '';
   try {
-    return new Date(d).toLocaleDateString('ar-SA', {
+    return new Date(d).toLocaleDateString(AR_DATE_LOCALE, {
+      timeZone: SCHOOL_TZ,
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     });
   } catch { return d; }
@@ -254,7 +256,7 @@ function PrintBody() {
         </div>
 
         <div className="text-center text-[10px] text-gray-500 mt-3 pt-2 border-t border-gray-200">
-          صدر هذا التقرير من نظام إدارة الحضور المدرسي • {new Date().toLocaleString('ar-SA')}
+          صدر هذا التقرير من نظام إدارة الحضور المدرسي • {formatDateTime(new Date())}
         </div>
       </div>
     </>
@@ -327,15 +329,15 @@ function RowsTable({ rows, cols, special }: { rows: any[]; cols: string[]; speci
           <tr key={i}>
             <td className="border border-gray-300 px-2 py-1 text-center">{i + 1}</td>
             {special === 'daily' && <>
-              <td className="border border-gray-300 px-2 py-1">{r.attendance_date ? new Date(r.attendance_date).toLocaleDateString('ar-SA') : '—'}</td>
-              <td className="border border-gray-300 px-2 py-1 font-mono text-[10px]" dir="ltr">{r.punch_time ? new Date(r.punch_time).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+              <td className="border border-gray-300 px-2 py-1">{r.attendance_date ? formatDate(r.attendance_date) : '—'}</td>
+              <td className="border border-gray-300 px-2 py-1 font-mono text-[10px]" dir="ltr">{r.punch_time ? formatTime(r.punch_time) : '—'}</td>
               <td className="border border-gray-300 px-2 py-1">{r.student_name}</td>
               <td className="border border-gray-300 px-2 py-1">{r.grade_name} / {r.section_name}</td>
               <td className="border border-gray-300 px-2 py-1 text-center">{STATUS_LABEL[r.status] || r.status}</td>
               <td className="border border-gray-300 px-2 py-1 text-center">{r.minutes_late ?? '—'}</td>
             </>}
             {special === 'period' && <>
-              <td className="border border-gray-300 px-2 py-1">{r.attendance_date ? new Date(r.attendance_date).toLocaleDateString('ar-SA') : '—'}</td>
+              <td className="border border-gray-300 px-2 py-1">{r.attendance_date ? formatDate(r.attendance_date) : '—'}</td>
               <td className="border border-gray-300 px-2 py-1 text-center">{r.period_number}</td>
               <td className="border border-gray-300 px-2 py-1">{r.student_name}</td>
               <td className="border border-gray-300 px-2 py-1">{r.grade_name} / {r.section_name}</td>
@@ -343,7 +345,7 @@ function RowsTable({ rows, cols, special }: { rows: any[]; cols: string[]; speci
               {cols.includes('notes') && <td className="border border-gray-300 px-2 py-1 text-[10px]">{r.notes || '—'}</td>}
             </>}
             {special === 'notes' && <>
-              <td className="border border-gray-300 px-2 py-1">{r.recorded_at ? new Date(r.recorded_at).toLocaleDateString('ar-SA') : '—'}</td>
+              <td className="border border-gray-300 px-2 py-1">{r.recorded_at ? formatDate(r.recorded_at) : '—'}</td>
               <td className="border border-gray-300 px-2 py-1">{r.student_name}</td>
               <td className="border border-gray-300 px-2 py-1">{r.grade_name} / {r.section_name}</td>
               <td className="border border-gray-300 px-2 py-1 text-center">{r.type === 'positive' ? '🌟 إيجابية' : '⚠ سلبية'}</td>

@@ -65,11 +65,15 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (existingPending) return GENERIC_SUCCESS;
 
-  const { data: usersData } = await admin.auth.admin.listUsers({ perPage: 1000 });
-  const taken = (usersData?.users || []).some(
-    (u) => (u.email || '').toLowerCase() === email,
-  );
-  if (taken) return GENERIC_SUCCESS;
+  const { data: emailTaken, error: emailErr } = await admin.rpc('email_is_registered', { p_email: email });
+  if (emailErr) {
+    // Fail CLOSED: if we can't verify the email isn't already a real account,
+    // don't queue the registration. Return the generic success anyway so the
+    // failure can't be used to probe which emails exist. (AUTH-12)
+    console.error('email_is_registered failed (teacher registration):', emailErr.message);
+    return GENERIC_SUCCESS;
+  }
+  if (emailTaken) return GENERIC_SUCCESS;
 
   // 4. Insert.
   const { data, error } = await admin

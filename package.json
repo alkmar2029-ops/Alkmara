@@ -9,7 +9,9 @@
     "start:lan": "next start -H 0.0.0.0 -p 3000",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
-    "load-test": "node scripts/load-test-attendance.js"
+    "load-test": "node scripts/load-test-attendance.js",
+    "smoke:sprint2": "node --env-file=.env.local scripts/sprint2-smoke.mjs",
+    "smoke:sprint3": "node --env-file=.env.local scripts/sprint3-smoke.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",

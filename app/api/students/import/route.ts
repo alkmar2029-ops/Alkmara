@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateBody, importStudentsSchema } from '@/lib/validations/schemas';
 import { requireRole } from '@/lib/supabase/auth';
+import { normalizePhone } from '@/lib/phone/normalize';
 
 export const dynamic = 'force-dynamic';
 
 const BATCH_SIZE = 100;
+const SAUDI_MOBILE_RE = /^9665\d{8}$/;
+
+function normalizeStudentPhoneForImport(phone: string | undefined | null): string | null {
+  const normalized = normalizePhone(phone || '');
+  if (!normalized) return null;
+  return SAUDI_MOBILE_RE.test(normalized) ? normalized : null;
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireRole(['admin', 'staff']);
@@ -173,12 +181,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const normalizedPhone = normalizeStudentPhoneForImport(student.phone);
+    if (student.phone && !normalizedPhone) {
+      results.errors.push(`رقم جوال غير صالح للطالب ${student.student_id}: ${student.phone}`);
+    }
+
     validRecords.push({
       student_id: String(student.student_id),
       first_name: student.first_name,
       last_name: student.last_name || '',
       father_name: student.father_name || '',
-      phone: student.phone || null,
+      phone: normalizedPhone,
       grade_id: finalGradeId || null,
       section_id: finalSectionId || null,
     });

@@ -4,12 +4,13 @@ import { z } from 'zod';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { normalizePhone } from '@/lib/teachers/credentials';
+import { checkBulkSendLimit } from '@/lib/security/bulk-send-limit';
+import { AR_DATE_LOCALE, SCHOOL_TZ } from '@/lib/utils/date-format';
 
 export const dynamic = 'force-dynamic';
-// Wasender pacing — 5.5s per recipient. 30 recipients ≈ 165s. Bumped
-// maxDuration high so a typical school's daily list completes in one
-// invocation; longer lists self-extend via the existing pattern.
-export const maxDuration = 300;
+// Hobby-safe cap. Large sends should use /api/daily-attendance/campaigns,
+// which drains through the resumable background worker.
+export const maxDuration = 60;
 
 const schema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -49,7 +50,8 @@ function buildMessage(args: {
   // it lines up with the school's calendar.
   const dateStr = (() => {
     try {
-      return new Date(args.date).toLocaleDateString('ar-SA-u-ca-gregory', {
+      return new Date(args.date).toLocaleDateString(AR_DATE_LOCALE, {
+        timeZone: SCHOOL_TZ,
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
     } catch { return args.date; }
@@ -121,22 +123,58 @@ export async function POST(request: NextRequest) {
   if (!ws?.api_key) {
     return NextResponse.json({ error: 'مفتاح API للواتساب غير مضبوط' }, { status: 400 });
   }
+
+  const limit = await checkBulkSendLimit(admin, auth.ctx.userId, recipients.length);
+  if (!limit.ok) return limit.res!;
+
   const schoolName = (school?.school_name as string) || 'إدارة المدرسة';
+
+  // AUTH-08: resolve the authoritative phone + identity from the students table
+  // by student_id. The request body is NOT trusted for the destination number
+  // (or the displayed name/grade/section) — otherwise a staff or compromised
+  // account could send arbitrary text to arbitrary numbers through the school's
+  // official WhatsApp line and have it logged as a legitimate school message.
+  const studentIds = [...new Set(recipients.map((r) => r.student_id))];
+  const { data: studentRows, error: studentsErr } = await admin
+    .from('students')
+    .select('id, first_name, father_name, last_name, phone, grades(name), sections(name)')
+    .in('id', studentIds);
+  if (studentsErr) {
+    return NextResponse.json({ error: 'تعذّر جلب بيانات الطلاب' }, { status: 500 });
+  }
+  const studentMap = new Map(
+    (studentRows || []).map((s: any) => [
+      s.id as number,
+      {
+        phone: (s.phone as string | null) || null,
+        name: [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' '),
+        gradeName: (s.grades?.name as string) || '—',
+        sectionName: (s.sections?.name as string) || '—',
+      },
+    ]),
+  );
 
   const outcomes: SendOutcome[] = [];
   let success = 0, fail = 0, skipped = 0;
 
   for (let i = 0; i < recipients.length; i++) {
     const r = recipients[i];
+    const s = studentMap.get(r.student_id);
     const out: SendOutcome = {
       student_id: r.student_id,
-      student_name: r.student_name,
-      phone: r.phone || null,
+      student_name: s?.name || r.student_name,
+      phone: s?.phone || null,
       ok: false,
       error: null,
     };
 
-    if (!r.phone) {
+    if (!s) {
+      out.error = 'الطالب غير موجود في السجلات';
+      fail++; skipped++;
+      outcomes.push(out);
+      continue;
+    }
+    if (!s.phone) {
       out.error = 'رقم الجوال غير متوفر';
       fail++; skipped++;
       outcomes.push(out);
@@ -145,9 +183,9 @@ export async function POST(request: NextRequest) {
 
     const message = buildMessage({
       type,
-      studentName: r.student_name,
-      gradeName: r.grade_name || '—',
-      sectionName: r.section_name || '—',
+      studentName: s.name,
+      gradeName: s.gradeName,
+      sectionName: s.sectionName,
       date,
       missedPeriods: r.absent_periods,
       schoolName,
@@ -156,9 +194,9 @@ export async function POST(request: NextRequest) {
     const result = await sendTextAndLog({
       supabase: admin,
       apiKey: ws.api_key as string,
-      phone: normalizePhone(r.phone),
+      phone: normalizePhone(s.phone),
       message,
-      recipientName: r.student_name,
+      recipientName: s.name,
       recipientType: 'parent',
       templateName: type === 'absence' ? 'daily_absence' : 'daily_escape',
       contextType: 'late',  // re-uses existing context type — close enough for filtering

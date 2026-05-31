@@ -1,16 +1,18 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
-  Users, BookOpen, Fingerprint, CheckCircle, AlertTriangle, Clock,
+  Users, BookOpen, CheckCircle, AlertTriangle, Clock,
   LogOut as ExitIcon, ClipboardCheck, MessageCircle, BarChart3, Calendar,
-  Bell, ArrowUp, ArrowDown, Wifi, WifiOff, Phone, AlertCircle,
-  TrendingUp, Award, Zap, Loader2,
+  Bell, Wifi, WifiOff, Phone, AlertCircle,
+  TrendingUp, Award, Zap,
 } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 import CampaignProgressPanel from '@/components/daily-attendance/CampaignProgressPanel';
+import { usePersona } from '@/lib/hooks/usePersona';
 
 interface DashboardSummary {
   user: { name: string };
@@ -68,6 +70,20 @@ function arabicWeekday(date: string): string {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { isCounselor, isVicePrincipal, isLoading: personaLoading } = usePersona();
+
+  // VP and counselor have their own home screens. We redirect after the
+  // hook resolves rather than from middleware so the Edge runtime stays
+  // coarse (role-only) — persona is a client-side concern.
+  const shouldRedirect = !personaLoading && (isCounselor || isVicePrincipal);
+
+  useEffect(() => {
+    if (personaLoading) return;
+    if (isCounselor) router.replace('/dashboard/counselor');
+    else if (isVicePrincipal) router.replace('/dashboard/vp/morning');
+  }, [personaLoading, isCounselor, isVicePrincipal, router]);
+
   const { data, isLoading, isError } = useQuery<DashboardSummary>({
     queryKey: ['dashboard-summary'],
     queryFn: async () => {
@@ -75,10 +91,18 @@ export default function DashboardPage() {
       if (!r.ok) throw new Error('Failed');
       return (await r.json()).data;
     },
+    // Hold the query until persona is known and we've confirmed the user
+    // belongs on this dashboard. Without `enabled`, a VP/counselor would
+    // fetch general dashboard data once before the redirect lands — a
+    // tiny waste, but more importantly RLS-irrelevant data noise in
+    // their session.
+    enabled: !personaLoading && !shouldRedirect,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
 
+  // Render skeleton while persona loads or while a redirect is in flight.
+  if (personaLoading || shouldRedirect) return <SkeletonPage />;
   if (isLoading) return <SkeletonPage />;
   if (isError || !data) {
     return <div className="text-center py-12 text-red-500">حدث خطأ في تحميل البيانات. حاول تحديث الصفحة.</div>;
@@ -109,7 +133,7 @@ export default function DashboardPage() {
             )}
           </div>
           <div className="text-end">
-            <p className="text-[10px] text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               التحديث التلقائي كل 30 ثانية
             </p>
           </div>
@@ -182,9 +206,9 @@ export default function DashboardPage() {
                   href={alert.href}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border transition-colors ${SEVERITY_CLASS[alert.severity]}`}
                 >
-                  <span className="text-lg">{SEVERITY_DOT[alert.severity]}</span>
+                  <span className="text-lg" aria-hidden="true">{SEVERITY_DOT[alert.severity]}</span>
                   <span className="flex-1 text-sm font-medium">{alert.label}</span>
-                  <span className="text-xs underline opacity-90">عرض ←</span>
+                  <span className="text-xs underline font-medium">عرض ←</span>
                 </Link>
               </li>
             ))}
@@ -327,11 +351,11 @@ function PulseCard({
   return (
     <div className={`card border ${cls}`}>
       <div className="flex items-center justify-between mb-1">
-        <p className="text-xs opacity-90">{label}</p>
-        <Icon className="w-4 h-4 opacity-60" />
+        <p className="text-xs font-medium">{label}</p>
+        <Icon className="w-4 h-4" aria-hidden="true" />
       </div>
       <p className="text-2xl font-bold">{value}</p>
-      {sub && <p className={`text-[10px] mt-0.5 ${subCls}`}>{sub}</p>}
+      {sub && <p className={`text-xs mt-0.5 ${subCls}`}>{sub}</p>}
     </div>
   );
 }
@@ -436,7 +460,7 @@ function TrendChart({ data }: { data: Array<{ date: string; percent: number }> }
           <div key={d.date} className="flex items-center gap-2">
             <span className={`w-16 text-xs ${isToday ? 'font-bold text-blue-700 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>
               {arabicWeekday(d.date)}
-              {isToday && <span className="block text-[9px] opacity-70">اليوم</span>}
+              {isToday && <span className="block text-xs font-medium">اليوم</span>}
             </span>
             <div className="flex-1 h-6 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden">
               <div
@@ -444,12 +468,12 @@ function TrendChart({ data }: { data: Array<{ date: string; percent: number }> }
                 style={{ width: `${w}%` }}
               >
                 {d.percent > 0 && (
-                  <span className="text-[10px] text-white font-bold">{d.percent}%</span>
+                  <span className="text-xs text-white font-bold">{d.percent}%</span>
                 )}
               </div>
             </div>
             {d.percent === 0 && (
-              <span className="text-[10px] text-gray-400 w-12">لا بيانات</span>
+              <span className="text-xs text-gray-600 dark:text-gray-400 w-12">لا بيانات</span>
             )}
           </div>
         );

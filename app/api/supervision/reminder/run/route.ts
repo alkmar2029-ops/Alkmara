@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/supabase/auth';
 import { canManageSupervision } from '@/lib/supervision/permissions';
 import { maybeSendDailyReminder } from '@/lib/supervision/reminder';
+import { isWorkerRequest } from '@/lib/security/worker-secret';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,15 @@ export const dynamic = 'force-dynamic';
 // Body: { force?: boolean }   force=true clears today's dedup row first,
 //                              allowing a re-send even if already triggered.
 export async function POST(request: NextRequest) {
+  if (isWorkerRequest(request)) {
+    const admin = createAdminSupabaseClient();
+    const result = await maybeSendDailyReminder(admin, {
+      force: false,
+      triggeredBy: null,
+    });
+    return NextResponse.json({ data: result });
+  }
+
   const auth = await requireRole(['admin']);
   if (!auth.ok) return auth.res;
 

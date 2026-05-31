@@ -5,13 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDate(date: string | Date) {
-  return new Date(date).toLocaleDateString('ar-SA');
-}
-
-export function formatTime(date: string | Date) {
-  return new Date(date).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
-}
+// Date/time display is centralised in ./date-format (Gregorian + Latin-digits
+// policy). Re-exported here so existing `@/lib/utils/helpers` imports keep
+// working unchanged while routing through the single canonical formatter.
+export { AR_DATE_LOCALE, formatDate, formatTime, formatClockTime, formatDateTime } from './date-format';
 
 export const DAYS_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 

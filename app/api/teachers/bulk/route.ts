@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
+import { writeAuditLog } from '@/lib/supabase/auth';
+import { requireManageUsers } from '@/lib/personas/auth-gate';
 import {
   generatePassword,
   sendCredentialsViaWhatsapp,
@@ -56,7 +57,7 @@ function autoEmail(_fullName: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(['admin']);
+  const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 
   let body: unknown;

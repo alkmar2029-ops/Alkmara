@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
+import { getWorkerSecret } from '@/lib/security/worker-secret';
+import { checkBulkSendLimit } from '@/lib/security/bulk-send-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +22,7 @@ const schema = z.object({
 // (POST /api/whatsapp/bulk-jobs/[id]/process) so the admin can leave
 // the page right after clicking send. The worker is triggered via an
 // internal fire-and-forget fetch — Vercel spins up a fresh function
-// instance for it, runs up to maxDuration=300, then self-triggers if
+// instance for it, runs within the worker budget, then self-triggers if
 // the queue isn't drained.
 //
 // Returns: { job_id, total } — UI should redirect to a live progress
@@ -65,6 +67,9 @@ export async function POST(request: NextRequest) {
   if (tErr || !teachers || teachers.length === 0) {
     return NextResponse.json({ error: 'لا يوجد معلمون مستهدفون' }, { status: 404 });
   }
+
+  const limit = await checkBulkSendLimit(admin, auth.ctx.userId, teachers.length);
+  if (!limit.ok) return limit.res!;
 
   // 2. Create the job row.
   const { data: job, error: jobErr } = await admin
@@ -113,12 +118,11 @@ export async function POST(request: NextRequest) {
   }
 
   // 4. Fire-and-forget trigger to the worker. The worker authenticates
-  // via a shared secret derived from the Supabase service-role key — no
-  // new env var needed. We don't await: if Vercel cancels the in-flight
+  // via WORKER_SECRET. We don't await: if Vercel cancels the in-flight
   // request, the cron sweeper (added separately) will pick up the stuck
   // job within a minute.
   const workerUrl = `${request.nextUrl.origin}/api/whatsapp/bulk-jobs/${job.id}/process`;
-  const workerSecret = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').slice(0, 32);
+  const workerSecret = getWorkerSecret();
   fetch(workerUrl, {
     method: 'POST',
     headers: {

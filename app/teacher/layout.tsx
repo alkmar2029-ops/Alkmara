@@ -9,6 +9,7 @@ import { ClipboardList, History, User, LogOut, Menu, X, MessageSquarePlus, FileT
 import UnreadBadge from '@/components/ui/UnreadBadge';
 import InstallPrompt from '@/components/pwa/InstallPrompt';
 import { useTheme } from '@/lib/hooks/useTheme';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 const navItems = [
   { path: '/teacher',             label: 'تسجيل الغياب', Icon: ClipboardList },
@@ -27,6 +28,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const supabase = useMemo(() => createClient(), []);
   const [name, setName] = useState<string>('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [online, setOnline] = useState(true);
   const { theme, toggle: toggleTheme, mounted } = useTheme();
 
@@ -62,10 +64,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   // ready. Without this, browsers serve the old SW until every tab is closed.
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
-    let registration: ServiceWorkerRegistration | null = null;
 
     navigator.serviceWorker.register('/sw.js').then((reg) => {
-      registration = reg;
       // Check for updates every 30 minutes
       setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
 
@@ -85,9 +85,9 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   }, []);
 
   const logout = async () => {
-    if (!confirm('تسجيل الخروج؟')) return;
     await supabase.auth.signOut();
     toast.success('تم الخروج');
+    setLogoutConfirmOpen(false);
     router.push('/login');
     router.refresh();
   };
@@ -141,7 +141,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             >
               {mounted && (theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />)}
             </button>
-            <button onClick={logout} className="ms-1 p-1.5 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10" title="خروج">
+            <button onClick={() => setLogoutConfirmOpen(true)} className="ms-1 p-1.5 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10" title="خروج">
               <LogOut className="w-4 h-4" />
             </button>
           </nav>
@@ -168,14 +168,14 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             })}
             <button
               onClick={() => { toggleTheme(); }}
-              className="w-full text-right flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-200"
+              className="w-full text-start flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-200"
             >
               {mounted && (theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />)}
               {theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
             </button>
             <button
-              onClick={logout}
-              className="w-full text-right flex items-center gap-2 px-4 py-3 text-red-600 dark:text-red-400"
+              onClick={() => setLogoutConfirmOpen(true)}
+              className="w-full text-start flex items-center gap-2 px-4 py-3 text-red-600 dark:text-red-400"
             >
               <LogOut className="w-4 h-4" /> تسجيل الخروج
             </button>
@@ -184,10 +184,20 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       </header>
 
       {/* Main */}
-      <main className="max-w-3xl mx-auto px-4 py-4">{children}</main>
+      <main id="main" tabIndex={-1} className="max-w-3xl mx-auto px-4 py-4">{children}</main>
 
       {/* PWA install banner — auto-hides when installed */}
       <InstallPrompt />
+      <ConfirmDialog
+        isOpen={logoutConfirmOpen}
+        title="تسجيل الخروج"
+        message="هل تريد تسجيل الخروج من بوابة المعلم؟"
+        confirmText="تسجيل الخروج"
+        cancelText="إلغاء"
+        variant="warning"
+        onConfirm={logout}
+        onCancel={() => setLogoutConfirmOpen(false)}
+      />
     </div>
   );
 }

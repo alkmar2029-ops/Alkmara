@@ -8,6 +8,8 @@ import {
   type PhaseKey,
   type PhasesState,
 } from '@/lib/daily-attendance/campaign-types';
+import { getWorkerSecret } from '@/lib/security/worker-secret';
+import { checkBulkSendLimit } from '@/lib/security/bulk-send-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +61,8 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminSupabaseClient();
+  const limit = await checkBulkSendLimit(admin, auth.ctx.userId, totalRecipients);
+  if (!limit.ok) return limit.res!;
 
   // Build the per-phase state snapshot so the polling client gets a
   // full picture from the campaign row alone.
@@ -126,10 +130,9 @@ export async function POST(request: NextRequest) {
   }
 
   // 3. Trigger the worker — fire-and-forget so the response returns
-  // fast. The worker authenticates with a shared secret derived from
-  // the service-role key (same pattern as bulk-jobs).
+  // fast. The worker authenticates with WORKER_SECRET.
   const origin = request.nextUrl.origin;
-  const secret = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').slice(0, 32);
+  const secret = getWorkerSecret();
   fetch(`${origin}/api/daily-attendance/campaigns/${campaign.id}/process`, {
     method: 'POST',
     headers: { 'x-worker-secret': secret },

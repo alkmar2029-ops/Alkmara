@@ -26,8 +26,8 @@ export default function ConfirmDialog({
     <Modal isOpen={isOpen} onClose={onCancel} title={title} maxWidth="max-w-md">
       <p className="text-gray-600 dark:text-gray-300 mb-6">{message}</p>
       <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
-        <button onClick={onCancel} className="btn-secondary w-full sm:w-auto">{cancelText}</button>
-        <button onClick={onConfirm} className={`${variantClasses[variant]} w-full sm:w-auto`}>{confirmText}</button>
+        <button type="button" onClick={onCancel} className="btn-secondary w-full sm:w-auto">{cancelText}</button>
+        <button type="button" onClick={onConfirm} className={`${variantClasses[variant]} w-full sm:w-auto`}>{confirmText}</button>
       </div>
     </Modal>
   );

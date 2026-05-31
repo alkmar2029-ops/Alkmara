@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
+import { writeAuditLog } from '@/lib/supabase/auth';
+import { requireManageUsers } from '@/lib/personas/auth-gate';
 import { updateRegistrationSchema, validateBody } from '@/lib/validations/schemas';
 import {
   generatePassword,
@@ -16,7 +17,7 @@ export const dynamic = 'force-dynamic';
 // WhatsApp). On reject we just flip the status. Either way, the row is left
 // in the table so admin can see history.
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireRole(['admin']);
+  const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 
   const id = parseInt(params.id, 10);
@@ -203,7 +204,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
 // DELETE — admin can hard-delete a row (cleanup of old/spam applications).
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireRole(['admin']);
+  const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 
   const id = parseInt(params.id, 10);

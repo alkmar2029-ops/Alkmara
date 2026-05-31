@@ -1,6 +1,7 @@
 import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/supabase/auth';
+import { getWorkerSecret } from '@/lib/security/worker-secret';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   // Trigger the worker — same fire-and-forget pattern as create.
   const origin = request.nextUrl.origin;
-  const secret = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').slice(0, 32);
+  const secret = getWorkerSecret();
   fetch(`${origin}/api/daily-attendance/campaigns/${id}/process`, {
     method: 'POST',
     headers: { 'x-worker-secret': secret },

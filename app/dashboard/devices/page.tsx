@@ -131,7 +131,7 @@ export default function DevicesPage() {
         </>
       )}
 
-      <Modal isOpen={showForm} onClose={() => setShowForm(false)} title="إضافة جهاز جديد" maxWidth="max-w-md">
+      <Modal isOpen={showForm} onClose={() => setShowForm(false)} title="إضافة جهاز جديد" maxWidth="max-w-md" closeOnBackdrop={false}>
         <DeviceFormContent onSubmit={(d: any) => createMutation.mutate(d)} onClose={() => setShowForm(false)} loading={createMutation.isPending} />
       </Modal>
 

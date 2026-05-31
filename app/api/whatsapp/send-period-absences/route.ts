@@ -5,6 +5,7 @@ import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { validateBody } from '@/lib/validations/schemas';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { renderTemplate } from '@/lib/whatsapp/template';
+import { formatDate } from '@/lib/utils/date-format';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
 
   // 5. Compose context shared by every message.
   const dateStr = (() => {
-    try { return new Date(session.attendance_date).toLocaleDateString('ar-SA-u-ca-gregory'); }
+    try { return formatDate(session.attendance_date); }
     catch { return session.attendance_date as string; }
   })();
   const teacherName = (profile?.full_name as string)

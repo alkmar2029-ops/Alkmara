@@ -7,10 +7,11 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Users, UserCog, Plus, KeyRound, Pencil, Trash2, Send, X, Save, Loader2,
+  Users, UserCog, Plus, KeyRound, Trash2, Send, X, Loader2,
   CheckCircle2, XCircle, AlertTriangle, Copy, Shield,
 } from 'lucide-react';
 import { SkeletonTable } from '@/components/ui/Skeleton';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 // Permission keys + labels MUST stay in sync with lib/validations/schemas.ts.
 // Inlined here to avoid pulling the whole zod module into the client bundle
@@ -165,6 +166,7 @@ function TeachersTab() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ full_name: '', email: '', phone: '' });
   const [credentials, setCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BaseUser | null>(null);
 
   const { data: teachers = [], isLoading } = useQuery<BaseUser[]>({
     queryKey: ['users-teachers'],
@@ -237,6 +239,7 @@ function TeachersTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users-teachers'] });
       toast.success('تم الحذف');
+      setDeleteTarget(null);
     },
   });
 
@@ -258,7 +261,7 @@ function TeachersTab() {
           onResetPw={(id) => resetPwMut.mutate(id)}
           resetting={resetPwMut.isPending}
           onToggleActive={(id, on) => toggleActiveMut.mutate({ id, is_active: on })}
-          onDelete={(id, name) => { if (confirm(`حذف ${name || 'هذا المعلم'}؟`)) deleteMut.mutate(id); }}
+          onDelete={(user) => setDeleteTarget(user)}
         />
       )}
 
@@ -275,6 +278,18 @@ function TeachersTab() {
       )}
 
       {credentials && <CredentialsFallback creds={credentials} onClose={() => setCredentials(null)} />}
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="حذف معلم"
+        message={`هل تريد حذف ${deleteTarget?.full_name || 'هذا المعلم'}؟ لا يمكن التراجع عن هذا الإجراء.`}
+        confirmText="حذف"
+        cancelText="إلغاء"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget) deleteMut.mutate(deleteTarget.user_id);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
@@ -372,7 +387,7 @@ function AdminsTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
               <thead className="bg-gray-50 dark:bg-gray-900">
-                <tr className="text-right">
+                <tr className="text-start">
                   <th className="px-3 py-2 font-medium">الاسم</th>
                   <th className="px-3 py-2 font-medium">الصلاحيات</th>
                   <th className="px-3 py-2 font-medium">البريد</th>
@@ -472,7 +487,7 @@ function AdminsTab() {
                         key={key}
                         type="button"
                         onClick={() => applyProfile(key)}
-                        className={`text-right p-2 rounded-lg border transition-colors ${
+                        className={`text-start p-2 rounded-lg border transition-colors ${
                           active
                             ? 'bg-blue-50 dark:bg-blue-500/15 border-blue-300 dark:border-blue-500/40 text-blue-800 dark:text-blue-300'
                             : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/60'
@@ -550,14 +565,14 @@ function UsersTable({ rows, onResetPw, resetting, onToggleActive, onDelete }: {
   onResetPw: (_id: string) => void;
   resetting: boolean;
   onToggleActive: (_id: string, _on: boolean) => void;
-  onDelete: (_id: string, _name: string | null) => void;
+  onDelete: (_user: BaseUser & { role: string }) => void;
 }) {
   return (
     <div className="card p-0 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm min-w-[680px]">
           <thead className="bg-gray-50 dark:bg-gray-900">
-            <tr className="text-right">
+            <tr className="text-start">
               <th className="px-3 py-2 font-medium">الاسم</th>
               <th className="px-3 py-2 font-medium">البريد</th>
               <th className="px-3 py-2 font-medium">الجوال</th>
@@ -604,7 +619,7 @@ function UsersTable({ rows, onResetPw, resetting, onToggleActive, onDelete }: {
                       {u.is_active ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
                     </button>
                     <button
-                      onClick={() => onDelete(u.user_id, u.full_name)}
+                      onClick={() => onDelete(u)}
                       title="حذف"
                       className="p-1.5 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-500/15"
                     >

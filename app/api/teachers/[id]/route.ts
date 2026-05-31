@@ -1,6 +1,7 @@
 import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
+import { writeAuditLog } from '@/lib/supabase/auth';
+import { requireManageUsers } from '@/lib/personas/auth-gate';
 import { updateTeacherSchema, validateBody } from '@/lib/validations/schemas';
 import { normalizePhone } from '@/lib/teachers/credentials';
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 // PATCH — update name, phone, or active flag.
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireRole(['admin']);
+  const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 
   let body: unknown;
@@ -57,7 +58,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
 // DELETE — hard delete (cascades to attendance via FK ON DELETE SET NULL).
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireRole(['admin']);
+  const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 
   const admin = createAdminSupabaseClient();

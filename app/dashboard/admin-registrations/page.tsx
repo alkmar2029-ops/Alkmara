@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   UserPlus, Loader2, Check, X, Trash2, Mail, Phone, Clock,
-  CheckCircle2, XCircle, AlertCircle, Send, Copy, MessageCircle,
+  CheckCircle2, XCircle, AlertCircle, Copy, MessageCircle,
 } from 'lucide-react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 interface Registration {
   id: number;
@@ -42,6 +43,7 @@ export default function AdminRegistrationsPage() {
   const [tab, setTab] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
   const [approveTarget, setApproveTarget] = useState<Registration | null>(null);
   const [credentialsToShow, setCredentialsToShow] = useState<ApprovalResult | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Registration | null>(null);
 
   const { data, isLoading } = useQuery<{ data: Registration[]; pendingCount: number }>({
     queryKey: ['admin-registrations', tab],
@@ -73,6 +75,7 @@ export default function AdminRegistrationsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-registrations'] });
       toast.success('تم الحذف');
+      setDeleteTarget(null);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -164,7 +167,7 @@ export default function AdminRegistrationsPage() {
                       </>
                     )}
                     <button
-                      onClick={() => { if (confirm('حذف نهائياً؟')) deleteMut.mutate(r.id); }}
+                      onClick={() => setDeleteTarget(r)}
                       className="p-1.5 rounded text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -188,6 +191,18 @@ export default function AdminRegistrationsPage() {
       {credentialsToShow && (
         <CredentialsFallbackModal data={credentialsToShow} onClose={() => setCredentialsToShow(null)} />
       )}
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="حذف طلب إداري"
+        message={`هل تريد حذف طلب ${deleteTarget?.full_name || 'هذا الإداري'} نهائيًا؟ لا يمكن التراجع عن هذا الإجراء.`}
+        confirmText="حذف نهائي"
+        cancelText="إلغاء"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget) deleteMut.mutate(deleteTarget.id);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
@@ -195,7 +210,7 @@ export default function AdminRegistrationsPage() {
 function ApproveModal({ registration, onClose, onCredentialsFallback }: {
   registration: Registration;
   onClose: () => void;
-  onCredentialsFallback: (c: ApprovalResult) => void;
+  onCredentialsFallback: (_c: ApprovalResult) => void;
 }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -245,7 +260,7 @@ function ApproveModal({ registration, onClose, onCredentialsFallback }: {
         <div className="flex-1 overflow-y-auto p-4">
           <p className="text-sm font-semibold mb-2">📚 الشعب المُعيَّنة (اختياري)</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            يمكنك تعيين الشعب الآن أو لاحقاً من شاشة "تعيين الإداريين"
+            يمكنك تعيين الشعب الآن أو لاحقاً من شاشة &quot;تعيين الإداريين&quot;
           </p>
           <div className="max-h-64 overflow-y-auto border border-gray-200 dark:border-gray-800 rounded-lg p-2 space-y-1">
             {(matrix?.sections || []).map((s) => (

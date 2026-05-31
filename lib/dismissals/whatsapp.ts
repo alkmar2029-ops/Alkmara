@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { normalizePhone } from '@/lib/teachers/credentials';
+import { AR_DATE_LOCALE, SCHOOL_TZ } from '@/lib/utils/date-format';
 
 const RELATIONSHIP_LABELS: Record<string, string> = {
   father:    'الوالد',
@@ -65,7 +66,8 @@ export async function sendDismissalWhatsapp(
   // calendar so parents see the same date their phone calendar shows.
   const dateStr = (() => {
     try {
-      return new Date(args.dismissalDate).toLocaleDateString('ar-SA-u-ca-gregory', {
+      return new Date(args.dismissalDate).toLocaleDateString(AR_DATE_LOCALE, {
+        timeZone: SCHOOL_TZ,
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
     } catch { return args.dismissalDate; }

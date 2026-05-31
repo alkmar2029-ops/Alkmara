@@ -1,6 +1,8 @@
 // Thin wrapper around the WasenderAPI session-status endpoint.
 // Docs: https://wasenderapi.com/api-docs
 
+import { normalizePhone } from '@/lib/phone/normalize';
+
 const BASE_URL = 'https://wasenderapi.com/api';
 
 export type WasenderStatus = 'connected' | 'disconnected' | 'connecting' | 'scanning' | 'error' | 'unknown';
@@ -148,19 +150,21 @@ export interface SendResult {
 
 /** Normalize phone numbers to WhatsApp JID format. */
 export function toJid(phone: string): string {
-  const trimmed = String(phone || '').trim();
-  if (!trimmed) return '';
-  if (trimmed.includes('@')) return trimmed; // already a JID
-  // Keep digits only (drop +, spaces, dashes); WhatsApp uses E.164 without "+".
-  const digits = trimmed.replace(/[^\d]/g, '');
-  if (!digits) return '';
-  return `${digits}@s.whatsapp.net`;
+  const normalized = normalizePhone(String(phone || '').replace(/@s\.whatsapp\.net$/i, ''));
+  if (!/^9665\d{8}$/.test(normalized)) {
+    throw new Error('bad_number');
+  }
+  return `${normalized}@s.whatsapp.net`;
 }
 
 export async function sendText(apiKey: string, phone: string, message: string): Promise<SendResult> {
   if (!apiKey) return { ok: false, error: 'مفتاح API غير محفوظ' };
-  const jid = toJid(phone);
-  if (!jid) return { ok: false, error: 'رقم الجوال غير صالح' };
+  let jid: string;
+  try {
+    jid = toJid(phone);
+  } catch {
+    return { ok: false, error: 'رقم الجوال غير صالح' };
+  }
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 15000);

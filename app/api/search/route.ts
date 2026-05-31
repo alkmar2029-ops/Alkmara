@@ -40,6 +40,74 @@ export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const admin = createAdminSupabaseClient();
 
+  // PRIV-02 — counselors carry role='admin', so the base `students` RLS
+  // lets them read EVERY student. We constrain their search to their
+  // counselor_assignments scope. Two correctness rules (static-review
+  // fixes):
+  //   1. FAIL CLOSED on persona determination. Read role+persona via the
+  //      SERVICE-ROLE client (authoritative; no RLS ambiguity on the
+  //      caller's own row) and 500 on a read ERROR — never let "couldn't
+  //      determine persona" silently downgrade a counselor to an
+  //      unrestricted admin. A successful-but-null read via service-role
+  //      authoritatively means "no profile → not a counselor".
+  //   2. Scope at the QUERY (section_id IN scope), NOT as a post-filter
+  //      after `.limit` — otherwise the first N matches could all be
+  //      out-of-scope and hide valid in-scope rows beyond the limit.
+  // `counselorSectionIds` stays null for super_admin / non-counselor
+  // admins (unrestricted). For a counselor it's the exact section set;
+  // an empty set (no assignments) scopes every query to zero rows.
+  let counselorSectionIds: number[] | null = null;
+  if (auth.ctx.role === 'admin') {
+    const { data: caller, error: callerErr } = await admin
+      .from('user_profiles')
+      .select('role, permissions')
+      .eq('user_id', auth.ctx.userId)
+      .maybeSingle();
+    if (callerErr) {
+      return NextResponse.json(
+        { error: 'تعذّر التحقق من نطاق المرشد' },
+        { status: 500 },
+      );
+    }
+    const perms = (caller?.permissions ?? {}) as Record<string, unknown>;
+    if (caller?.role === 'admin' && perms.persona === 'counselor') {
+      // Section set the counselor may see = directly-assigned sections ∪
+      // every section in their grade-wide assignments. MIRRORS
+      // counselor_can_see_student (section-direct OR grade-wide) — keep
+      // in sync if that function's logic changes.
+      const { data: assigns, error: aErr } = await admin
+        .from('counselor_assignments')
+        .select('section_id, grade_id')
+        .eq('counselor_user_id', auth.ctx.userId);
+      if (aErr) {
+        return NextResponse.json(
+          { error: 'تعذّر تحديد نطاق المرشد' },
+          { status: 500 },
+        );
+      }
+      const sectionIds = new Set<number>();
+      const gradeIds: number[] = [];
+      for (const a of assigns ?? []) {
+        if (a.section_id != null) sectionIds.add(a.section_id as number);
+        if (a.grade_id != null) gradeIds.push(a.grade_id as number);
+      }
+      if (gradeIds.length > 0) {
+        const { data: gradeSecs, error: gErr } = await admin
+          .from('sections')
+          .select('id')
+          .in('grade_id', gradeIds);
+        if (gErr) {
+          return NextResponse.json(
+            { error: 'تعذّر تحديد نطاق المرشد' },
+            { status: 500 },
+          );
+        }
+        for (const sec of gradeSecs ?? []) sectionIds.add(sec.id as number);
+      }
+      counselorSectionIds = Array.from(sectionIds);
+    }
+  }
+
   // Promise dispatch — only fetch types the caller asked for.
   const results: any = { students: [], teachers: [], sections: [] };
 
@@ -50,35 +118,51 @@ export async function GET(request: NextRequest) {
     promises.push((async () => {
       // For phone/student_id intents, target those columns directly
       // (faster + more precise than trigram).
+      // PRIV-02: when the caller is a scoped counselor, every student
+      // query is constrained to their section set at the DB level, so
+      // `.limit` applies to already-in-scope rows (no hide-after-limit).
+      // A counselor with NO in-scope sections short-circuits to empty:
+      // this sidesteps emitting a `.in('section_id', [])` query (the
+      // PostgREST empty-IN edge) and saves a pointless round-trip. MUST
+      // stay before the queries — the per-query guard below is
+      // `if (counselorSectionIds)`, NOT `length > 0`, because skipping
+      // `.in` on an empty set would return EVERY student (a leak).
+      if (counselorSectionIds && counselorSectionIds.length === 0) {
+        results.students = [];
+        return;
+      }
       if (intent.type === 'phone') {
-        const { data } = await supabase
+        let q = supabase
           .from('students')
           .select('id, student_id, first_name, father_name, last_name, phone, section_id, sections(name, grades(name))')
           .ilike('phone', `%${intent.value.slice(-9)}%`)
-          .eq('is_active', true)
-          .limit(limit);
+          .eq('is_active', true);
+        if (counselorSectionIds) q = q.in('section_id', counselorSectionIds);
+        const { data } = await q.limit(limit);
         results.students = (data || []).map(shapeStudent);
         return;
       }
       if (intent.type === 'student_id') {
-        const { data } = await supabase
+        let q = supabase
           .from('students')
           .select('id, student_id, first_name, father_name, last_name, phone, section_id, sections(name, grades(name))')
           .eq('student_id', intent.value)
-          .eq('is_active', true)
-          .limit(limit);
+          .eq('is_active', true);
+        if (counselorSectionIds) q = q.in('section_id', counselorSectionIds);
+        const { data } = await q.limit(limit);
         results.students = (data || []).map(shapeStudent);
         return;
       }
       // Plain / context — substring + trigram on search_text.
       const term = intent.type === 'context' ? intent.rest : normalized;
       if (!term) return;
-      const { data } = await supabase
+      let q = supabase
         .from('students')
         .select('id, student_id, first_name, father_name, last_name, phone, section_id, sections(name, grades(name))')
         .ilike('search_text', `%${term}%`)
-        .eq('is_active', true)
-        .limit(limit);
+        .eq('is_active', true);
+      if (counselorSectionIds) q = q.in('section_id', counselorSectionIds);
+      const { data } = await q.limit(limit);
       let rows = (data || []).map(shapeStudent);
 
       // For context intents, layer the today's data filter on top.
@@ -120,8 +204,9 @@ export async function GET(request: NextRequest) {
     })());
   }
 
-  // Teachers
-  if (allowedTypes.includes('teachers')) {
+  // Teachers. Uses the service-role client for admin/staff search, so keep
+  // teachers out explicitly instead of relying on RLS.
+  if (allowedTypes.includes('teachers') && auth.ctx.role !== 'teacher') {
     promises.push((async () => {
       const term = intent.type === 'plain' ? normalized
                   : intent.type === 'context' ? intent.rest
@@ -143,8 +228,9 @@ export async function GET(request: NextRequest) {
     })());
   }
 
-  // Sections — direct match by grade + section labels.
-  if (allowedTypes.includes('sections')) {
+  // Sections. Uses the service-role client and exposes school structure, so
+  // teachers receive an empty result for this type.
+  if (allowedTypes.includes('sections') && auth.ctx.role !== 'teacher') {
     promises.push((async () => {
       if (intent.type === 'section') {
         // "1/3" pattern — find the section directly.

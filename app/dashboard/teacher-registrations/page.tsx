@@ -9,6 +9,7 @@ import {
   Copy, MessageCircle,
 } from 'lucide-react';
 import type { TeacherRegistration } from '@/lib/types/database';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 type TabKey = 'pending' | 'approved' | 'rejected' | 'all';
 
@@ -30,6 +31,8 @@ export default function TeacherRegistrationsPage() {
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectNotes, setRejectNotes] = useState('');
   const [credentialsToShow, setCredentialsToShow] = useState<ApprovalResult | null>(null);
+  const [approveConfirmTarget, setApproveConfirmTarget] = useState<TeacherRegistration | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TeacherRegistration | null>(null);
 
   const { data, isLoading, isFetching, refetch } = useQuery<{
     data: TeacherRegistration[];
@@ -72,10 +75,12 @@ export default function TeacherRegistrationsPage() {
       qc.invalidateQueries({ queryKey: ['teacher-registrations-pending-count'] });
       if (result.whatsapp_sent) {
         toast.success(`✓ تم اعتماد ${result.full_name} وإرسال البيانات عبر الواتساب`);
+        setApproveConfirmTarget(null);
       } else {
         // WhatsApp failed → show modal with credentials so admin can copy them.
         setCredentialsToShow(result);
         toast.error('تم إنشاء الحساب لكن فشل إرسال الواتساب — انسخ كلمة السر يدوياً');
+        setApproveConfirmTarget(null);
       }
     },
     onError: (e: Error) => toast.error(e.message),
@@ -109,6 +114,7 @@ export default function TeacherRegistrationsPage() {
       qc.invalidateQueries({ queryKey: ['teacher-registrations'] });
       qc.invalidateQueries({ queryKey: ['teacher-registrations-pending-count'] });
       toast.success('تم الحذف');
+      setDeleteTarget(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -282,11 +288,7 @@ export default function TeacherRegistrationsPage() {
                     {r.status === 'pending' && (
                       <>
                         <button
-                          onClick={() => {
-                            if (confirm(`اعتماد المعلم ${r.full_name}؟\nسيتم إنشاء الحساب وإرسال بيانات الدخول عبر الواتساب.`)) {
-                              approveMut.mutate(r.id);
-                            }
-                          }}
+                          onClick={() => setApproveConfirmTarget(r)}
                           disabled={approveMut.isPending}
                           className="btn-primary text-xs py-1.5 px-3 inline-flex items-center gap-1"
                         >
@@ -307,9 +309,7 @@ export default function TeacherRegistrationsPage() {
                       </>
                     )}
                     <button
-                      onClick={() => {
-                        if (confirm('حذف هذا السجل نهائياً؟')) deleteMut.mutate(r.id);
-                      }}
+                      onClick={() => setDeleteTarget(r)}
                       className="p-1.5 rounded text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
                       title="حذف"
                     >
@@ -413,6 +413,30 @@ export default function TeacherRegistrationsPage() {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={approveConfirmTarget !== null}
+        title="اعتماد معلم"
+        message={`هل تريد اعتماد ${approveConfirmTarget?.full_name || 'هذا المعلم'}؟ سيتم إنشاء الحساب وإرسال بيانات الدخول عبر الواتساب.`}
+        confirmText="اعتماد"
+        cancelText="إلغاء"
+        variant="info"
+        onConfirm={() => {
+          if (approveConfirmTarget) approveMut.mutate(approveConfirmTarget.id);
+        }}
+        onCancel={() => setApproveConfirmTarget(null)}
+      />
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="حذف طلب معلم"
+        message={`هل تريد حذف طلب ${deleteTarget?.full_name || 'هذا المعلم'} نهائيًا؟ لا يمكن التراجع عن هذا الإجراء.`}
+        confirmText="حذف نهائي"
+        cancelText="إلغاء"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget) deleteMut.mutate(deleteTarget.id);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

@@ -1,25 +1,18 @@
 import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { getWorkerSecret, isWorkerRequest } from '@/lib/security/worker-secret';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-// GET — promotes any 'scheduled' bulk_send_jobs whose scheduled_for time
-// has arrived. Wired up via Vercel Cron in vercel.json (every minute).
-//
-// Auth: either via Vercel Cron's automatic header `x-vercel-cron`, OR
-// via the same shared secret used by the worker (so this can also be
-// triggered manually from the dashboard if cron is unavailable).
+// GET/POST - promotes any 'scheduled' bulk_send_jobs whose scheduled_for
+// time has arrived. Called by Supabase pg_cron/pg_net with x-worker-secret.
 //
 // For each due job:
 //   1. status: 'scheduled' → 'pending'
 //   2. fire-and-forget POST to /api/whatsapp/bulk-jobs/[id]/process
 export async function GET(request: NextRequest) {
-  const isVercelCron = !!request.headers.get('x-vercel-cron');
-  const expectedSecret = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').slice(0, 32);
-  const providedSecret = request.headers.get('x-worker-secret') || '';
-  const authed = isVercelCron || (expectedSecret && providedSecret === expectedSecret);
-  if (!authed) {
+  if (!isWorkerRequest(request)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -52,7 +45,7 @@ export async function GET(request: NextRequest) {
     .eq('status', 'scheduled');  // guard against races
 
   // Fire workers in parallel; each will self-trigger as needed.
-  const workerSecret = expectedSecret;
+  const workerSecret = getWorkerSecret();
   const origin = request.nextUrl.origin;
   await Promise.allSettled(
     ids.map((id: number) =>
@@ -67,4 +60,8 @@ export async function GET(request: NextRequest) {
   );
 
   return NextResponse.json({ promoted: ids.length, ids });
+}
+
+export async function POST(request: NextRequest) {
+  return GET(request);
 }

@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Users, Plus, KeyRound, Pencil, Trash2, Send, X, Save, Mail, Phone,
+  Users, Plus, KeyRound, Pencil, Trash2, Send, X, Save,
   CheckCircle2, XCircle, AlertTriangle, Copy, Loader2,
 } from 'lucide-react';
 import { SkeletonTable } from '@/components/ui/Skeleton';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 interface Teacher {
   user_id: string;
@@ -28,6 +29,7 @@ export default function TeachersPage() {
   const [form, setForm] = useState<CreateForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Teacher | null>(null);
 
   const { data: teachers = [], isLoading } = useQuery<Teacher[]>({
     queryKey: ['teachers'],
@@ -103,6 +105,7 @@ export default function TeachersPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['teachers'] });
       toast.success('تم الحذف');
+      setDeleteTarget(null);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -140,7 +143,7 @@ export default function TeachersPage() {
           <div className="overflow-x-auto -mx-4 sm:mx-0">
             <table className="w-full text-sm min-w-[680px]">
               <thead className="bg-gray-50 dark:bg-gray-900">
-                <tr className="text-right">
+                <tr className="text-start">
                   <th className="px-3 py-2 font-medium">الاسم</th>
                   <th className="px-3 py-2 font-medium">البريد</th>
                   <th className="px-3 py-2 font-medium">الجوال</th>
@@ -204,7 +207,7 @@ export default function TeachersPage() {
                               {t.is_active ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
                             </button>
                             <button
-                              onClick={() => { if (confirm(`حذف ${t.full_name}؟`)) deleteMut.mutate(t.user_id); }}
+                              onClick={() => setDeleteTarget(t)}
                               title="حذف"
                               className="p-1.5 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-500/15"
                             >
@@ -308,6 +311,18 @@ export default function TeachersPage() {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="حذف معلم"
+        message={`هل تريد حذف ${deleteTarget?.full_name || 'هذا المعلم'}؟ لا يمكن التراجع عن هذا الإجراء.`}
+        confirmText="حذف"
+        cancelText="إلغاء"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget) deleteMut.mutate(deleteTarget.user_id);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
@@ -315,7 +330,7 @@ export default function TeachersPage() {
 function EditRow({ teacher, onCancel, onSave, saving }: {
   teacher: Teacher;
   onCancel: () => void;
-  onSave: (data: { full_name: string; phone: string }) => void;
+  onSave: (_data: { full_name: string; phone: string }) => void;
   saving: boolean;
 }) {
   const [name, setName] = useState(teacher.full_name || '');

@@ -3,31 +3,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { buildPhaseMessage } from '@/lib/daily-attendance/messages';
 import {
-  PHASE_ORDER,
   type PhaseKey,
   type PhasesState,
 } from '@/lib/daily-attendance/campaign-types';
+import { getWorkerSecret, isWorkerRequest } from '@/lib/security/worker-secret';
 
 export const dynamic = 'force-dynamic';
-// Vercel Pro: 5 minutes max. At 5.5s pacing this drains ~50 messages
-// per call; the worker self-triggers when the budget runs low so a
-// 200-recipient campaign completes in ~4 invocations spread over 18
-// minutes of wall-clock time.
-export const maxDuration = 300;
+// Hobby-safe 60s worker. At 5.5s pacing this drains ~8-9 messages per call;
+// the worker self-triggers when the budget runs low.
+export const maxDuration = 60;
 
-const BUDGET_MS = 285_000;     // ~15s headroom for the self-trigger fetch
+const BUDGET_MS = 50_000;      // headroom before Vercel's 60s cap
 const PACE_MS = 5_500;         // wasender 1-msg-per-5s + safety margin
 
 // POST — drain the queue for a daily-attendance campaign. Authenticated
-// internally via a shared secret (derived from the service-role key)
-// so it can be called from the create/resume endpoints without a
+// internally via WORKER_SECRET so it can be called from create/resume without a
 // session cookie. Re-entrant: claims one recipient at a time via a
 // status update, so two concurrent workers never double-send.
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   // 1. Auth — internal-only.
-  const expectedSecret = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').slice(0, 32);
-  const providedSecret = request.headers.get('x-worker-secret') || '';
-  if (!expectedSecret || providedSecret !== expectedSecret) {
+  const expectedSecret = getWorkerSecret();
+  if (!isWorkerRequest(request)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 

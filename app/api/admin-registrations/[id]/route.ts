@@ -81,11 +81,14 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   // === APPROVE ===
   // Defensive: someone might have manually created an account with this
   // email since the request was filed.
-  const { data: usersData } = await admin.auth.admin.listUsers({ perPage: 1000 });
-  const taken = (usersData?.users || []).some(
-    (u) => (u.email || '').toLowerCase() === reg.email.toLowerCase(),
-  );
-  if (taken) {
+  const { data: emailTaken, error: emailErr } = await admin.rpc('email_is_registered', { p_email: reg.email });
+  if (emailErr) {
+    // No enumeration concern here (authenticated super-admin) — surface the
+    // failure explicitly instead of risking a duplicate account. (AUTH-12)
+    console.error('email_is_registered failed (admin approval):', emailErr.message);
+    return NextResponse.json({ error: 'تعذّر التحقق من البريد، حاول لاحقاً' }, { status: 503 });
+  }
+  if (emailTaken) {
     return NextResponse.json(
       { error: 'البريد مسجّل مسبقاً كحساب — أرفض هذا الطلب أو احذفه' },
       { status: 409 },

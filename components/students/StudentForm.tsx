@@ -154,7 +154,7 @@ export default function StudentForm({ student, grades, onSubmit, onClose, loadin
   };
 
   return (
-    <Modal isOpen={true} onClose={onClose} title={student ? 'تعديل طالب' : 'إضافة طالب جديد'}>
+    <Modal isOpen={true} onClose={onClose} title={student ? 'تعديل طالب' : 'إضافة طالب جديد'} closeOnBackdrop={false}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="label">رقم الهوية *</label>
@@ -193,7 +193,7 @@ export default function StudentForm({ student, grades, onSubmit, onClose, loadin
         <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
           <label className="label flex items-center gap-1.5">
             <span>🏥 الحالات الصحية</span>
-            <span className="text-[10px] text-gray-400 font-normal">(اختياري — يُعرض في حال الاستئذان والطوارئ)</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-normal">(اختياري — يُعرض في حال الاستئذان والطوارئ)</span>
           </label>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mt-2">
             {HEALTH_OPTIONS.map((opt) => {
@@ -244,7 +244,7 @@ export default function StudentForm({ student, grades, onSubmit, onClose, loadin
           >
             <span className="label flex items-center gap-1.5 m-0">
               <span>👨‍👩‍👧 الحالة الاجتماعية / الوصاية</span>
-              <span className="text-[10px] text-gray-400 font-normal">(اختياري — يفعّل قيود الاستئذان)</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-normal">(اختياري — يفعّل قيود الاستئذان)</span>
             </span>
             <span className="text-xs text-gray-500">{socialOpen ? '▲' : '▼'}</span>
           </button>
@@ -312,7 +312,7 @@ export default function StudentForm({ student, grades, onSubmit, onClose, loadin
                 <div>
                   <label className="label text-xs flex items-center gap-1">
                     <span>✅ مسموح بالاستلام</span>
-                    <span className="text-[10px] text-gray-400">(افصل بفاصلة)</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">(افصل بفاصلة)</span>
                   </label>
                   <textarea
                     value={form.authorized_pickup_text}
@@ -326,7 +326,7 @@ export default function StudentForm({ student, grades, onSubmit, onClose, loadin
                 <div>
                   <label className="label text-xs flex items-center gap-1 text-red-700 dark:text-red-400">
                     <span>🛑 ممنوع الاستلام</span>
-                    <span className="text-[10px] text-red-400/70">(افصل بفاصلة)</span>
+                    <span className="text-xs text-red-700 dark:text-red-400">(افصل بفاصلة)</span>
                   </label>
                   <textarea
                     value={form.blocked_pickup_text}

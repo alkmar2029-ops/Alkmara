@@ -9,7 +9,8 @@ export type WhatsappContextType =
   | 'teacher_credentials'
   | 'teacher_registration_confirmation'
   | 'manual'
-  | 'bulk_announcement';   // bulk parent broadcast (school announcements)
+  | 'bulk_announcement'    // bulk parent broadcast (school announcements)
+  | 'incident';            // guardian notification when an incident is actioned (م3.19)
 
 export interface SendAndLogParams {
   /**

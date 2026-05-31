@@ -6,10 +6,11 @@ import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  LogOut, Plus, Search, Loader2, Calendar, Clock, User, Phone,
+  LogOut, Plus, Search, Loader2, Clock, User,
   CheckCircle2, XCircle, Printer, Trash2, AlertCircle, RefreshCw,
   X, MessageCircle, Users, FileText,
 } from 'lucide-react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 interface DismissalRow {
   id: number;
@@ -109,6 +110,7 @@ function DismissalsInner() {
   const [tab, setTab] = useState<'today' | 'week' | 'all'>('today');
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DismissalRow | null>(null);
   // Pre-selected student id when opened via /dashboard/dismissals?student_id=N
   // (from the student detail page or global search). Forwarded to the
   // create modal which fetches the student and pre-fills the picker.
@@ -179,6 +181,7 @@ function DismissalsInner() {
     onSuccess: () => {
       toast.success('تم الحذف');
       qc.invalidateQueries({ queryKey: ['dismissals'] });
+      setDeleteTarget(null);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -256,7 +259,7 @@ function DismissalsInner() {
       {rows.length > 5 && (
         <div className="card">
           <div className="relative">
-            <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-gray-400 pointer-events-none" />
+            <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-gray-400 pointer-events-none" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -344,9 +347,7 @@ function DismissalsInner() {
                         <Printer className="w-4 h-4" />
                       </Link>
                       <button
-                        onClick={() => {
-                          if (confirm(`حذف استئذان ${r.student_name}؟`)) deleteMut.mutate(r.id);
-                        }}
+                        onClick={() => setDeleteTarget(r)}
                         className="p-1.5 rounded text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
                         title="حذف"
                       >
@@ -367,6 +368,18 @@ function DismissalsInner() {
           prefillStudentId={prefillStudentId}
         />
       )}
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        title="حذف استئذان"
+        message={`هل تريد حذف استئذان ${deleteTarget?.student_name || 'هذا الطالب'}؟ لا يمكن التراجع عن هذا الإجراء.`}
+        confirmText="حذف"
+        cancelText="إلغاء"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget) deleteMut.mutate(deleteTarget.id);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
@@ -638,7 +651,7 @@ function CreateDismissalModal({
             ) : (
               <>
                 <div className="relative">
-                  <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-gray-400 pointer-events-none" />
+                  <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-gray-400 pointer-events-none" />
                   <input
                     value={studentSearch}
                     onChange={(e) => setStudentSearch(e.target.value)}
@@ -657,7 +670,7 @@ function CreateDismissalModal({
                         <li key={s.id}>
                           <button
                             onClick={() => setSelectedStudent(s)}
-                            className="w-full text-right p-2 hover:bg-blue-50 dark:hover:bg-blue-500/10"
+                            className="w-full text-start p-2 hover:bg-blue-50 dark:hover:bg-blue-500/10"
                           >
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-sm font-medium">
@@ -779,7 +792,7 @@ function CreateDismissalModal({
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={autoExcuse} onChange={(e) => setAutoExcuse(e.target.checked)} className="w-4 h-4" />
               <FileText className="w-4 h-4 text-blue-600" />
-              <span>تحديث الحصص المتبقية تلقائياً (تحويلها لـ"مستأذن")</span>
+              <span>تحديث الحصص المتبقية تلقائياً (تحويلها لـ&quot;مستأذن&quot;)</span>
             </label>
           </div>
         </div>

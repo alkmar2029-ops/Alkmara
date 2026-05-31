@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useId, useCallback } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search, X, Users, BookOpen, GraduationCap, Loader2, Clock, ArrowLeft,
   Phone, Hash, AlertCircle, MessageCircle,
 } from 'lucide-react';
+import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
 interface StudentResult {
   id: number;
@@ -79,11 +81,15 @@ function saveRecent(q: string) {
 export default function GlobalSearch() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const titleId = useId();
+  const listboxId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [focusIdx, setFocusIdx] = useState(0);
   const [recent, setRecent] = useState<string[]>([]);
+  const closeSearch = useCallback(() => setOpen(false), []);
+  const dialogRef = useFocusTrap<HTMLDivElement>(open, closeSearch);
 
   // Mount keyboard shortcut.
   useEffect(() => {
@@ -92,11 +98,11 @@ export default function GlobalSearch() {
         e.preventDefault();
         setOpen(true);
       }
-      if (e.key === 'Escape' && open) setOpen(false);
+      if (e.key === 'Escape' && open) closeSearch();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open]);
+  }, [closeSearch, open]);
 
   // Debounce typing.
   useEffect(() => {
@@ -164,44 +170,48 @@ export default function GlobalSearch() {
 
   // Reset focus when results change.
   useEffect(() => { setFocusIdx(0); }, [flatRows.length]);
+  const activeIndex = flatRows.length > 0 ? Math.min(focusIdx, flatRows.length - 1) : -1;
 
   // Keyboard nav for results.
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setFocusIdx((i) => Math.min(flatRows.length - 1, i + 1));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setFocusIdx((i) => Math.max(0, i - 1));
-      } else if (e.key === 'Enter') {
-        const target = flatRows[focusIdx];
-        if (target) {
-          saveRecent(query);
-          setOpen(false);
-          router.push(target.href);
-        }
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [open, flatRows, focusIdx, query, router]);
+  const openFocusedRow = () => {
+    const target = flatRows[activeIndex];
+    if (!target) return;
+    saveRecent(query);
+    closeSearch();
+    router.push(target.href);
+  };
+
+  const handleSearchKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (flatRows.length === 0) return;
+      setFocusIdx((i) => Math.min(flatRows.length - 1, i + 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (flatRows.length === 0) return;
+      setFocusIdx((i) => Math.max(0, i - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      openFocusedRow();
+    }
+  };
+
+  const activeOptionId = activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined;
 
   if (!open) {
-    // Render the trigger button. Hidden on small screens — mobile
-    // users can still hit Ctrl+K to open it. flex-1 lets the topbar
-    // give the search button as much room as it has.
+    // Render the trigger button. flex-1 lets the topbar give the search
+    // button as much room as it has, including on mobile.
     return (
       <button
+        type="button"
         onClick={() => setOpen(true)}
-        className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 flex-1 max-w-md"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 flex-1 max-w-md min-w-0"
         aria-label="بحث عالمي"
         dir="rtl"
       >
         <Search className="w-4 h-4 shrink-0" />
         <span className="flex-1 text-start">بحث...</span>
-        <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 shrink-0">Ctrl K</kbd>
+        <kbd className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 shrink-0">Ctrl K</kbd>
       </button>
     );
   }
@@ -212,14 +222,20 @@ export default function GlobalSearch() {
       // the sidebar (which is z-50). dir="rtl" ensures all child text
       // and flex layout flows right-to-left consistently.
       className="fixed inset-0 bg-black/60 z-[100] flex items-start justify-center p-4 pt-16 sm:pt-20"
-      onClick={() => setOpen(false)}
+      onClick={closeSearch}
       dir="rtl"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
         dir="rtl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
       >
+        <h2 id={titleId} className="sr-only">البحث العام</h2>
         {/* Input */}
         <div className="flex items-center gap-2 p-3 border-b border-gray-200 dark:border-gray-800">
           <Search className="w-5 h-5 text-gray-400" />
@@ -228,13 +244,20 @@ export default function GlobalSearch() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             placeholder="ابحث عن طالب، معلم، شعبة... جرّب: 'غياب احمد' أو '1/3'"
             className="flex-1 outline-none bg-transparent text-base"
             autoComplete="off"
+            role="combobox"
+            aria-expanded={flatRows.length > 0}
+            aria-controls={listboxId}
+            aria-activedescendant={activeOptionId}
+            aria-autocomplete="list"
           />
           {isFetching && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
           <button
-            onClick={() => setOpen(false)}
+            type="button"
+            onClick={closeSearch}
             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
             aria-label="إغلاق"
           >
@@ -248,10 +271,10 @@ export default function GlobalSearch() {
             <RecentList recent={recent} onSelect={(q) => setQuery(q)} />
           ) : flatRows.length === 0 && !isFetching ? (
             <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-12">
-              لا توجد نتائج للبحث "{query}"
+              لا توجد نتائج للبحث &quot;{query}&quot;
             </p>
           ) : (
-            <div className="py-2">
+            <>
               {/* Intent action banner */}
               {data?.intent?.type === 'context' && (
                 <div className="mx-2 mb-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-xs text-blue-800 dark:text-blue-300">
@@ -264,25 +287,28 @@ export default function GlobalSearch() {
                 </div>
               )}
 
-              {flatRows.map((r, i) => (
-                <ResultRow
-                  key={`${r.kind}-${r.row.id || r.row.user_id || i}`}
-                  row={r}
-                  focused={i === focusIdx}
-                  onClick={() => {
-                    saveRecent(query);
-                    setOpen(false);
-                    router.push(r.href);
-                  }}
-                  onMouseEnter={() => setFocusIdx(i)}
-                />
-              ))}
-            </div>
+              <div id={listboxId} className="py-2" role="listbox" aria-label="نتائج البحث">
+                {flatRows.map((r, i) => (
+                  <ResultRow
+                    key={`${r.kind}-${r.row.id || r.row.user_id || i}`}
+                    id={`${listboxId}-option-${i}`}
+                    row={r}
+                    focused={i === activeIndex}
+                    onClick={() => {
+                      saveRecent(query);
+                      closeSearch();
+                      router.push(r.href);
+                    }}
+                    onMouseEnter={() => setFocusIdx(i)}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 dark:border-gray-800 px-3 py-2 text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-3">
+        <div className="border-t border-gray-200 dark:border-gray-800 px-3 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-3">
           <span><kbd className="px-1 rounded bg-gray-100 dark:bg-gray-700">↑↓</kbd> تنقّل</span>
           <span><kbd className="px-1 rounded bg-gray-100 dark:bg-gray-700">↵</kbd> فتح</span>
           <span><kbd className="px-1 rounded bg-gray-100 dark:bg-gray-700">Esc</kbd> إغلاق</span>
@@ -293,26 +319,34 @@ export default function GlobalSearch() {
 }
 
 function ResultRow({
-  row, focused, onClick, onMouseEnter,
+  id, row, focused, onClick, onMouseEnter,
 }: {
+  id: string;
   row: { kind: string; href: string; row: any };
   focused: boolean;
   onClick: () => void;
   onMouseEnter: () => void;
 }) {
-  const cls = `flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${
+  const optionProps = {
+    id,
+    role: 'option',
+    'aria-selected': focused,
+    onClick,
+    onMouseEnter,
+  } as const;
+  const cls = `flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors outline-none ${
     focused ? 'bg-blue-50 dark:bg-blue-500/15' : 'hover:bg-gray-50 dark:hover:bg-gray-800/60'
   }`;
 
   if (row.kind === 'action') {
     return (
-      <div onClick={onClick} onMouseEnter={onMouseEnter} className={cls}>
+      <div {...optionProps} className={cls}>
         <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
           <ArrowLeft className="w-4 h-4 text-blue-700 dark:text-blue-400 rotate-180" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium">اذهب إلى صفحة {keywordLabel(row.row.keyword)}</p>
-          {row.row.rest && <p className="text-xs text-gray-500">للبحث عن: "{row.row.rest}"</p>}
+          {row.row.rest && <p className="text-xs text-gray-500">للبحث عن: &quot;{row.row.rest}&quot;</p>}
         </div>
       </div>
     );
@@ -321,13 +355,13 @@ function ResultRow({
   if (row.kind === 'student') {
     const s = row.row as StudentResult;
     return (
-      <div onClick={onClick} onMouseEnter={onMouseEnter} className={cls}>
+      <div {...optionProps} className={cls}>
         <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
           <Users className="w-4 h-4 text-blue-700 dark:text-blue-400" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{s.name}</p>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
             {s.grade_name && <span>{s.grade_name}/{s.section_name}</span>}
             <span className="font-mono" dir="ltr">#{s.student_id}</span>
             {s.phone && <span className="font-mono" dir="ltr">{s.phone}</span>}
@@ -340,14 +374,14 @@ function ResultRow({
   if (row.kind === 'teacher') {
     const t = row.row as TeacherResult;
     return (
-      <div onClick={onClick} onMouseEnter={onMouseEnter} className={cls}>
+      <div {...optionProps} className={cls}>
         <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-500/20 flex items-center justify-center shrink-0">
           <GraduationCap className="w-4 h-4 text-purple-700 dark:text-purple-400" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">أ. {t.full_name}</p>
           {t.phone && (
-            <p className="text-[11px] text-gray-500 font-mono" dir="ltr">{t.phone}</p>
+            <p className="text-xs text-gray-500 font-mono" dir="ltr">{t.phone}</p>
           )}
         </div>
       </div>
@@ -357,13 +391,13 @@ function ResultRow({
   if (row.kind === 'section') {
     const s = row.row as SectionResult;
     return (
-      <div onClick={onClick} onMouseEnter={onMouseEnter} className={cls}>
+      <div {...optionProps} className={cls}>
         <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center shrink-0">
           <BookOpen className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{s.grade_name} / {s.name}</p>
-          <p className="text-[11px] text-gray-500">شعبة دراسية</p>
+          <p className="text-xs text-gray-500">شعبة دراسية</p>
         </div>
       </div>
     );
@@ -371,7 +405,7 @@ function ResultRow({
   return null;
 }
 
-function RecentList({ recent, onSelect }: { recent: string[]; onSelect: (q: string) => void }) {
+function RecentList({ recent, onSelect }: { recent: string[]; onSelect: (_query: string) => void }) {
   return (
     <div className="py-3 px-2">
       <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 px-2">
@@ -379,7 +413,7 @@ function RecentList({ recent, onSelect }: { recent: string[]; onSelect: (q: stri
       </p>
       {recent.length === 0 ? (
         <div className="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-          ابدأ بكتابة اسم طالب، أو رقم هويته، أو "1/3" للذهاب لشعبة
+          ابدأ بكتابة اسم طالب، أو رقم هويته، أو &quot;1/3&quot; للذهاب لشعبة
         </div>
       ) : (
         <ul className="space-y-0.5">
@@ -403,9 +437,9 @@ function RecentList({ recent, onSelect }: { recent: string[]; onSelect: (q: stri
         <ul className="text-xs space-y-1.5 text-gray-600 dark:text-gray-300">
           <li className="flex items-center gap-2"><Hash className="w-3 h-3" /> رقم هوية ١٠ خانات → ملف الطالب</li>
           <li className="flex items-center gap-2"><Phone className="w-3 h-3" /> 05xxxxxxxx → بحث برقم الجوال</li>
-          <li className="flex items-center gap-2"><BookOpen className="w-3 h-3" /> "1/3" → فتح الشعبة مباشرة</li>
-          <li className="flex items-center gap-2"><AlertCircle className="w-3 h-3" /> "غياب احمد" → غياب طلاب اسمهم احمد</li>
-          <li className="flex items-center gap-2"><MessageCircle className="w-3 h-3" /> "استئذان فهد" → استئذانات اليوم</li>
+          <li className="flex items-center gap-2"><BookOpen className="w-3 h-3" /> &quot;1/3&quot; → فتح الشعبة مباشرة</li>
+          <li className="flex items-center gap-2"><AlertCircle className="w-3 h-3" /> &quot;غياب احمد&quot; → غياب طلاب اسمهم احمد</li>
+          <li className="flex items-center gap-2"><MessageCircle className="w-3 h-3" /> &quot;استئذان فهد&quot; → استئذانات اليوم</li>
         </ul>
       </div>
     </div>

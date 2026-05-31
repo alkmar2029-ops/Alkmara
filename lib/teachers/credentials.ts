@@ -1,7 +1,10 @@
 import { randomBytes } from 'crypto';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
+import { normalizePhone } from '@/lib/phone/normalize';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+export { normalizePhone };
 
 /**
  * Generates a memorable yet secure 12-char password:
@@ -31,15 +34,6 @@ export function generatePassword(): string {
     [chars[i], chars[j]] = [chars[j], chars[i]];
   }
   return chars.join('');
-}
-
-/** Normalize Saudi phone numbers to international form (9665XXXXXXXX, 12 digits). */
-export function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('966')) return digits;
-  if (digits.startsWith('05')) return '966' + digits.slice(1);
-  if (digits.startsWith('5')) return '966' + digits;
-  return digits;
 }
 
 interface MessageParams {

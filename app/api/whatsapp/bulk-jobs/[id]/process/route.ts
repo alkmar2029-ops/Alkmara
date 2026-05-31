@@ -1,20 +1,21 @@
 import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { sendTextAndLog } from '@/lib/whatsapp/log';
-import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
+import { TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
 import { renderTemplate } from '@/lib/whatsapp/template';
 import { normalizePhone } from '@/lib/teachers/credentials';
 import { teacherPortalUrl } from '@/lib/utils/portal-url';
+import { getWorkerSecret, isWorkerRequest } from '@/lib/security/worker-secret';
+import { formatDate } from '@/lib/utils/date-format';
 
 export const dynamic = 'force-dynamic';
-// 5 minutes — Vercel Pro maximum. At 6s pacing this drains ~50 messages
-// before we run out of budget. For larger queues the worker self-triggers
-// to resume; the queue gets fully drained in N × 5min batches.
-export const maxDuration = 300;
+// Hobby-safe 60s worker. At 5.5s pacing this drains ~8-9 messages per call;
+// larger queues complete across multiple self-triggered invocations.
+export const maxDuration = 60;
 
-// Soft budget — leave 15s headroom before maxDuration so the self-trigger
-// fetch + final DB write get clean slots.
-const BUDGET_MS = 285_000;
+// Soft budget leaves headroom before maxDuration so the self-trigger fetch
+// and final DB write get clean slots.
+const BUDGET_MS = 50_000;
 // Default pacing for jobs that didn't set their own. Wasender's account-
 // protection limit is 1 message every 5 seconds; 5500 leaves a margin.
 const DEFAULT_PACE_MS = 5_500;
@@ -35,17 +36,16 @@ function classifyError(err: string | null | undefined): string {
   return 'other';
 }
 
-// POST — drain the queue for one bulk_send_job. Authenticated via a
-// shared secret (derived from the service-role key) so it can be called
-// internally without an admin session cookie. Re-entrant: if it runs out
+// POST — drain the queue for one bulk_send_job. Authenticated via
+// WORKER_SECRET so it can be called internally without an admin session
+// cookie. Re-entrant: if it runs out
 // of time it triggers itself to resume; the `claim`-style update prevents
 // two concurrent workers from double-sending the same recipient.
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   // 1. Auth — internal-only via shared secret. The trigger in the bulk-
   // remind POST handler sets this header.
-  const expectedSecret = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').slice(0, 32);
-  const providedSecret = request.headers.get('x-worker-secret') || '';
-  if (!expectedSecret || providedSecret !== expectedSecret) {
+  const expectedSecret = getWorkerSecret();
+  if (!isWorkerRequest(request)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 
   const today = (() => {
-    try { return new Date().toLocaleDateString('ar-SA-u-ca-gregory'); }
+    try { return formatDate(new Date()); }
     catch { return new Date().toISOString().slice(0, 10); }
   })();
 

@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { isTeacherWhatsappEnabled, TEACHER_WHATSAPP_DISABLED_ERROR } from '@/lib/whatsapp/policy';
 import { todayInSchoolTz } from '@/lib/utils/school-time';
+import { getWorkerSecret } from '@/lib/security/worker-secret';
+import { checkBulkSendLimit } from '@/lib/security/bulk-send-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +116,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'لا يوجد طلاب مطابقون للفلاتر المحددة' }, { status: 404 });
   }
 
+  const limit = await checkBulkSendLimit(admin, auth.ctx.userId, students.length);
+  if (!limit.ok) return limit.res!;
+
   // 4. Create the job row. Status starts as 'scheduled' if scheduled_for
   // is in the future, else 'pending' (worker fires immediately).
   const status = isScheduled ? 'scheduled' : 'pending';
@@ -181,7 +186,7 @@ export async function POST(request: NextRequest) {
   // 6. Trigger the worker NOW unless scheduled for later.
   if (!isScheduled) {
     const workerUrl = `${request.nextUrl.origin}/api/whatsapp/bulk-jobs/${job.id}/process`;
-    const workerSecret = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').slice(0, 32);
+    const workerSecret = getWorkerSecret();
     fetch(workerUrl, {
       method: 'POST',
       headers: {

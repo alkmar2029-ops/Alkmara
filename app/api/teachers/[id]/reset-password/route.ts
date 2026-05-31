@@ -1,14 +1,24 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
+import { writeAuditLog } from '@/lib/supabase/auth';
+import { requireManageUsers } from '@/lib/personas/auth-gate';
+import { checkRateLimit } from '@/lib/security/rate-limit';
 import { generatePassword, sendCredentialsViaWhatsapp } from '@/lib/teachers/credentials';
 
 export const dynamic = 'force-dynamic';
 
 // POST — generate a new password for a teacher and resend via WhatsApp.
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireRole(['admin']);
+  const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
+
+  const rl = checkRateLimit(`reset-pw:${auth.ctx.userId}`, 5, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'محاولات إعادة تعيين كلمة السر كثيرة، حاول لاحقاً' },
+      { status: 429, headers: { 'Retry-After': String(rl.resetIn) } },
+    );
+  }
 
   const admin = createAdminSupabaseClient();
 

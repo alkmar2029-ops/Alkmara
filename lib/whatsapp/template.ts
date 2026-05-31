@@ -1,5 +1,7 @@
 // Lightweight {{placeholder}} renderer with sensible Arabic-ready defaults.
 
+import { formatDate, formatClockTime } from '@/lib/utils/date-format';
+
 export interface RenderVars {
   // Common — used by every template type
   student_name?: string;
@@ -58,10 +60,7 @@ export function renderTemplate(body: string, vars: RenderVars): string {
 export function formatPunchDateTime(iso: string | null | undefined): { date: string; time: string } {
   if (!iso) return { date: '', time: '' };
   try {
-    const d = new Date(iso);
-    const date = d.toLocaleDateString('ar-SA-u-ca-gregory');
-    const time = d.toLocaleTimeString('ar-SA', { hour12: false });
-    return { date, time };
+    return { date: formatDate(iso), time: formatClockTime(iso) };
   } catch {
     return { date: '', time: '' };
   }

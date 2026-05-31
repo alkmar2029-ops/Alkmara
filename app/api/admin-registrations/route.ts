@@ -84,11 +84,14 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (existingPending) return GENERIC_SUCCESS;
 
-  const { data: usersData } = await admin.auth.admin.listUsers({ perPage: 1000 });
-  const taken = (usersData?.users || []).some(
-    (u) => (u.email || '').toLowerCase() === normalizedEmail,
-  );
-  if (taken) return GENERIC_SUCCESS;
+  const { data: emailTaken, error: emailErr } = await admin.rpc('email_is_registered', { p_email: normalizedEmail });
+  if (emailErr) {
+    // Fail CLOSED: don't queue a registration we couldn't validate. Generic
+    // success preserves anti-enumeration. (AUTH-12)
+    console.error('email_is_registered failed (admin registration):', emailErr.message);
+    return GENERIC_SUCCESS;
+  }
+  if (emailTaken) return GENERIC_SUCCESS;
 
   // 4. Insert registration + atomic claim of the code (set used_at).
   const { data: regRow, error: insErr } = await admin

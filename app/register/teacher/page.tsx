@@ -61,10 +61,15 @@ export default function TeacherSelfRegisterPage() {
     email.includes('@') &&
     phone.trim().length >= 10;
 
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (canSubmit && !submitMut.isPending) submitMut.mutate();
+  };
+
   // === Success state ===
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 p-4 py-8">
+      <main id="main" tabIndex={-1} className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 p-4 py-8">
         <div className="max-w-md mx-auto space-y-4">
           {/* Hero */}
           <div className="card text-center py-8 bg-gradient-to-br from-green-500 to-emerald-600 text-white border-0">
@@ -112,13 +117,13 @@ export default function TeacherSelfRegisterPage() {
             🤲 نسأل الله أن يجعل قدومك خيراً وبركة
           </p>
         </div>
-      </div>
+      </main>
     );
   }
 
   // === Form ===
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 p-4 py-6">
+    <main id="main" tabIndex={-1} className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 p-4 py-6">
       <div className="max-w-md mx-auto space-y-3">
         {/* Hero card with school identity */}
         <div className="card bg-gradient-to-br from-blue-600 to-indigo-700 text-white border-0 text-center py-7">
@@ -156,13 +161,17 @@ export default function TeacherSelfRegisterPage() {
             <BookOpen className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             بياناتك
           </h2>
-          <div className="space-y-3">
+          <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <label className="label flex items-center gap-1.5">
+              <label htmlFor="teacher-full-name" className="label flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5" />
                 الاسم الكامل *
               </label>
               <input
+                id="teacher-full-name"
+                name="full_name"
+                type="text"
+                autoComplete="name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 className="input"
@@ -173,12 +182,16 @@ export default function TeacherSelfRegisterPage() {
             </div>
 
             <div>
-              <label className="label flex items-center gap-1.5">
+              <label htmlFor="teacher-email" className="label flex items-center gap-1.5">
                 <Mail className="w-3.5 h-3.5" />
                 البريد الإلكتروني *
               </label>
               <input
+                id="teacher-email"
+                name="email"
                 type="email"
+                autoComplete="email"
+                inputMode="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="input"
@@ -192,12 +205,16 @@ export default function TeacherSelfRegisterPage() {
             </div>
 
             <div>
-              <label className="label flex items-center gap-1.5">
+              <label htmlFor="teacher-phone" className="label flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5" />
                 رقم الجوال (واتساب) *
               </label>
               <input
+                id="teacher-phone"
+                name="tel"
                 type="tel"
+                autoComplete="tel"
+                inputMode="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="input"
@@ -234,7 +251,7 @@ export default function TeacherSelfRegisterPage() {
             )}
 
             <button
-              onClick={() => submitMut.mutate()}
+              type="submit"
               disabled={!canSubmit || submitMut.isPending}
               className="btn-primary w-full inline-flex items-center justify-center gap-2 py-3 text-base"
             >
@@ -245,7 +262,7 @@ export default function TeacherSelfRegisterPage() {
               )}
               {submitMut.isPending ? 'جارٍ الإرسال...' : 'إرسال طلب الانضمام'}
             </button>
-          </div>
+          </form>
         </div>
 
         {/* Why join card — quick highlights */}
@@ -278,7 +295,7 @@ export default function TeacherSelfRegisterPage() {
           بإرسال البيانات، توافق على معالجتها لإنشاء حسابك في النظام
         </p>
       </div>
-    </div>
+    </main>
   );
 }
 

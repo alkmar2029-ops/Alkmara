@@ -8,16 +8,19 @@ import toast from 'react-hot-toast';
 import InstallPrompt from '@/components/pwa/InstallPrompt';
 import GlobalSearch from '@/components/search/GlobalSearch';
 import {
-  LayoutDashboard, Users, BookOpen, Fingerprint, ClipboardList, BarChart3,
+  LayoutDashboard, Users, BookOpen, Fingerprint, BarChart3,
   Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
   Sun, Moon, Bell, Download, MessageSquarePlus, UserCog, ClipboardCheck, Mail,
-  AlertTriangle, UserPlus, LogOut as ExitIcon, Shield, KeyRound, Crown,
-  CalendarDays,
+  AlertTriangle, UserPlus, LogOut as ExitIcon, Shield, ShieldAlert, ShieldCheck, KeyRound, Crown,
+  CalendarDays, UserCheck, FileText, FileBarChart,
 } from 'lucide-react';
 import UnreadBadge from '@/components/ui/UnreadBadge';
 import PendingRegistrationsBadge from '@/components/ui/PendingRegistrationsBadge';
 import { useTheme } from '@/lib/hooks/useTheme';
+import { usePersona } from '@/lib/hooks/usePersona';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useQuery } from '@tanstack/react-query';
+import type { Persona } from '@/lib/personas/types';
 
 // `superAdminOnly: true` hides the entry for plain admins. The header
 // fetches /api/admin-assignments/me to know the current role; the list
@@ -34,6 +37,18 @@ interface NavItem {
   label: string;
   icon: any;
   superAdminOnly?: boolean;
+  // When set, the item appears only for users with this persona (or
+  // super_admin, who can preview every persona's UI). Persona is sourced
+  // from usePersona() which already gates on role — viewer/staff with
+  // fallback persona='general_admin' will not match here.
+  forPersona?: Persona;
+  // When set, the item appears only when the user has this permission
+  // flag (super_admin always passes). Use this instead of
+  // superAdminOnly for entries whose backend API gate is
+  // `super_admin OR can(flag)` — keeps the sidebar visibility in sync
+  // with the actual access policy (Codex review م1.7d). Typed as string
+  // for flexibility across the legacy 10 keys + new 13 persona flags.
+  requiresPermission?: string;
 }
 
 interface NavGroup {
@@ -46,6 +61,55 @@ const navGroups: NavGroup[] = [
     label: null,
     items: [
       { path: '/dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
+    ],
+  },
+  // Persona-specific groups (placeholder pages live in app/dashboard/vp/
+  // and app/dashboard/counselor/). Filtered out for users whose persona
+  // doesn't match; super_admin sees both. More items get added per
+  // group in their respective sprints (المرحلة 2 for VP, المرحلة 4-5
+  // for counselor).
+  {
+    label: 'الوكيل',
+    items: [
+      // Flag-based not persona-based: gate parity with the page + API
+      // (super_admin OR view_morning_dashboard). A principal /
+      // general_admin granted the flag can use these screens, so the
+      // sidebar must surface them. forPersona='vice_principal' was
+      // narrower than the access policy (Codex م2.13 review).
+      { path: '/dashboard/vp/morning', label: 'لوحة الصباح', icon: CalendarDays, requiresPermission: 'view_morning_dashboard' },
+      { path: '/dashboard/vp/substitutions', label: 'حصص الانتظار', icon: UserCheck, requiresPermission: 'view_morning_dashboard' },
+      { path: '/dashboard/vp/teacher-leaves', label: 'إجازات المعلمين', icon: FileText, requiresPermission: 'view_morning_dashboard' },
+      { path: '/dashboard/vp/operations-report', label: 'تقرير العمليات', icon: FileBarChart, requiresPermission: 'view_morning_dashboard' },
+    ],
+  },
+  {
+    label: 'المرشد الطلابي',
+    items: [
+      { path: '/dashboard/counselor/watchlist', label: 'قائمة المتابعة', icon: ShieldAlert, forPersona: 'counselor' },
+      { path: '/dashboard/counselor/reports/operational', label: 'تقرير العمليات', icon: FileBarChart, forPersona: 'counselor' },
+    ],
+  },
+  {
+    // Principal-level school aggregates (م6.3). Separate group from
+    // VP operations + counselor reports — different audience, different
+    // privacy contract (k-anonymity + no drill-down). Gate is the
+    // `view_school_reports` flag; super_admin auto-passes.
+    label: 'تقارير المدرسة',
+    items: [
+      { path: '/dashboard/admin/reports/school', label: 'تقرير المدرسة الإجمالي', icon: BarChart3, requiresPermission: 'view_school_reports' },
+    ],
+  },
+  {
+    // Incidents workflow:
+    //   - مخالفاتي (م3.11) — visible to everyone; admins who submit
+    //     on behalf see the same "mine" view.
+    //   - مراجعة المخالفات (م3.13) — gated by the reviewer flag.
+    //     super_admin auto-passes; counselors see the page via their
+    //     own sidebar group (COUNSELOR_NAV_GROUPS).
+    label: 'المخالفات',
+    items: [
+      { path: '/dashboard/teacher/incidents', label: 'مخالفاتي', icon: AlertTriangle },
+      { path: '/dashboard/vp/incidents/review', label: 'مراجعة المخالفات', icon: ClipboardCheck, requiresPermission: 'review_teacher_incidents' },
     ],
   },
   {
@@ -94,6 +158,12 @@ const navGroups: NavGroup[] = [
       // Unified entry — covers both teachers + admins via tabs.
       // /dashboard/teachers stays alive as a legacy route (no sidebar entry).
       { path: '/dashboard/users', label: 'المعلمون والإداريون', icon: UserCog, superAdminOnly: true },
+      // Persona/permissions admin — API gate is super_admin OR
+      // manage_users (م1.3 + م1.4). Mirror it in the sidebar so an
+      // admin with manage_users actually sees the link.
+      { path: '/dashboard/admin/personas', label: 'الأدوار والصلاحيات', icon: ShieldCheck, requiresPermission: 'manage_users' },
+      // Counselor scope assignments — same API gate (م1.5).
+      { path: '/dashboard/admin/counselor-assignments', label: 'إسنادات المرشدين', icon: ShieldAlert, requiresPermission: 'manage_users' },
       { path: '/dashboard/teacher-assignments', label: 'تعيين الشعب للمعلمين', icon: UserCog, superAdminOnly: true },
       { path: '/dashboard/teacher-registrations', label: 'طلبات انضمام المعلمين', icon: UserPlus, superAdminOnly: true },
       { path: '/dashboard/admin-assignments', label: 'تعيين نطاق الإداريين', icon: Shield, superAdminOnly: true },
@@ -128,6 +198,63 @@ const navGroups: NavGroup[] = [
   },
 ];
 
+// Persona-restricted menus. Non-super VP or counselor loads see ONLY
+// these entries — NOT a filtered subset of the default navGroups.
+// Rationale (Codex review م1.7c): additive filtering left the
+// counselor/VP seeing every non-super entry (students, attendance,
+// notes, …) because those items aren't marked superAdminOnly. Until
+// RLS on every page covered is counselor/VP-aware, a separate menu is
+// the safer UX boundary.
+//
+// More entries get added per upcoming sprints: المرحلة 2 fleshes out
+// the VP menu; المرحلة 4-5 fleshes out the counselor menu.
+const VP_NAV_GROUPS: NavGroup[] = [
+  {
+    label: null,
+    items: [
+      { path: '/dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'الوكيل',
+    items: [
+      { path: '/dashboard/vp/morning', label: 'لوحة الصباح', icon: CalendarDays },
+      { path: '/dashboard/vp/substitutions', label: 'حصص الانتظار', icon: UserCheck },
+      { path: '/dashboard/vp/teacher-leaves', label: 'إجازات المعلمين', icon: FileText },
+      { path: '/dashboard/vp/operations-report', label: 'تقرير العمليات', icon: FileBarChart },
+      { path: '/dashboard/vp/incidents/review', label: 'مراجعة المخالفات', icon: ClipboardCheck, requiresPermission: 'review_teacher_incidents' },
+    ],
+  },
+  {
+    label: 'العمليات اليومية',
+    items: [
+      // Supervision today view is admin-readable already; VPs (especially
+      // student_affairs) own this workflow. Other VP screens are added
+      // in المرحلة 2.
+      { path: '/dashboard/supervision', label: 'إشراف الفسحة', icon: Shield },
+    ],
+  },
+];
+
+const COUNSELOR_NAV_GROUPS: NavGroup[] = [
+  {
+    label: null,
+    items: [
+      { path: '/dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'المرشد الطلابي',
+    items: [
+      { path: '/dashboard/counselor/watchlist', label: 'قائمة المتابعة', icon: ShieldAlert },
+      { path: '/dashboard/counselor/reports/operational', label: 'تقرير العمليات', icon: FileBarChart },
+      // Counselors see the review queue in read-only mode — buttons
+      // gated by the reviewer flag inside the page itself.
+      { path: '/dashboard/vp/incidents/review', label: 'مراجعة المخالفات', icon: ClipboardCheck },
+    ],
+  },
+];
+
 interface AdminPolicy {
   is_super_admin: boolean;
   sections: { id: number; name: string; grade_id: number; grade_name: string }[];
@@ -137,6 +264,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Default closed on small screens; open on desktop. lg: utilities still open on desktop layouts.
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -146,11 +274,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   //   • Scope banner under the header for non-super admins.
   //   • Sidebar filtering — superAdminOnly entries hide for plain admins.
   // We use a 5-minute staleTime since assignments change rarely.
-  const { data: policy } = useQuery<AdminPolicy>({
+  const policyQuery = useQuery<AdminPolicy>({
     queryKey: ['admin-policy-me'],
     queryFn: async () => (await (await fetch('/api/admin-assignments/me')).json()).data,
     staleTime: 5 * 60_000,
   });
+  const policy = policyQuery.data;
+  // Distinguish "still loading" from "loaded but failed" — the previous
+  // `policy === undefined` conflated the two, locking the sidebar to
+  // home-only forever if the request 5xx'd (Codex Sprint 1 review).
+  const policyFailed = policyQuery.isError;
+
+  // Persona context — drives persona-specific sidebar items (VP /
+  // counselor), permission-gated entries via `can`, and the
+  // GlobalSearch visibility check. Separate from admin-policy-me
+  // (which is about section/grade scope for the scope banner). Both
+  // must load before we render the full menu.
+  //
+  // isSuperAdmin from usePersona is a JWT-derived fallback: if the
+  // admin-policy-me query fails, we still want to recognise super_admin
+  // (from their role claim) so they don't lose their menu entries.
+  const {
+    isVicePrincipal,
+    isCounselor,
+    isLoading: personaLoading,
+    isSuperAdmin,
+    can,
+  } = usePersona();
+
+  const stillLoading = personaLoading || policyQuery.isLoading;
 
   // Distinct grades with section counts for the scope banner.
   const scopeGrades = useMemo(() => {
@@ -164,24 +316,64 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return Array.from(map.values());
   }, [policy]);
 
-  // Filter the sidebar based on role. Super admin sees everything; plain
-  // admins lose the superAdminOnly entries (school setup, teacher mgmt,
-  // etc). When policy hasn't loaded yet, show the full menu — assuming
-  // super_admin avoids a flash-of-narrow-menu for the principal.
+  // Sidebar visibility — three branches:
+  //
+  //   1. Loading → home item only. Previously the layout assumed
+  //      super_admin during the load window which caused a flash of
+  //      sensitive items (Codex م1.7c). Fail-closed.
+  //
+  //   2. Counselor / VP (non-super) → persona-restricted menu, NOT a
+  //      filtered subset of navGroups. Without this branch the user
+  //      would still see students/attendance/notes/etc., because most
+  //      items aren't marked superAdminOnly. UX scoping only — RLS is
+  //      the real access boundary (Codex م1.7c follow-up).
+  //
+  //   3. Everyone else (principal/general_admin/super_admin/staff/viewer)
+  //      → default navGroups with superAdminOnly + forPersona filters.
+  //      super_admin picks up the VP/counselor preview entries here.
+  //      staff/viewer match neither persona branch (isCounselor /
+  //      isVicePrincipal gate on admin role), so they fall through to
+  //      this branch — preserving their pre-personas behaviour.
   const visibleNavItems = useMemo(() => {
-    const isSuper = !policy || policy.is_super_admin;
-    // Filter each group's items, then drop groups that end up empty
-    // (so plain admins don't see orphan section headers).
-    return navGroups
+    if (stillLoading) {
+      return [{ label: null, items: navGroups[0].items.slice(0, 1) }];
+    }
+    // If the policy fetch failed, fall back to the JWT-derived
+    // isSuperAdmin so a super_admin still sees their full menu after a
+    // transient API hiccup (Codex Sprint 1 review). Plain admins
+    // degrade to "not super" — they lose super-only items until the
+    // user reloads, but the rest of the menu remains usable.
+    const isSuper = policyFailed
+      ? isSuperAdmin
+      : policy?.is_super_admin === true;
+
+    const filterGroups = (groups: NavGroup[]) => groups
       .map((g) => ({
         ...g,
         items: g.items.filter((item) => {
           if (item.superAdminOnly && !isSuper) return false;
+          if (item.forPersona === 'vice_principal' && !isSuper && !isVicePrincipal) {
+            return false;
+          }
+          if (item.forPersona === 'counselor' && !isSuper && !isCounselor) {
+            return false;
+          }
+          // Permission-gated entry — sidebar visibility tracks the
+          // backend's gate exactly (super_admin OR has-flag). Don't
+          // hide from a plain admin who legitimately holds the flag.
+          if (item.requiresPermission && !isSuper && !can(item.requiresPermission)) {
+            return false;
+          }
           return true;
         }),
       }))
       .filter((g) => g.items.length > 0);
-  }, [policy]);
+
+    if (isCounselor && !isSuper) return filterGroups(COUNSELOR_NAV_GROUPS);
+    if (isVicePrincipal && !isSuper) return filterGroups(VP_NAV_GROUPS);
+
+    return filterGroups(navGroups);
+  }, [stillLoading, policy, policyFailed, isVicePrincipal, isCounselor, isSuperAdmin, can]);
 
   // Register the service worker and check for updates periodically. Without
   // this, admins who installed the dashboard PWA never see new versions
@@ -207,6 +399,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast.success('تم تسجيل الخروج');
+    setLogoutConfirmOpen(false);
     router.push('/login');
     router.refresh();
   };
@@ -296,7 +489,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {sidebarOpen && <span>{theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}</span>}
           </button>
           <button
-            onClick={handleLogout}
+            onClick={() => setLogoutConfirmOpen(true)}
             className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg text-gray-600 hover:bg-red-50 hover:text-red-600 dark:text-gray-300 dark:hover:bg-red-500/10 dark:hover:text-red-400 ${!sidebarOpen ? 'justify-center' : ''}`}
           >
             <LogOut className="w-5 h-5" />
@@ -315,10 +508,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Menu className="w-5 h-5" />
           </button>
 
-          {/* Global search (Cmd+K). Component renders both the trigger
-              button (in the topbar) and the modal (overlay) — it's
-              keyed by an internal open state, so we only mount it once. */}
-          <GlobalSearch />
+          {/* Global search (Cmd+K). Hidden for counselors — the search
+              currently spans school-wide students/notes, but a counselor
+              should only see within counselor_assignments. Re-enable
+              once the search API enforces scope. Also hidden while
+              persona/policy load, to avoid a flash for counselors. */}
+          {!stillLoading && !isCounselor && <GlobalSearch />}
 
           {/* Mobile theme toggle in header (sidebar is hidden) */}
           <button
@@ -329,6 +524,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {mounted && (theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />)}
           </button>
         </header>
+
+        {/* Policy load failure — surface so the admin knows the scope
+            data didn't fetch and some sidebar items may be hidden.
+            Without this banner, a 5xx on /api/admin-assignments/me
+            silently degraded the menu (Codex Sprint 1 review). */}
+        {policyFailed && (
+          <div className="bg-amber-50 dark:bg-amber-500/10 border-b border-amber-200 dark:border-amber-500/30 px-4 py-1.5">
+            <div className="flex items-center gap-2 text-xs">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+              <span className="text-amber-900 dark:text-amber-200">
+                تعذّر تحميل صلاحياتك بالكامل. بعض القوائم قد تكون مخفية. حاول تحديث الصفحة.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Scope banner — super_admin: gold "Crown" badge; plain admin:
             blue scope summary; both let the user know their privilege level
@@ -361,13 +571,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )
         )}
 
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
+        <main id="main" tabIndex={-1} className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
       </div>
 
       {/* PWA install banner — Chrome/Edge fires beforeinstallprompt;
           iOS Safari shows a "tap Share → Add to Home Screen" hint instead.
           Auto-hides when the app is already running standalone. */}
       <InstallPrompt />
+      <ConfirmDialog
+        isOpen={logoutConfirmOpen}
+        title="تسجيل الخروج"
+        message="هل تريد تسجيل الخروج من لوحة التحكم؟"
+        confirmText="تسجيل الخروج"
+        cancelText="إلغاء"
+        variant="warning"
+        onConfirm={handleLogout}
+        onCancel={() => setLogoutConfirmOpen(false)}
+      />
     </div>
   );
 }

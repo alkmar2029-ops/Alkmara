@@ -5,9 +5,8 @@ import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 import { runSync, type SyncEvent } from '@/lib/zkteco/sync-runner';
 
 export const dynamic = 'force-dynamic';
-// Allow long-running sync up to 5 minutes (Next.js default is 10s for serverless;
-// this is a custom server, so we mainly need to avoid the client aborting).
-export const maxDuration = 300;
+// Hobby-safe cap. Large device syncs should be split by the caller.
+export const maxDuration = 60;
 
 // Streaming endpoint: emits one JSON object per line (NDJSON) so the client
 // can render progress live without polling.

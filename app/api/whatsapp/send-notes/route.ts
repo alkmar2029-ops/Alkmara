@@ -5,6 +5,8 @@ import { sendNotesWhatsappSchema, validateBody } from '@/lib/validations/schemas
 import { sendTextAndLog } from '@/lib/whatsapp/log';
 import { renderTemplate } from '@/lib/whatsapp/template';
 import { canTeachersSendWhatsapp, TEACHER_CANNOT_SEND_WHATSAPP_ERROR } from '@/lib/whatsapp/policy';
+import { checkBulkSendLimit } from '@/lib/security/bulk-send-limit';
+import { formatDate } from '@/lib/utils/date-format';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,6 +106,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'لا توجد ملاحظات للإرسال' }, { status: 404 });
   }
 
+  const limit = await checkBulkSendLimit(adminClient, auth.ctx.userId, notes.length);
+  if (!limit.ok) return limit.res!;
+
   // 4. Send sequentially with pacing — same pattern as send-late.
   const outcomes: SendOutcome[] = [];
   let success = 0, fail = 0, skipped = 0;
@@ -142,7 +147,7 @@ export async function POST(request: NextRequest) {
 
     const dateStr = (() => {
       try {
-        return new Date(n.recorded_at).toLocaleDateString('ar-SA-u-ca-gregory');
+        return formatDate(n.recorded_at);
       } catch { return n.recorded_at as string; }
     })();
 

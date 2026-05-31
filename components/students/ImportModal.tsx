@@ -171,7 +171,7 @@ export default function ImportModal({ grades, onClose, onDone }: ImportModalProp
   const duplicateCount = validationResults.filter(r => r.status === 'duplicate').length;
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="استيراد طلاب من Excel" maxWidth="max-w-2xl">
+    <Modal isOpen={true} onClose={onClose} title="استيراد طلاب من Excel" maxWidth="max-w-2xl" closeOnBackdrop={false}>
       {step === 1 && (<div className="space-y-4"><p className="text-sm text-gray-500 dark:text-gray-400">اختر طريقة الاستيراد:</p>
         <label className={`flex gap-3 p-4 rounded-lg border-2 cursor-pointer ${importType === 'specific' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/15' : 'border-gray-200 dark:border-gray-800'}`}><input type="radio" checked={importType === 'specific'} onChange={() => setImportType('specific')} /><div><p className="font-medium text-gray-900 dark:text-gray-100">استيراد لشعبة محددة</p><p className="text-sm text-gray-500 dark:text-gray-400">حدد الصف والشعبة، ثم ارفع الملف</p></div></label>
         <label className={`flex gap-3 p-4 rounded-lg border-2 cursor-pointer ${importType === 'full' ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/15' : 'border-gray-200 dark:border-gray-800'}`}><input type="radio" checked={importType === 'full'} onChange={() => setImportType('full')} /><div><p className="font-medium text-gray-900 dark:text-gray-100">استيراد شامل</p><p className="text-sm text-gray-500 dark:text-gray-400">ارفع ملف يحتوي الصف والشعبة لكل طالب</p></div></label>
