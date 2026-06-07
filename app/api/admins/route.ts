@@ -17,6 +17,11 @@ import {
 } from '@/lib/admins/credentials';
 
 export const dynamic = 'force-dynamic';
+// Hobby-safe cap. Creating an admin sends 3 paced WhatsApp messages
+// (~15s) — without this the request hits Vercel's 10s default and 504s
+// AFTER the auth user + profile are already created (leaving a phantom
+// account that makes a retry fail with "email already in use").
+export const maxDuration = 60;
 
 // GET — list all admins (super_admin only). Returns role + permissions
 // + email so the unified users page can render both lists side by side.

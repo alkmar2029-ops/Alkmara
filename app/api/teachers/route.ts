@@ -10,6 +10,10 @@ import {
 } from '@/lib/teachers/credentials';
 
 export const dynamic = 'force-dynamic';
+// Hobby-safe cap. Creating a teacher sends paced WhatsApp credentials
+// (~15s) — exceeds Vercel's 10s default without this, 504-ing after the
+// account is already created.
+export const maxDuration = 60;
 
 // GET — list teachers (admin only). Joins auth.users for email & created_at.
 export async function GET() {

@@ -10,6 +10,10 @@ import {
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
+// Hobby-safe cap. Each teacher gets paced WhatsApp credentials (~5.5s
+// apart), so this easily blows the 10s default. 60s covers the typical
+// batch; very large lists should move to the bulk_send_jobs queue.
+export const maxDuration = 60;
 
 // Same shape as POST /api/teachers but for many at once. Phone is
 // optional — when missing, the account gets created without WhatsApp
