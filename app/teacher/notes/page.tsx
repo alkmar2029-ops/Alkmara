@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   MessageSquarePlus, Search, Mic, MicOff, Save, ThumbsUp, ThumbsDown,
@@ -41,8 +41,24 @@ function todayStr() {
 type WizardStep = 1 | 2 | 3;
 
 export default function TeacherNotesPage() {
+  return (
+    <Suspense fallback={<div className="text-center py-10"><Loader2 className="w-6 h-6 animate-spin inline text-gray-400" /></div>}>
+      <TeacherNotesContent />
+    </Suspense>
+  );
+}
+
+function TeacherNotesContent() {
   const router = useRouter();
   const qc = useQueryClient();
+
+  // When opened via the "المخالفات" menu shortcut
+  // (/teacher/notes?type=negative&category=behavior) the screen starts in
+  // violation mode; otherwise it's a normal positive/general note. Read once
+  // for the initial state.
+  const sp = useSearchParams();
+  const initialType: NoteType = sp.get('type') === 'negative' ? 'negative' : 'positive';
+  const initialCategory: NoteCategory = sp.get('category') === 'behavior' ? 'behavior' : 'general';
 
   const { session, patch, loaded } = useClassSession();
 
@@ -59,8 +75,8 @@ export default function TeacherNotesPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
   // Note input state
-  const [noteType, setNoteType] = useState<NoteType>('positive');
-  const [noteCategory, setNoteCategory] = useState<NoteCategory>('general');
+  const [noteType, setNoteType] = useState<NoteType>(initialType);
+  const [noteCategory, setNoteCategory] = useState<NoteCategory>(initialCategory);
   const [noteText, setNoteText] = useState('');
   const [pickedTemplateId, setPickedTemplateId] = useState<number | null>(null);
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
-import { ClipboardList, History, User, LogOut, Menu, X, MessageSquarePlus, FileText, Mail, Sun, Moon, Calendar, Shield } from 'lucide-react';
+import { ClipboardList, History, User, LogOut, Menu, X, MessageSquarePlus, FileText, Mail, Sun, Moon, Calendar, Shield, AlertTriangle } from 'lucide-react';
 import UnreadBadge from '@/components/ui/UnreadBadge';
 import InstallPrompt from '@/components/pwa/InstallPrompt';
 import { useTheme } from '@/lib/hooks/useTheme';
@@ -16,6 +16,7 @@ const navItems = [
   { path: '/teacher/schedule',    label: 'جدولي',          Icon: Calendar },
   { path: '/teacher/supervision', label: 'إشراف الفسحة', Icon: Shield },
   { path: '/teacher/notes',       label: 'الملاحظات',     Icon: MessageSquarePlus },
+  { path: '/teacher/notes?type=negative&category=behavior', label: 'المخالفات', Icon: AlertTriangle },
   { path: '/teacher/messages',    label: 'الرسائل',       Icon: Mail },
   { path: '/teacher/history',     label: 'سجل حصصي',     Icon: History },
   { path: '/teacher/reports',     label: 'التقارير',     Icon: FileText },
