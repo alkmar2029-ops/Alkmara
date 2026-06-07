@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
+import { requireRecordAttendance } from '@/lib/personas/auth-gate';
 import { savePeriodAttendanceSchema, validateBody } from '@/lib/validations/schemas';
 
 export const dynamic = 'force-dynamic';
@@ -46,7 +47,10 @@ export async function GET(request: NextRequest) {
 // POST — save a session. Idempotent upsert: re-saving the same (date, period,
 // section) replaces the previous absences list. Teachers can edit indefinitely.
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(['admin', 'staff', 'teacher']);
+  // Tighter than the GET gate: admins must hold take_attendance to record
+  // (so a وكيل with the flag can save; a plain admin without it cannot).
+  // Teachers/staff keep their role-based access. See requireRecordAttendance.
+  const auth = await requireRecordAttendance();
   if (!auth.ok) return auth.res;
 
   let body: unknown;

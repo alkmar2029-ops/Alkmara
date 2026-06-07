@@ -166,6 +166,64 @@ export const requireApproveTeacherLeave = () =>
   );
 
 // ===========================================================================
+// requireRecordAttendance — period/daily attendance ENTRY gate
+// ===========================================================================
+// Authorises who may RECORD/EDIT attendance:
+//   - role 'teacher' / 'staff' — by role (the teacher portal flow; unchanged).
+//   - role 'super_admin'       — always.
+//   - role 'admin'             — only with permissions.take_attendance===true.
+//
+// This lets a وكيل (vice-principal) holding take_attendance enter or edit
+// period attendance from the dashboard, while a plain admin without the flag
+// cannot. Unlike requireAdminWithFlag this also lets teacher/staff through, so
+// the existing teacher save path keeps working untouched.
+//
+// Defence-in-depth for the admin path mirrors requireAdminWithFlag: re-read
+// role + permissions from the DB so a stale JWT app_metadata.role can't
+// escalate. Teacher/staff skip the extra read (role is the gate — same as the
+// endpoints' prior behaviour).
+export async function requireRecordAttendance(): Promise<
+  { ok: true; ctx: AuthContext } | { ok: false; res: NextResponse }
+> {
+  const auth = await requireRole(['admin', 'staff', 'teacher']);
+  if (!auth.ok) return auth;
+
+  if (auth.ctx.role === 'teacher' || auth.ctx.role === 'staff') {
+    return { ok: true, ctx: auth.ctx };
+  }
+
+  // admin / super_admin → re-read authoritative role + permissions.
+  const supabase = await createServerSupabaseClient();
+  const { data: caller } = await supabase
+    .from('user_profiles')
+    .select('role, permissions')
+    .eq('user_id', auth.ctx.userId)
+    .maybeSingle();
+
+  if (!caller || (caller.role !== 'admin' && caller.role !== 'super_admin')) {
+    return {
+      ok: false,
+      res: NextResponse.json({ error: 'لا تملك صلاحية تسجيل الحضور' }, { status: 403 }),
+    };
+  }
+
+  const ctx: AuthContext = { ...auth.ctx, role: caller.role as 'admin' | 'super_admin' };
+  if (caller.role === 'super_admin') return { ok: true, ctx };
+
+  const perms = (caller.permissions ?? {}) as Record<string, unknown>;
+  if (perms.take_attendance !== true) {
+    return {
+      ok: false,
+      res: NextResponse.json(
+        { error: 'لا تملك صلاحية تسجيل الحضور (يلزم take_attendance)' },
+        { status: 403 },
+      ),
+    };
+  }
+  return { ok: true, ctx };
+}
+
+// ===========================================================================
 // requireIncidentsQueue — review-queue access for م3.6 + related views
 // ===========================================================================
 // The incidents review queue is read by either:
