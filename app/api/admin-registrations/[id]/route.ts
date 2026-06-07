@@ -6,6 +6,9 @@ import { generatePassword, normalizePhone } from '@/lib/teachers/credentials';
 import { sendAdminCredentialsViaWhatsapp } from '@/lib/admins/credentials';
 
 export const dynamic = 'force-dynamic';
+// Hobby-safe cap. Approval runs the full admin-creation + paced WhatsApp
+// send (~15s) — exceeds Vercel's 10s default without this.
+export const maxDuration = 60;
 
 const updateSchema = z.object({
   status: z.enum(['approved', 'rejected']),

@@ -10,6 +10,9 @@ import {
 } from '@/lib/teachers/credentials';
 
 export const dynamic = 'force-dynamic';
+// Hobby-safe cap. Approval runs the full teacher-creation + paced WhatsApp
+// send (~15s) — exceeds Vercel's 10s default without this.
+export const maxDuration = 60;
 
 // PATCH — admin approves or rejects a pending registration.
 //
