@@ -231,6 +231,13 @@ export default function PeriodAttendancePage() {
           >
             <Printer className="w-4 h-4" /> طباعة التقرير
           </Link>
+          <Link
+            href="/dashboard/period-attendance/sheet"
+            target="_blank"
+            className="btn-secondary inline-flex items-center gap-1 text-sm"
+          >
+            <ClipboardCheck className="w-4 h-4" /> كشف غياب أسبوعي
+          </Link>
           <button onClick={() => refetch()} disabled={isFetching} className="btn-secondary inline-flex items-center gap-1 text-sm">
             {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             تحديث
