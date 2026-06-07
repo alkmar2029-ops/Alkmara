@@ -7,8 +7,9 @@ import toast from 'react-hot-toast';
 import {
   ClipboardCheck, Loader2, Calendar, RefreshCw, Filter, Printer, Send,
   X, CheckCircle2, XCircle, Clock as ClockIcon, BadgeCheck, User, ChevronLeft, AlertCircle,
-  Trash2, Bell, MessageCircle, EyeOff,
+  Trash2, Bell, MessageCircle, EyeOff, Save, Search, Pencil,
 } from 'lucide-react';
+import { usePersona } from '@/lib/hooks/usePersona';
 
 interface SectionRow {
   id: number;
@@ -89,6 +90,17 @@ interface SessionDetail {
   }>;
 }
 
+// Target passed to the record/edit modal — identifies the (section, period,
+// date) cell plus a friendly label and (when known) who last recorded it.
+interface RecordTarget {
+  sectionId: number;
+  sectionLabel: string;
+  periodId: number;
+  periodLabel: string;
+  date: string;
+  existingByName?: string | null;
+}
+
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -123,6 +135,8 @@ export default function PeriodAttendancePage() {
   // cell for that single period across all sections.
   const [bulkPeriodTarget, setBulkPeriodTarget] = useState<PeriodRow | null>(null);
   const [showMissingOnly, setShowMissingOnly] = useState(false);
+  // When set, the record/edit attendance modal is open for this cell.
+  const [recordTarget, setRecordTarget] = useState<RecordTarget | null>(null);
   const qc = useQueryClient();
 
   // Full sections × periods grid for the date — every expected cell, with
@@ -463,7 +477,11 @@ export default function PeriodAttendancePage() {
 
       {/* Detail modal */}
       {openSessionId !== null && (
-        <SessionDetailModal sessionId={openSessionId} onClose={() => setOpenSessionId(null)} />
+        <SessionDetailModal
+          sessionId={openSessionId}
+          onClose={() => setOpenSessionId(null)}
+          onEdit={(t) => { setOpenSessionId(null); setRecordTarget(t); }}
+        />
       )}
 
       {/* Missing-session reminder modal */}
@@ -474,6 +492,25 @@ export default function PeriodAttendancePage() {
           date={missingTarget.date}
           initialTeacherId={missingTarget.initialTeacherId}
           onClose={() => setMissingTarget(null)}
+          onRecord={() => {
+            setRecordTarget({
+              sectionId: missingTarget.section.id,
+              sectionLabel: `${missingTarget.section.grade_name} / ${missingTarget.section.section_name}`,
+              periodId: missingTarget.period.id,
+              periodLabel: `حصة ${missingTarget.period.number}`,
+              date: missingTarget.date,
+            });
+            setMissingTarget(null);
+          }}
+        />
+      )}
+
+      {/* Record / edit attendance modal — take_attendance holders */}
+      {recordTarget && (
+        <RecordAttendanceModal
+          target={recordTarget}
+          onClose={() => setRecordTarget(null)}
+          onSaved={() => refetch()}
         />
       )}
 
@@ -493,8 +530,10 @@ export default function PeriodAttendancePage() {
 }
 
 // =================== Detail modal ===================
-function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose: () => void }) {
+function SessionDetailModal({ sessionId, onClose, onEdit }: { sessionId: number; onClose: () => void; onEdit?: (t: RecordTarget) => void }) {
   const qc = useQueryClient();
+  const { can, isSuperAdmin } = usePersona();
+  const canRecord = isSuperAdmin || can('take_attendance');
   const { data, isLoading, isError } = useQuery<SessionDetail>({
     queryKey: ['session-detail', sessionId],
     queryFn: async () => (await (await fetch(`/api/period-attendance/session/${sessionId}`)).json()).data,
@@ -729,6 +768,21 @@ function SessionDetailModal({ sessionId, onClose }: { sessionId: number; onClose
               }
             </button>
             <div className="flex flex-wrap items-center gap-2">
+              {canRecord && onEdit && data.session && (
+                <button
+                  onClick={() => onEdit({
+                    sectionId: data.session.section_id,
+                    sectionLabel: `${data.session.grade_name ?? ''} / ${data.session.section_name ?? ''}`,
+                    periodId: data.session.period_id,
+                    periodLabel: data.session.period_number ? `حصة ${data.session.period_number}` : '',
+                    date: data.session.attendance_date,
+                    existingByName: data.session.teacher_name,
+                  })}
+                  className="inline-flex items-center gap-1 text-sm px-3 py-2 rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-500/25"
+                >
+                  <Pencil className="w-4 h-4" /> تعديل الحضور
+                </button>
+              )}
               <button
                 onClick={() => setPrintOpen(true)}
                 className="inline-flex items-center gap-1 text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600"
@@ -1395,7 +1449,7 @@ function BulkPeriodReminderModal({
 }
 
 function MissingSessionReminderModal({
-  section, period, date, initialTeacherId, onClose,
+  section, period, date, initialTeacherId, onClose, onRecord,
 }: {
   section: SectionRow;
   period: PeriodRow;
@@ -1404,7 +1458,12 @@ function MissingSessionReminderModal({
    *  has a known expected teacher from the smart schedule. */
   initialTeacherId?: string | null;
   onClose: () => void;
+  /** When present (take_attendance holders), shows a "record now" shortcut
+   *  that opens the entry modal instead of reminding the teacher. */
+  onRecord?: () => void;
 }) {
+  const { can, isSuperAdmin } = usePersona();
+  const canRecord = isSuperAdmin || can('take_attendance');
   const [teacherId, setTeacherId] = useState<string>(initialTeacherId || '');
   const [customMessage, setCustomMessage] = useState<string>('');
 
@@ -1487,6 +1546,17 @@ function MissingSessionReminderModal({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {canRecord && onRecord && (
+            <div className="space-y-2">
+              <button
+                onClick={onRecord}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+              >
+                <ClipboardCheck className="w-4 h-4" /> سجّل الحضور الآن بنفسك
+              </button>
+              <p className="text-[11px] text-center text-gray-500 dark:text-gray-400">أو ذكّر المعلم بتسجيلها:</p>
+            </div>
+          )}
           <div>
             <label className="label flex items-center gap-1.5">
               <User className="w-3.5 h-3.5" />
@@ -1561,6 +1631,234 @@ function MissingSessionReminderModal({
               ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ الإرسال...</>
               : <><Send className="w-4 h-4" /> إرسال التذكير</>
             }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =================== Record / edit attendance modal ===================
+// Entry surface for take_attendance holders (e.g. a وكيل). Privacy: the
+// roster comes from /api/period-attendance/roster (names + ids only) — NOT
+// /api/students — so health/social info is never sent here. Shows who last
+// recorded the session (مراعاة الإدخال السابق) and saves via the idempotent
+// POST /api/period-attendance (recorded_by becomes the current user; the full
+// history lives in the audit log).
+const REC_STATUS_LABEL: Record<'present' | 'absent' | 'late' | 'excused', string> = {
+  present: 'حاضر', absent: 'غائب', late: 'متأخر', excused: 'مستأذن',
+};
+const REC_STATUS_TONE: Record<'present' | 'absent' | 'late' | 'excused', string> = {
+  present: 'bg-green-100 text-green-700 border-green-300 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/40',
+  absent:  'bg-red-100 text-red-700 border-red-300 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/40',
+  late:    'bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-500/15 dark:text-yellow-300 dark:border-yellow-500/40',
+  excused: 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/40',
+};
+type RecStatus = 'absent' | 'late' | 'excused';
+interface RosterStudent { id: number; student_id: string; first_name: string; father_name: string | null; last_name: string; }
+
+function RecordAttendanceModal({
+  target, onClose, onSaved,
+}: {
+  target: RecordTarget;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const qc = useQueryClient();
+  const [statuses, setStatuses] = useState<Record<number, RecStatus>>({});
+  const [search, setSearch] = useState('');
+
+  // Minimal roster — names + ids only (no health/social).
+  const { data: roster = [], isLoading: loadingRoster } = useQuery<RosterStudent[]>({
+    queryKey: ['attendance-roster', target.sectionId],
+    queryFn: async () => {
+      const r = await fetch(`/api/period-attendance/roster?section_id=${target.sectionId}`);
+      if (!r.ok) throw new Error('فشل تحميل الطلاب');
+      return (await r.json()).data || [];
+    },
+  });
+
+  // Existing session — prefill statuses + show prior entry.
+  const { data: existing, isLoading: loadingExisting } = useQuery<{ session: any; absences: any[] } | null>({
+    queryKey: ['attendance-existing', target.sectionId, target.periodId, target.date],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        section_id: String(target.sectionId), period_id: String(target.periodId), date: target.date,
+      });
+      const r = await fetch(`/api/period-attendance?${params}`);
+      if (!r.ok) return null;
+      return (await r.json()).data;
+    },
+  });
+
+  useEffect(() => {
+    if (!existing?.absences) return;
+    const next: Record<number, RecStatus> = {};
+    for (const a of existing.absences as any[]) {
+      if (a.status && a.status !== 'present') next[a.student_id] = a.status;
+    }
+    setStatuses(next);
+  }, [existing]);
+
+  const cycle = (id: number) => {
+    setStatuses((prev) => {
+      const cur = prev[id];
+      const nextVal: RecStatus | null = !cur ? 'absent' : cur === 'absent' ? 'late' : cur === 'late' ? 'excused' : null;
+      const copy = { ...prev };
+      if (nextVal === null) delete copy[id]; else copy[id] = nextVal;
+      return copy;
+    });
+  };
+  const setAllPresent = () => setStatuses({});
+  const setAllAbsent = () => {
+    const next: Record<number, RecStatus> = {};
+    for (const s of roster) next[s.id] = 'absent';
+    setStatuses(next);
+  };
+
+  const visible = useMemo(() => {
+    if (!search.trim()) return roster;
+    const q = search.trim();
+    return roster.filter((s) => {
+      const full = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
+      return full.includes(q) || s.student_id.includes(q);
+    });
+  }, [roster, search]);
+
+  const counts = useMemo(() => {
+    let absent = 0, late = 0, excused = 0;
+    for (const s of roster) {
+      const st = statuses[s.id];
+      if (st === 'absent') absent++; else if (st === 'late') late++; else if (st === 'excused') excused++;
+    }
+    return { total: roster.length, present: roster.length - absent - late - excused, absent, late, excused };
+  }, [roster, statuses]);
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      // `statuses` only ever holds non-present rows (present = absent from the
+      // map), so every entry is already an absence/late/excused.
+      const absences = Object.entries(statuses)
+        .map(([sid, st]) => ({ student_id: Number(sid), status: st as RecStatus, source: 'manual' as const }));
+      let r: Response;
+      try {
+        r = await fetch('/api/period-attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section_id: target.sectionId, period_id: target.periodId, attendance_date: target.date, absences,
+          }),
+        });
+      } catch {
+        throw new Error('تعذّر الاتصال بالخادم — تحقّق من الإنترنت وحاول مجددًا.');
+      }
+      const d = await r.json().catch(() => ({} as any));
+      if (!r.ok) throw new Error(d?.error || 'فشل الحفظ');
+      return d.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['period-monitor'] });
+      qc.invalidateQueries({ queryKey: ['period-history'] });
+      toast.success('✓ تم حفظ الحضور');
+      onSaved();
+      onClose();
+    },
+    onError: (e: any) => toast.error(e?.message || 'فشل الحفظ'),
+  });
+
+  const loading = loadingRoster || loadingExisting;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 bg-blue-50 dark:bg-blue-500/10">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center">
+              <ClipboardCheck className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="font-bold text-lg">تسجيل / تعديل الحضور</h2>
+              <p className="text-xs text-blue-700 dark:text-blue-300">
+                {target.sectionLabel} • {target.periodLabel} • {target.date}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-500/20">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {existing?.session && (
+            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg p-2.5 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                أُدخلت هذه الحصة سابقًا{target.existingByName ? ` بواسطة ${target.existingByName}` : ''}
+                {existing.session.recorded_at ? ` — ${new Date(existing.session.recorded_at).toLocaleString('ar-SA-u-ca-gregory')}` : ''}.
+                <span className="block opacity-80 mt-0.5">تعديلك سيُحفظ كآخر إدخال.</span>
+              </div>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="text-center py-10"><Loader2 className="w-6 h-6 animate-spin inline text-gray-400" /></div>
+          ) : roster.length === 0 ? (
+            <div className="text-center text-gray-500 dark:text-gray-400 py-10 text-sm">لا يوجد طلاب في هذه الشعبة</div>
+          ) : (
+            <>
+              {roster.length > 12 && (
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 end-3 text-gray-400 pointer-events-none" />
+                  <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} className="input pe-9" placeholder="بحث بالاسم أو الهوية..." />
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex gap-1.5">
+                  <button onClick={setAllPresent} className="px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400 hover:bg-green-200">الكل حاضر</button>
+                  <button onClick={setAllAbsent} className="px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 hover:bg-red-200">الكل غائب</button>
+                </div>
+                <span className="text-gray-500 dark:text-gray-400">المعروض: {visible.length}</span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">انقر مرة → غائب • مرتين → متأخر • ثلاث → مستأذن • أربع → حاضر</p>
+              <ul className="space-y-1.5 max-h-[45vh] overflow-y-auto">
+                {visible.map((s) => {
+                  const st: 'present' | RecStatus = statuses[s.id] || 'present';
+                  const fullName = [s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ');
+                  return (
+                    <li key={s.id}>
+                      <button onClick={() => cycle(s.id)} className={`w-full text-right flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 transition-colors ${REC_STATUS_TONE[st]}`}>
+                        <span className="text-xs font-bold w-14 text-center px-1.5 py-0.5 rounded bg-white/60 dark:bg-black/20 shrink-0">{REC_STATUS_LABEL[st]}</span>
+                        <div className="flex-1 min-w-0 text-right">
+                          <p className="font-medium truncate">{fullName}</p>
+                          <p className="text-[11px] opacity-70 font-mono" dir="ltr">{s.student_id}</p>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-200 dark:border-gray-800 p-3">
+          <div className="flex items-center gap-2 mb-2 text-xs text-gray-600 dark:text-gray-300">
+            <span className="font-semibold text-green-600 dark:text-green-400">حاضر: {counts.present}</span>
+            {counts.absent > 0 && <span className="text-red-600 dark:text-red-400">• غائب: {counts.absent}</span>}
+            {counts.late > 0 && <span className="text-yellow-600 dark:text-yellow-400">• متأخر: {counts.late}</span>}
+            {counts.excused > 0 && <span className="text-blue-600 dark:text-blue-400">• مستأذن: {counts.excused}</span>}
+            <span className="ms-auto">من {counts.total}</span>
+          </div>
+          <button
+            onClick={() => saveMut.mutate()}
+            disabled={saveMut.isPending || loading || roster.length === 0}
+            className="btn-primary w-full inline-flex items-center justify-center gap-2 py-2.5"
+          >
+            {saveMut.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            {saveMut.isPending ? 'جارٍ الحفظ...' : 'حفظ الحضور'}
           </button>
         </div>
       </div>
