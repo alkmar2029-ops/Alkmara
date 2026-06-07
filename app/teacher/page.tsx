@@ -90,6 +90,18 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Friendly Arabic copy for a save that failed at the network/transport
+// layer (the request never reached the server). The #1 worry when a save
+// errors out is "did I lose my marks?" — so the message leads with the
+// reassurance that the data is still on screen. Wording branches on whether
+// the device reports itself offline vs. the server being unreachable.
+function networkSaveMessage(): string {
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  return offline
+    ? 'لا يوجد اتصال بالإنترنت — بياناتك محفوظة على الشاشة. أعد الضغط على «حفظ الحضور» عند عودة الاتصال.'
+    : 'تعذّر الاتصال بالخادم — لم تُفقد بياناتك. تحقّق من الإنترنت ثم اضغط «حفظ الحضور» مرة أخرى.';
+}
+
 export default function TeacherHomePage() {
   return (
     <Suspense fallback={<div className="text-center py-10"><Loader2 className="w-6 h-6 animate-spin inline text-gray-400" /></div>}>
@@ -469,17 +481,48 @@ function TeacherEntryPage() {
           };
         });
 
-      const r = await fetch('/api/period-attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          section_id: sectionId, period_id: periodId, attendance_date: date, absences,
-        }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'فشل الحفظ');
-      return d.data;
+      // Transport failure — the request never reached the server (dropped
+      // connection, DNS, offline). It surfaces as a fetch() rejection, not
+      // an HTTP status. Tag it `retryable` so the policy below tries again;
+      // safe because the save is an idempotent upsert (re-saving the same
+      // section+period+date just replaces it, never double-writes).
+      let r: Response;
+      try {
+        r = await fetch('/api/period-attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            section_id: sectionId, period_id: periodId, attendance_date: date, absences,
+          }),
+        });
+      } catch {
+        throw Object.assign(new Error(networkSaveMessage()), { retryable: true });
+      }
+
+      if (!r.ok) {
+        // Parse defensively: a 504 gateway timeout returns an HTML page, so
+        // r.json() would otherwise throw a misleading JSON parse error.
+        const d = await r.json().catch(() => ({} as any));
+        // 5xx is a transient server/gateway failure (Vercel cold-start, a
+        // brief Supabase hiccup) — also idempotent-safe to retry. A 4xx is
+        // the server rejecting the payload itself; retrying won't help, so
+        // surface its Arabic message verbatim.
+        if (r.status >= 500) {
+          throw Object.assign(
+            new Error(d?.error || 'تعذّر الوصول إلى الخادم — لم تُفقد بياناتك، أعد المحاولة.'),
+            { retryable: true },
+          );
+        }
+        throw new Error(d?.error || 'فشل الحفظ');
+      }
+      return (await r.json()).data;
     },
+    // Auto-retry only the transient failures tagged above (network + 5xx),
+    // up to 3 attempts total with short exponential backoff. The sticky save
+    // button keeps spinning across retries so the teacher sees it's still
+    // working rather than frozen.
+    retry: (failureCount, e: any) => !!e?.retryable && failureCount < 3,
+    retryDelay: (attempt) => Math.min(800 * 2 ** attempt, 4000),
     onSuccess: (data: { absent: number; late: number; excused: number; total: number }) => {
       qc.invalidateQueries({ queryKey: ['period-attendance', sectionId, periodId, date] });
       refetchExisting();
@@ -1039,7 +1082,9 @@ function TeacherEntryPage() {
             className="btn-primary w-full inline-flex items-center justify-center gap-2 py-3 text-base"
           >
             {saveMut.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-            {saveMut.isPending ? 'جارٍ الحفظ...' : 'حفظ الحضور'}
+            {saveMut.isPending
+              ? (saveMut.failureCount > 0 ? 'جارٍ إعادة المحاولة...' : 'جارٍ الحفظ...')
+              : 'حفظ الحضور'}
           </button>
         </div>
       )}
