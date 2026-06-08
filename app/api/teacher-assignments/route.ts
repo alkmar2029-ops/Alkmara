@@ -20,11 +20,31 @@ export async function GET() {
 
   const admin = createAdminSupabaseClient();
 
+  // Fetch ALL assignment rows with pagination. A plain .select() is capped at
+  // ~1000 rows by PostgREST, so once a school crosses ~1000 total teacher×
+  // section assignments the matrix silently dropped rows — affected teachers
+  // showed as "غير مُسند" even though they WERE saved (re-saving them returned
+  // added:0/removed:0 because the DB already had every section). Paging by
+  // 1000 fetches the complete set.
+  const fetchAllAssignments = async () => {
+    const PAGE = 1000;
+    const out: Array<{ id: number; teacher_user_id: string; section_id: number; assigned_by: string | null; assigned_at: string }> = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await admin
+        .from('teacher_section_assignments')
+        .select('id, teacher_user_id, section_id, assigned_by, assigned_at')
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error || !data || data.length === 0) break;
+      out.push(...(data as any[]));
+      if (data.length < PAGE) break;
+    }
+    return out;
+  };
+
   // Three queries in parallel — they're independent.
-  const [{ data: assignments }, { data: teachers }, { data: sections }] = await Promise.all([
-    admin
-      .from('teacher_section_assignments')
-      .select('id, teacher_user_id, section_id, assigned_by, assigned_at'),
+  const [assignments, { data: teachers }, { data: sections }] = await Promise.all([
+    fetchAllAssignments(),
     admin
       .from('user_profiles')
       .select('user_id, full_name, is_active')
