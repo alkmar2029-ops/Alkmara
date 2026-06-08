@@ -60,12 +60,16 @@ export default function WeeklyAbsenceSheetPage() {
   return (
     <>
       <style jsx global>{`
-        @page { size: A4 portrait; margin: 8mm; }
+        @page { size: A4 portrait; margin: 10mm; }
         @media print {
           body * { visibility: hidden !important; }
           .print-area, .print-area * { visibility: visible !important; }
-          .print-area { position: absolute; inset: 0; }
+          .print-area { position: absolute; inset: 0; padding: 0 !important; }
           .no-print { display: none !important; }
+          /* Keep a student row whole instead of splitting it across the
+             bottom margin / page break. */
+          tr { break-inside: avoid; }
+          thead { display: table-header-group; }
         }
       `}</style>
 
@@ -152,7 +156,7 @@ export default function WeeklyAbsenceSheetPage() {
             <thead>
               <tr>
                 <th rowSpan={2} className="border border-gray-700 px-1 py-1 w-6">م</th>
-                <th rowSpan={2} className="border border-gray-700 px-1 py-1 text-right" style={{ width: '30mm' }}>اسم الطالب</th>
+                <th rowSpan={2} className="border border-gray-700 px-1 py-1 text-right" style={{ width: '25mm' }}>اسم الطالب</th>
                 {DAYS.map((d) => (
                   <th key={d} colSpan={7} className="border border-gray-700 px-0.5 py-1">
                     {d}
@@ -164,7 +168,7 @@ export default function WeeklyAbsenceSheetPage() {
                 {DAYS.map((d) => (
                   <Fragment key={`h-${d}`}>
                     {PERIODS.map((p) => (
-                      <th key={`h-${d}-${p}`} className="border border-gray-700 py-0.5 font-normal" style={{ width: '4.3mm' }}>{p}</th>
+                      <th key={`h-${d}-${p}`} className="border border-gray-700 py-0.5 font-normal" style={{ width: '4mm' }}>{p}</th>
                     ))}
                   </Fragment>
                 ))}
