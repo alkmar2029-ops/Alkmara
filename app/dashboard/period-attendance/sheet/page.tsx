@@ -60,7 +60,7 @@ export default function WeeklyAbsenceSheetPage() {
   return (
     <>
       <style jsx global>{`
-        @page { size: A4 landscape; margin: 8mm; }
+        @page { size: A4 portrait; margin: 8mm; }
         @media print {
           body * { visibility: hidden !important; }
           .print-area, .print-area * { visibility: visible !important; }
@@ -148,15 +148,15 @@ export default function WeeklyAbsenceSheetPage() {
           </div>
 
           {/* Grid */}
-          <table className="w-full border-collapse text-center" style={{ fontSize: '9px' }}>
+          <table className="w-full border-collapse text-center" style={{ fontSize: '7px', tableLayout: 'fixed' }}>
             <thead>
               <tr>
                 <th rowSpan={2} className="border border-gray-700 px-1 py-1 w-6">م</th>
-                <th rowSpan={2} className="border border-gray-700 px-2 py-1 text-right" style={{ minWidth: '140px' }}>اسم الطالب</th>
+                <th rowSpan={2} className="border border-gray-700 px-1 py-1 text-right" style={{ width: '30mm' }}>اسم الطالب</th>
                 {DAYS.map((d) => (
-                  <th key={d} colSpan={7} className="border border-gray-700 px-1 py-1">
+                  <th key={d} colSpan={7} className="border border-gray-700 px-0.5 py-1">
                     {d}
-                    <div className="font-normal" style={{ fontSize: '7px' }}>التاريخ: ____ / ____</div>
+                    <div className="font-normal" style={{ fontSize: '6px' }}>__ / __</div>
                   </th>
                 ))}
               </tr>
@@ -164,7 +164,7 @@ export default function WeeklyAbsenceSheetPage() {
                 {DAYS.map((d) => (
                   <Fragment key={`h-${d}`}>
                     {PERIODS.map((p) => (
-                      <th key={`h-${d}-${p}`} className="border border-gray-700 py-0.5 font-normal" style={{ width: '18px' }}>{p}</th>
+                      <th key={`h-${d}-${p}`} className="border border-gray-700 py-0.5 font-normal" style={{ width: '4.3mm' }}>{p}</th>
                     ))}
                   </Fragment>
                 ))}
@@ -176,11 +176,11 @@ export default function WeeklyAbsenceSheetPage() {
                 return (
                   <tr key={s.id}>
                     <td className="border border-gray-700 py-1">{i + 1}</td>
-                    <td className="border border-gray-700 px-2 py-1 text-right whitespace-nowrap">{name}</td>
+                    <td className="border border-gray-700 px-1 py-0.5 text-right leading-tight" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</td>
                     {DAYS.map((d) => (
                       <Fragment key={`${s.id}-${d}`}>
                         {PERIODS.map((p) => (
-                          <td key={`${s.id}-${d}-${p}`} className="border border-gray-400" style={{ height: '20px' }}></td>
+                          <td key={`${s.id}-${d}-${p}`} className="border border-gray-400" style={{ height: '5mm' }}></td>
                         ))}
                       </Fragment>
                     ))}
