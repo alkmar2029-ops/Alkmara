@@ -44,15 +44,25 @@ export default function TeacherAssignmentsPage() {
 
   useEffect(() => {
     if (!data) return;
-    const map = new Map<string, Set<number>>();
-    for (const t of data.teachers) {
-      map.set(t.user_id, new Set());
-    }
-    for (const a of data.assignments) {
-      const set = map.get(a.teacher_user_id);
-      if (set) set.add(a.section_id);
-    }
-    setEdits(map);
+    // Server truth per teacher.
+    const server = new Map<string, Set<number>>();
+    for (const t of data.teachers) server.set(t.user_id, new Set());
+    for (const a of data.assignments) server.get(a.teacher_user_id)?.add(a.section_id);
+
+    // MERGE, don't replace. Seed a teacher's working set from the server
+    // ONLY when we aren't already tracking them locally. Otherwise a per-row
+    // save's refetch (invalidateQueries in saveMut.onSuccess) would rebuild
+    // the whole map and WIPE the unsaved "assign all" on every other teacher
+    // — which is exactly why some teachers' assignments silently failed to
+    // save. The dirty baseline comes from `initialFor` (also derived from
+    // `data`), so a just-saved row still clears its dirty state correctly.
+    setEdits((prev) => {
+      const map = new Map(prev);
+      for (const t of data.teachers) {
+        if (!map.has(t.user_id)) map.set(t.user_id, server.get(t.user_id) || new Set());
+      }
+      return map;
+    });
   }, [data]);
 
   const saveMut = useMutation({
