@@ -153,6 +153,52 @@ export default function TeacherAssignmentsPage() {
     });
   };
 
+  // Bulk save — persists EVERY dirty (modified) teacher row in one action so
+  // the admin doesn't click "حفظ" per row after using "+ الكل". Runs in small
+  // concurrent batches, reports a pass/fail summary, and refetches once at the
+  // end (the merge-effect above keeps other unsaved rows intact meanwhile).
+  const saveAllMut = useMutation({
+    mutationFn: async () => {
+      const dirty = visibleTeachers.filter((t) => isDirty(t.user_id));
+      let ok = 0, failed = 0, added = 0, removed = 0;
+      const CONCURRENCY = 6;
+      for (let i = 0; i < dirty.length; i += CONCURRENCY) {
+        const chunk = dirty.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(chunk.map(async (t) => {
+          try {
+            const r = await fetch('/api/teacher-assignments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                teacher_user_id: t.user_id,
+                section_ids: Array.from(edits.get(t.user_id) || []),
+              }),
+            });
+            if (!r.ok) return { ok: false, added: 0, removed: 0 };
+            const d = await r.json();
+            return { ok: true, added: (d.data?.added as number) || 0, removed: (d.data?.removed as number) || 0 };
+          } catch {
+            return { ok: false, added: 0, removed: 0 };
+          }
+        }));
+        for (const res of results) {
+          if (res.ok) { ok++; added += res.added; removed += res.removed; }
+          else failed++;
+        }
+      }
+      return { total: dirty.length, ok, failed, added, removed };
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['teacher-assignments-matrix'] });
+      if (res.failed > 0) {
+        toast(`حُفظ ${res.ok}/${res.total} معلم — فشل ${res.failed}، أعد المحاولة`, { icon: '⚠️', duration: 6000 });
+      } else {
+        toast.success(`✓ حُفظت تعيينات ${res.ok} معلم (+${res.added} / -${res.removed})`);
+      }
+    },
+    onError: (e: any) => toast.error(e.message || 'فشل الحفظ الجماعي'),
+  });
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-20">
@@ -171,6 +217,8 @@ export default function TeacherAssignmentsPage() {
     (initialFor.get(t.user_id)?.size || 0) === 0,
   ).length;
 
+  const dirtyCount = visibleTeachers.filter((t) => isDirty(t.user_id)).length;
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -186,6 +234,16 @@ export default function TeacherAssignmentsPage() {
             </p>
           </div>
         </div>
+        <button
+          onClick={() => saveAllMut.mutate()}
+          disabled={dirtyCount === 0 || saveAllMut.isPending}
+          className="btn-primary inline-flex items-center justify-center gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          title={dirtyCount === 0 ? 'لا توجد صفوف معدّلة' : `حفظ ${dirtyCount} معلم معدّل`}
+        >
+          {saveAllMut.isPending
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> جارٍ حفظ الكل...</>
+            : <><Save className="w-4 h-4" /> حفظ الكل المعدَّل{dirtyCount ? ` (${dirtyCount})` : ''}</>}
+        </button>
       </div>
 
       {/* Stats */}
@@ -323,7 +381,7 @@ export default function TeacherAssignmentsPage() {
                               teacher_user_id: t.user_id,
                               section_ids: Array.from(set),
                             })}
-                            disabled={!dirty || saveMut.isPending}
+                            disabled={!dirty || saveMut.isPending || saveAllMut.isPending}
                             className={`text-xs px-2 py-1 rounded inline-flex items-center justify-center gap-1 ${
                               dirty
                                 ? 'bg-blue-600 text-white hover:bg-blue-700'
