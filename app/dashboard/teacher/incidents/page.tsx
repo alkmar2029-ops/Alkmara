@@ -22,18 +22,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   AlertCircle, AlertTriangle, BookOpen, CheckCircle, Clock,
-  FileText, Plus, RefreshCw, Trash2, X,
+  FileText, Pencil, Plus, RefreshCw, Trash2, X,
 } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 import {
   INCIDENT_STATUSES,
   INCIDENT_STATUS_LABELS,
+  INCIDENT_TYPES,
   INCIDENT_TYPE_LABELS,
+  INCIDENT_SEVERITIES,
   INCIDENT_SEVERITY_LABELS,
   type IncidentStatus,
   type IncidentType,
   type IncidentSeverity,
 } from '@/lib/incidents/types';
+import { todayInRiyadh } from '@/lib/dates/ksa';
 import { usePersona } from '@/lib/hooks/usePersona';
 
 // ============== Types (mirror /api/incidents/mine response) ==============
@@ -85,6 +88,8 @@ const SEVERITY_TONE: Record<IncidentSeverity, string> = {
 
 const WITHDRAW_WINDOW_MS = 30 * 60 * 1000;
 
+// Edit shares the exact same eligibility window as withdraw — the API
+// enforces the same rules (status='submitted' + 30 min + ownership).
 function isWithdrawable(row: IncidentRow): boolean {
   if (row.status !== 'submitted') return false;
   const age = Date.now() - new Date(row.submitted_at).getTime();
@@ -96,6 +101,7 @@ function isWithdrawable(row: IncidentRow): boolean {
 export default function TeacherIncidentsPage() {
   const [tab, setTab] = useState<Tab>('active');
   const [withdrawTarget, setWithdrawTarget] = useState<IncidentRow | null>(null);
+  const [editTarget, setEditTarget] = useState<IncidentRow | null>(null);
   const queryClient = useQueryClient();
   const persona = usePersona();
   const role = persona.data?.role;
@@ -153,6 +159,27 @@ export default function TeacherIncidentsPage() {
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : 'فشل سحب المخالفة');
+    },
+  });
+
+  const editMutation = useMutation({
+    mutationFn: async ({ id, patch }: { id: number; patch: Record<string, unknown> }) => {
+      const r = await fetch(`/api/incidents/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body?.error || 'فشل تعديل المخالفة');
+      return body.data;
+    },
+    onSuccess: () => {
+      toast.success('تم تعديل المخالفة');
+      queryClient.invalidateQueries({ queryKey: ['incidents-mine'] });
+      setEditTarget(null);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'فشل تعديل المخالفة');
     },
   });
 
@@ -241,6 +268,7 @@ export default function TeacherIncidentsPage() {
               key={row.id}
               row={row}
               onWithdraw={() => setWithdrawTarget(row)}
+              onEdit={() => setEditTarget(row)}
             />
           ))}
         </div>
@@ -253,6 +281,16 @@ export default function TeacherIncidentsPage() {
           isPending={withdrawMutation.isPending}
           onCancel={() => setWithdrawTarget(null)}
           onConfirm={() => withdrawMutation.mutate(withdrawTarget.id)}
+        />
+      )}
+
+      {/* ============== Edit modal ============== */}
+      {editTarget && (
+        <EditIncidentModal
+          row={editTarget}
+          isPending={editMutation.isPending}
+          onCancel={() => setEditTarget(null)}
+          onSave={(patch) => editMutation.mutate({ id: editTarget.id, patch })}
         />
       )}
     </div>
@@ -330,10 +368,11 @@ function EmptyState({ tab }: { tab: Tab }) {
 }
 
 function IncidentCard({
-  row, onWithdraw,
+  row, onWithdraw, onEdit,
 }: {
   row: IncidentRow;
   onWithdraw: () => void;
+  onEdit: () => void;
 }) {
   const statusLabel = INCIDENT_STATUS_LABELS[row.status as IncidentStatus] ?? row.status;
   const statusTone = STATUS_TONE[row.status as IncidentStatus] ?? STATUS_TONE.dismissed;
@@ -368,14 +407,24 @@ function IncidentCard({
           </span>
         </div>
         {withdrawable && (
-          <button
-            type="button"
-            onClick={onWithdraw}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 text-red-700 dark:text-red-300 transition-colors"
-          >
-            <Trash2 className="w-3 h-3" />
-            سحب
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 transition-colors"
+            >
+              <Pencil className="w-3 h-3" />
+              تعديل
+            </button>
+            <button
+              type="button"
+              onClick={onWithdraw}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 text-red-700 dark:text-red-300 transition-colors"
+            >
+              <Trash2 className="w-3 h-3" />
+              سحب
+            </button>
+          </div>
         )}
       </div>
 
@@ -485,6 +534,155 @@ function WithdrawConfirmModal({
           >
             {isPending && <Clock className="w-3.5 h-3.5 animate-spin" />}
             تأكيد السحب
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditIncidentModal({
+  row, isPending, onCancel, onSave,
+}: {
+  row: IncidentRow;
+  isPending: boolean;
+  onCancel: () => void;
+  onSave: (_patch: Record<string, unknown>) => void;
+}) {
+  const [incidentType, setIncidentType] = useState<IncidentType>(row.incident_type as IncidentType);
+  const [severity, setSeverity] = useState<IncidentSeverity>(row.severity as IncidentSeverity);
+  const [incidentDate, setIncidentDate] = useState(row.incident_date);
+  const [description, setDescription] = useState(row.description);
+
+  // Same honesty as the withdraw modal — show how much of the 30-min
+  // window remains.
+  const submittedMs = new Date(row.submitted_at).getTime();
+  const remainingMs = WITHDRAW_WINDOW_MS - (Date.now() - submittedMs);
+  const remainingMin = Math.max(0, Math.floor(remainingMs / 60_000));
+
+  const descTooShort = description.trim().length < 20;
+
+  const handleSave = () => {
+    // Send only what actually changed — keeps the audit log's `fields`
+    // meaningful.
+    const patch: Record<string, unknown> = {};
+    if (incidentType !== row.incident_type) patch.incident_type = incidentType;
+    if (severity !== row.severity) patch.severity = severity;
+    if (incidentDate !== row.incident_date) patch.incident_date = incidentDate;
+    if (description.trim() !== row.description) patch.description = description.trim();
+    if (Object.keys(patch).length === 0) {
+      toast('لا توجد تغييرات للحفظ');
+      return;
+    }
+    onSave(patch);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-500/10">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <h2 className="font-bold text-base">تعديل المخالفة</h2>
+            </div>
+            <button
+              type="button"
+              onClick={onCancel}
+              aria-label="إغلاق"
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">الطالب (لا يمكن تغييره — اسحب المخالفة وسجّل من جديد إذا أخطأت بالطالب)</p>
+            <p className="text-sm font-medium">{row.student_name ?? '—'}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">نوع المخالفة</span>
+              <select
+                value={incidentType}
+                onChange={(e) => setIncidentType(e.target.value as IncidentType)}
+                className="input"
+              >
+                {INCIDENT_TYPES.map((t) => (
+                  <option key={t} value={t}>{INCIDENT_TYPE_LABELS[t]}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">الخطورة</span>
+              <select
+                value={severity}
+                onChange={(e) => setSeverity(e.target.value as IncidentSeverity)}
+                className="input"
+              >
+                {INCIDENT_SEVERITIES.map((s) => (
+                  <option key={s} value={s}>{INCIDENT_SEVERITY_LABELS[s]}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">تاريخ المخالفة</span>
+            <input
+              type="date"
+              value={incidentDate}
+              onChange={(e) => setIncidentDate(e.target.value)}
+              max={todayInRiyadh()}
+              className="input"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">الوصف</span>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="input min-h-[100px]"
+              maxLength={2000}
+            />
+            <span className={`text-[11px] mt-1 block ${descTooShort ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
+              {description.trim().length}/2000 — الحد الأدنى 20 حرفاً
+            </span>
+          </label>
+
+          <p className="text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {remainingMin > 0
+              ? `الوقت المتبقّي للتعديل: ${remainingMin} دقيقة`
+              : 'مهلة التعديل توشك على الانتهاء'}
+          </p>
+        </div>
+
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="text-sm px-4 py-2 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+          >
+            إلغاء
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isPending || descTooShort}
+            className="text-sm px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+          >
+            {isPending && <Clock className="w-3.5 h-3.5 animate-spin" />}
+            حفظ التعديل
           </button>
         </div>
       </div>
