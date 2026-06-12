@@ -15,6 +15,7 @@ import { useSpeechToText } from '@/lib/hooks/useSpeechToText';
 import { useClassSession } from '@/lib/hooks/useClassSession';
 import { useMyAssignedSections } from '@/lib/hooks/useMyAssignedSections';
 import NoAssignmentsEmpty from '@/components/teacher/NoAssignmentsEmpty';
+import NotesHistory from '@/components/notes/NotesHistory';
 import type { NoteTemplate, NoteType, NoteCategory } from '@/lib/types/database';
 
 interface Student {
@@ -64,6 +65,9 @@ function TeacherNotesContent() {
 
   // Wizard state — only used on mobile
   const [step, setStep] = useState<WizardStep>(1);
+
+  // Tab: record (wizard / 2-column form) vs the teacher's own history.
+  const [activeTab, setActiveTab] = useState<'record' | 'history'>('record');
 
   // Filters
   const [date, setDate] = useState(todayStr());
@@ -263,6 +267,28 @@ function TeacherNotesContent() {
         </div>
       </div>
 
+      {/* Tabs — تسجيل / ملاحظاتي السابقة */}
+      <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
+        {([['record', 'تسجيل ملاحظة'], ['history', 'ملاحظاتي السابقة']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveTab(key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === key
+                ? 'border-blue-500 text-blue-700 dark:text-blue-400'
+                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'history' ? (
+        <NotesHistory mode="teacher" />
+      ) : (
+        <>
       {/* MOBILE: Wizard with progress + step content. DESKTOP: 2-column hidden by responsive class. */}
 
       {/* Mobile Wizard ▼ (lg:hidden) */}
@@ -489,6 +515,8 @@ function TeacherNotesContent() {
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

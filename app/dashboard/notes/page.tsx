@@ -11,6 +11,7 @@ import {
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import { STAGE_LABELS } from '@/lib/utils/helpers';
 import { useSpeechToText } from '@/lib/hooks/useSpeechToText';
+import NotesHistory from '@/components/notes/NotesHistory';
 import type { NoteTemplate, NoteType, NoteCategory } from '@/lib/types/database';
 
 interface Student {
@@ -67,7 +68,17 @@ function NotesPageInner() {
   // Only fires once on mount — subsequent navigations don't re-add.
   const searchParams = useSearchParams();
   const initialStudentId = searchParams.get('student_id');
+  // ?tab=history opens the history view directly (the student page's
+  // "ملاحظات الطالب" link lands there); default is the recording form.
+  const openedOnHistory = searchParams.get('tab') === 'history';
+  const [activeTab, setActiveTab] = useState<'record' | 'history'>(openedOnHistory ? 'history' : 'record');
+  // In history mode, student_id is a list filter — not a record-form
+  // pre-selection.
+  const historyStudentId = openedOnHistory && initialStudentId && !Number.isNaN(parseInt(initialStudentId, 10))
+    ? parseInt(initialStudentId, 10)
+    : null;
   useEffect(() => {
+    if (openedOnHistory) return;
     if (!initialStudentId) return;
     const id = parseInt(initialStudentId, 10);
     if (Number.isNaN(id)) return;
@@ -339,12 +350,38 @@ function NotesPageInner() {
             <MessageSquarePlus className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">تسجيل الملاحظات</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">اختر الصف والشعبة، حدّد طلاباً، ثم سجّل الملاحظة</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">الملاحظات</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {activeTab === 'record'
+                ? 'اختر الصف والشعبة، حدّد طلاباً، ثم سجّل الملاحظة'
+                : 'تصفّح الملاحظات المسجّلة، عدّلها أو احذفها'}
+            </p>
           </div>
         </div>
       </div>
 
+      {/* Tabs — تسجيل / سجل */}
+      <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
+        {([['record', 'تسجيل ملاحظة'], ['history', 'سجل الملاحظات']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveTab(key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === key
+                ? 'border-blue-500 text-blue-700 dark:text-blue-400'
+                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'history' ? (
+        <NotesHistory mode="admin" initialStudentId={historyStudentId} />
+      ) : (
+        <>
       {/* Filters */}
       <div className="card">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -746,6 +783,8 @@ function NotesPageInner() {
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

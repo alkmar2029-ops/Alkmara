@@ -367,7 +367,7 @@ export default function StudentDetailPage() {
               <span>استئذانات الطالب</span>
             </Link>
             <Link
-              href={`/dashboard/notes?student_id=${student.id}`}
+              href={`/dashboard/notes?tab=history&student_id=${student.id}`}
               className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-800/60"
             >
               <MessageSquarePlus className="w-4 h-4 text-pink-500" />

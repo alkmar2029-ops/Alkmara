@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
@@ -9,6 +9,14 @@ export const dynamic = 'force-dynamic';
 // GET — list notes with optional filters. Joined with students/grades/sections
 // so the table view doesn't need follow-up queries.
 //
+// Role scoping: teachers only ever see notes THEY recorded (privacy —
+// a teacher must not browse another teacher's observations). Admin
+// family sees everything. Viewer is excluded entirely (fail-closed).
+//
+// Each row carries `can_edit` — true when the caller may edit/delete it
+// (own note, or super_admin) — so the history UI doesn't re-derive the
+// policy client-side.
+//
 // Query params:
 //   batch_id      — return all notes from a single save operation (used by the
 //                   print page right after recording)
@@ -18,6 +26,9 @@ export const dynamic = 'force-dynamic';
 //   section_id    — filter by section
 //   limit         — default 100, max 500
 export async function GET(request: NextRequest) {
+  const auth = await requireRole(['admin', 'staff', 'teacher']);
+  if (!auth.ok) return auth.res;
+
   const supabase = await createServerSupabaseClient();
   const { searchParams } = new URL(request.url);
 
@@ -48,10 +59,35 @@ export async function GET(request: NextRequest) {
   if (from) query = query.gte('recorded_at', `${from}T00:00:00.000Z`);
   if (to) query = query.lte('recorded_at', `${to}T23:59:59.999Z`);
 
+  // Teachers: own recordings only — RLS read is school-wide for
+  // authenticated users, so this scoping is the API's job.
+  if (auth.ctx.role === 'teacher') {
+    query = query.eq('recorded_by', auth.ctx.userId);
+  }
+
   const { data, error } = await query;
   if (error) {
     return NextResponse.json({ error: 'حدث خطأ في جلب الملاحظات' }, { status: 500 });
   }
+
+  // Resolve recorder names (admin client — display only; the rows were
+  // already RLS/scope approved above).
+  const recorderIds = Array.from(
+    new Set((data || []).map((r: any) => r.recorded_by).filter(Boolean)),
+  ) as string[];
+  const recorderNames = new Map<string, string | null>();
+  if (recorderIds.length > 0) {
+    const admin = createAdminSupabaseClient();
+    const profilesRes = await admin
+      .from('user_profiles')
+      .select('user_id, full_name')
+      .in('user_id', recorderIds);
+    for (const p of profilesRes.data ?? []) {
+      recorderNames.set(p.user_id, p.full_name);
+    }
+  }
+
+  const isSuper = auth.ctx.role === 'super_admin';
 
   // Flatten joined fields for the UI.
   const flat = (data || []).map((r: any) => ({
@@ -63,10 +99,12 @@ export async function GET(request: NextRequest) {
     category: r.category,
     source: r.source,
     recorded_by: r.recorded_by,
+    recorded_by_name: r.recorded_by ? recorderNames.get(r.recorded_by) ?? null : null,
     recorded_at: r.recorded_at,
     batch_id: r.batch_id,
     whatsapp_sent_at: r.whatsapp_sent_at,
     printed_at: r.printed_at,
+    can_edit: isSuper || r.recorded_by === auth.ctx.userId,
     student_code: r.students?.student_id ?? null,
     student_name: r.students
       ? [r.students.first_name, r.students.father_name, r.students.last_name].filter(Boolean).join(' ')
