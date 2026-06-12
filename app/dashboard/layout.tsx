@@ -63,6 +63,59 @@ const navGroups: NavGroup[] = [
       { path: '/dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
     ],
   },
+  {
+    label: 'الحضور اليومي',
+    items: [
+      // /dashboard/attendance (سجل الحضور) is intentionally hidden from
+      // the sidebar — it's a legacy view of the attendance_records
+      // table populated by the fingerprint device, which this school
+      // doesn't currently use. The route + API stay live so the late-
+      // notifications, reports, and device-sync pipelines that share
+      // attendance_records keep working. Re-add this line when a
+      // device gets connected.
+      { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
+      { path: '/dashboard/daily-attendance', label: 'كشف الغياب والهروب', icon: AlertTriangle },
+      { path: '/dashboard/dismissals', label: 'استئذان الطلاب', icon: ExitIcon },
+      { path: '/dashboard/late-notifications', label: 'إشعارات التأخير', icon: Bell },
+    ],
+  },
+  {
+    label: 'الطلاب والصفوف',
+    items: [
+      { path: '/dashboard/students', label: 'الطلاب', icon: Users },
+      { path: '/dashboard/grades', label: 'الصفوف والشعب', icon: BookOpen, superAdminOnly: true },
+      { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap, superAdminOnly: true },
+    ],
+  },
+  {
+    label: 'الملاحظات والرسائل',
+    items: [
+      { path: '/dashboard/notes', label: 'الملاحظات', icon: MessageSquarePlus },
+      { path: '/dashboard/messages', label: 'الرسائل الداخلية', icon: Mail },
+    ],
+  },
+  {
+    // Incidents workflow:
+    //   - مخالفاتي (م3.11) — visible to everyone; admins who submit
+    //     on behalf see the same "mine" view.
+    //   - مراجعة المخالفات (م3.13) — gated by the reviewer flag.
+    //     super_admin auto-passes; counselors see the page via their
+    //     own sidebar group (COUNSELOR_NAV_GROUPS).
+    label: 'المخالفات',
+    items: [
+      { path: '/dashboard/teacher/incidents', label: 'مخالفاتي', icon: AlertTriangle },
+      { path: '/dashboard/vp/incidents/review', label: 'مراجعة المخالفات', icon: ClipboardCheck, requiresPermission: 'review_teacher_incidents' },
+    ],
+  },
+  {
+    label: 'الجدول الذكي',
+    items: [
+      { path: '/dashboard/teacher-schedule', label: 'الجدول الذكي', icon: CalendarDays, superAdminOnly: true },
+      // Supervision schedule — visible to everyone (the today view is
+      // safe for teachers too); edit pages gate themselves internally.
+      { path: '/dashboard/supervision', label: 'إشراف الفسحة', icon: Shield },
+    ],
+  },
   // Persona-specific groups (placeholder pages live in app/dashboard/vp/
   // and app/dashboard/counselor/). Filtered out for users whose persona
   // doesn't match; super_admin sees both. More items get added per
@@ -90,6 +143,13 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: 'التقارير',
+    items: [
+      { path: '/dashboard/reports/builder', label: 'التقارير', icon: BarChart3 },
+      { path: '/dashboard/reports/whatsapp', label: 'تقرير الواتساب', icon: MessageCircle, superAdminOnly: true },
+    ],
+  },
+  {
     // Principal-level school aggregates (م6.3). Separate group from
     // VP operations + counselor reports — different audience, different
     // privacy contract (k-anonymity + no drill-down). Gate is the
@@ -100,56 +160,13 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    // Incidents workflow:
-    //   - مخالفاتي (م3.11) — visible to everyone; admins who submit
-    //     on behalf see the same "mine" view.
-    //   - مراجعة المخالفات (م3.13) — gated by the reviewer flag.
-    //     super_admin auto-passes; counselors see the page via their
-    //     own sidebar group (COUNSELOR_NAV_GROUPS).
-    label: 'المخالفات',
+    label: 'واتساب',
     items: [
-      { path: '/dashboard/teacher/incidents', label: 'مخالفاتي', icon: AlertTriangle },
-      { path: '/dashboard/vp/incidents/review', label: 'مراجعة المخالفات', icon: ClipboardCheck, requiresPermission: 'review_teacher_incidents' },
-    ],
-  },
-  {
-    label: 'الطلاب والصفوف',
-    items: [
-      { path: '/dashboard/students', label: 'الطلاب', icon: Users },
-      { path: '/dashboard/grades', label: 'الصفوف والشعب', icon: BookOpen, superAdminOnly: true },
-      { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap, superAdminOnly: true },
-    ],
-  },
-  {
-    label: 'الحضور اليومي',
-    items: [
-      // /dashboard/attendance (سجل الحضور) is intentionally hidden from
-      // the sidebar — it's a legacy view of the attendance_records
-      // table populated by the fingerprint device, which this school
-      // doesn't currently use. The route + API stay live so the late-
-      // notifications, reports, and device-sync pipelines that share
-      // attendance_records keep working. Re-add this line when a
-      // device gets connected.
-      { path: '/dashboard/period-attendance', label: 'حضور الحصص', icon: ClipboardCheck },
-      { path: '/dashboard/daily-attendance', label: 'كشف الغياب والهروب', icon: AlertTriangle },
-      { path: '/dashboard/dismissals', label: 'استئذان الطلاب', icon: ExitIcon },
-      { path: '/dashboard/late-notifications', label: 'إشعارات التأخير', icon: Bell },
-    ],
-  },
-  {
-    label: 'الجدول الذكي',
-    items: [
-      { path: '/dashboard/teacher-schedule', label: 'الجدول الذكي', icon: CalendarDays, superAdminOnly: true },
-      // Supervision schedule — visible to everyone (the today view is
-      // safe for teachers too); edit pages gate themselves internally.
-      { path: '/dashboard/supervision', label: 'إشراف الفسحة', icon: Shield },
-    ],
-  },
-  {
-    label: 'الملاحظات والرسائل',
-    items: [
-      { path: '/dashboard/notes', label: 'الملاحظات', icon: MessageSquarePlus },
-      { path: '/dashboard/messages', label: 'الرسائل الداخلية', icon: Mail },
+      { path: '/dashboard/whatsapp', label: 'إعدادات WhatsApp', icon: MessageCircle, superAdminOnly: true },
+      { path: '/dashboard/whatsapp-bulk-teachers', label: 'تذكير جماعي للمعلمين', icon: MessageCircle, superAdminOnly: true },
+      { path: '/dashboard/whatsapp-bulk-parents', label: 'إعلانات جماعية لأولياء الأمور', icon: MessageCircle, superAdminOnly: true },
+      { path: '/dashboard/whatsapp-log', label: 'سجل المحادثات', icon: MessageCircle, superAdminOnly: true },
+      { path: '/dashboard/whatsapp-issues', label: 'أرقام تحتاج تحديث', icon: AlertTriangle, superAdminOnly: true },
     ],
   },
   {
@@ -169,23 +186,6 @@ const navGroups: NavGroup[] = [
       { path: '/dashboard/admin-assignments', label: 'تعيين نطاق الإداريين', icon: Shield, superAdminOnly: true },
       { path: '/dashboard/admin-invite-codes', label: 'رموز دعوة الإداريين', icon: KeyRound, superAdminOnly: true },
       { path: '/dashboard/admin-registrations', label: 'طلبات الإداريين', icon: UserPlus, superAdminOnly: true },
-    ],
-  },
-  {
-    label: 'التقارير',
-    items: [
-      { path: '/dashboard/reports/builder', label: 'التقارير', icon: BarChart3 },
-      { path: '/dashboard/reports/whatsapp', label: 'تقرير الواتساب', icon: MessageCircle, superAdminOnly: true },
-    ],
-  },
-  {
-    label: 'واتساب',
-    items: [
-      { path: '/dashboard/whatsapp', label: 'إعدادات WhatsApp', icon: MessageCircle, superAdminOnly: true },
-      { path: '/dashboard/whatsapp-bulk-teachers', label: 'تذكير جماعي للمعلمين', icon: MessageCircle, superAdminOnly: true },
-      { path: '/dashboard/whatsapp-bulk-parents', label: 'إعلانات جماعية لأولياء الأمور', icon: MessageCircle, superAdminOnly: true },
-      { path: '/dashboard/whatsapp-log', label: 'سجل المحادثات', icon: MessageCircle, superAdminOnly: true },
-      { path: '/dashboard/whatsapp-issues', label: 'أرقام تحتاج تحديث', icon: AlertTriangle, superAdminOnly: true },
     ],
   },
   {
