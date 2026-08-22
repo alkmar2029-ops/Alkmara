@@ -9,6 +9,13 @@ node_modules
 out
 *.log
 *.tsbuildinfo
+smoke-out.txt
+supabase/.temp/
+
+# Planning and standalone presentation artifacts
+presentation/
+خطة-الوكلاء-والمرشدين/
+تعديل شهر 12-1447 اين وصلت المميزات/
 
 # Local-only data dumps and one-off scripts
 device-data/
