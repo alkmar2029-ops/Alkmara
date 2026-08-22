@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "start": "next start -H 0.0.0.0 -p 3000",
     "start:lan": "next start -H 0.0.0.0 -p 3000",
     "lint": "eslint app components lib tests proxy.ts",
