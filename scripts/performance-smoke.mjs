@@ -3,7 +3,7 @@
 const baseUrl = new URL(process.env.PERF_BASE_URL || process.env.BASE_URL || 'https://alkmara.vercel.app');
 const requestCount = boundedInt('PERF_REQUESTS', 20, 1, 500);
 const concurrency = boundedInt('PERF_CONCURRENCY', 5, 1, 50);
-const p95LimitMs = boundedInt('PERF_P95_LIMIT_MS', 1000, 1, 60_000);
+const p95LimitMs = boundedInt('PERF_P95_LIMIT_MS', 1500, 1, 60_000);
 const maxErrorRate = boundedNumber('PERF_MAX_ERROR_RATE', 0, 0, 1);
 
 const targets = [

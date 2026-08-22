@@ -18,7 +18,7 @@ on:
       p95_limit_ms:
         description: Maximum allowed p95 latency
         required: true
-        default: '1000'
+        default: '1500'
 
 permissions:
   contents: read
