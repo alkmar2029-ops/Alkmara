@@ -16,30 +16,36 @@ export async function GET(request: NextRequest) {
   try {
     if (type === 'daily') {
       // Get all sections with their grades
-      const { data: sections } = await supabase
-        .from('sections')
-        .select('id, name, grades(name, stage)')
-        .order('grade_id');
+      const [sectionsRes, recordsRes] = await Promise.all([
+        supabase
+          .from('sections')
+          .select('id, name, grades(name)')
+          .order('grade_id'),
+        // Fetch all attendance records for the date in one thin query.
+        supabase
+          .from('attendance_records')
+          .select('section_id, status')
+          .eq('attendance_date', date),
+      ]);
+      if (sectionsRes.error || recordsRes.error) throw sectionsRes.error ?? recordsRes.error;
+      const sections = sectionsRes.data;
+      const allRecords = recordsRes.data;
 
-      // Fetch ALL attendance records for the date in ONE query (fix N+1)
-      const { data: allRecords } = await supabase
-        .from('attendance_records')
-        .select('section_id, status')
-        .eq('attendance_date', date);
-
-      // Group records by section_id
-      const recordsBySection = new Map<number, any[]>();
+      // Aggregate while scanning instead of retaining every record in memory.
+      type StatusCounts = { present: number; late: number; absent: number; excused: number };
+      const recordsBySection = new Map<number, StatusCounts>();
       (allRecords || []).forEach((r: any) => {
-        const arr = recordsBySection.get(r.section_id) || [];
-        arr.push(r);
-        recordsBySection.set(r.section_id, arr);
+        const counts = recordsBySection.get(r.section_id) || { present: 0, late: 0, absent: 0, excused: 0 };
+        if (r.status === 'present') counts.present += 1;
+        else if (r.status === 'late') counts.late += 1;
+        else if (r.status === 'absent') counts.absent += 1;
+        else if (r.status === 'excused') counts.excused += 1;
+        recordsBySection.set(r.section_id, counts);
       });
 
       const results = [];
       for (const sec of sections || []) {
-        const records = recordsBySection.get(sec.id) || [];
-        const s = { present: 0, late: 0, absent: 0, excused: 0 };
-        records.forEach((r: any) => { if (s.hasOwnProperty(r.status)) s[r.status as keyof typeof s]++; });
+        const s = recordsBySection.get(sec.id) || { present: 0, late: 0, absent: 0, excused: 0 };
         const total = Object.values(s).reduce((a, b) => a + b, 0);
         if (total > 0) {
           results.push({
@@ -65,21 +71,25 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'تاريخ البداية يجب أن يكون قبل تاريخ النهاية' }, { status: 400 });
       }
 
-      const { data: students } = await supabase
-        .from('students')
-        .select('id, student_id, first_name, last_name, father_name')
-        .eq('section_id', section_id)
-        .eq('is_active', true)
-        .order('first_name', { ascending: true })
-        .order('father_name', { ascending: true, nullsFirst: false })
-        .order('last_name', { ascending: true });
-
-      const { data: records } = await supabase
-        .from('attendance_records')
-        .select('*')
-        .eq('section_id', section_id)
-        .gte('attendance_date', from)
-        .lte('attendance_date', to);
+      const [studentsRes, recordsRes] = await Promise.all([
+        supabase
+          .from('students')
+          .select('id, student_id, first_name, last_name, father_name')
+          .eq('section_id', section_id)
+          .eq('is_active', true)
+          .order('first_name', { ascending: true })
+          .order('father_name', { ascending: true, nullsFirst: false })
+          .order('last_name', { ascending: true }),
+        supabase
+          .from('attendance_records')
+          .select('student_id, status')
+          .eq('section_id', section_id)
+          .gte('attendance_date', from)
+          .lte('attendance_date', to),
+      ]);
+      if (studentsRes.error || recordsRes.error) throw studentsRes.error ?? recordsRes.error;
+      const students = studentsRes.data;
+      const records = recordsRes.data;
 
       // Use Map (not a plain object) to preserve the alphabetical insertion
       // order from the SELECT above. Plain `{}` keyed by integer IDs returns

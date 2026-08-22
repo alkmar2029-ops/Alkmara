@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { memo, useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -101,6 +101,13 @@ interface RecordTarget {
   existingByName?: string | null;
 }
 
+interface MissingTarget {
+  section: SectionRow;
+  period: PeriodRow;
+  date: string;
+  initialTeacherId?: string | null;
+}
+
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -118,19 +125,100 @@ function cellTone(absent: number, late: number, excused: number, total: number) 
   return { bg: 'bg-red-100 dark:bg-red-500/15', text: 'text-red-700 dark:text-red-300', border: 'border-red-200 dark:border-red-500/30' };
 }
 
+// The matrix is the page's largest subtree. Keeping each row referentially
+// stable prevents opening a modal or updating unrelated controls from
+// reconciling every student-status cell again.
+const HeatmapRow = memo(function HeatmapRow({
+  section,
+  periods,
+  recorded,
+  expected,
+  date,
+  onOpenSession,
+  onMissingTarget,
+}: {
+  section: SectionRow;
+  periods: PeriodRow[];
+  recorded: Record<string, RecordedCell>;
+  expected: Record<string, ExpectedCell>;
+  date: string;
+  onOpenSession: (_sessionId: number) => void;
+  onMissingTarget: (_target: MissingTarget) => void;
+}) {
+  return (
+    <tr className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
+      <td className="px-3 py-2 font-medium whitespace-nowrap sticky right-0 bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800">
+        {section.grade_name} / {section.section_name}
+      </td>
+      {periods.map((period) => {
+        const session = recorded[`${section.id}:${period.id}`];
+        const expectedTeacher = expected?.[`${section.id}:${period.id}`];
+        if (!session) {
+          return (
+            <td key={period.id} className="px-1 py-1 text-center">
+              <button
+                onClick={() => onMissingTarget({
+                  section,
+                  period,
+                  date,
+                  initialTeacherId: expectedTeacher?.teacher_user_id ?? null,
+                })}
+                className="w-full rounded-md border-2 border-dashed border-red-300 dark:border-red-500/40 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 py-1.5 px-1 text-xs transition-colors group"
+                title={expectedTeacher
+                  ? `جلسة ناقصة • المعلم المتوقَّع: ${expectedTeacher.teacher_name}${expectedTeacher.subject ? ` (${expectedTeacher.subject})` : ''} — اضغط للتذكير`
+                  : 'جلسة ناقصة — اضغط للتذكير'}
+              >
+                <Bell className="w-3.5 h-3.5 mx-auto mb-0.5 group-hover:animate-pulse" />
+                <div className="text-[10px] font-medium">لم تُسجَّل</div>
+                {expectedTeacher && (
+                  <div className="text-[9px] text-gray-600 dark:text-gray-400 mt-0.5 leading-tight truncate font-normal">
+                    {expectedTeacher.teacher_name}
+                    {expectedTeacher.subject && <span className="block opacity-70">{expectedTeacher.subject}</span>}
+                  </div>
+                )}
+              </button>
+            </td>
+          );
+        }
+
+        const tone = cellTone(session.absent_count, session.late_count, session.excused_count, session.total_count);
+        const present = session.total_count - session.absent_count - session.late_count - session.excused_count;
+        return (
+          <td key={period.id} className="px-1 py-1 text-center">
+            <button
+              onClick={() => onOpenSession(session.session_id)}
+              className={`w-full rounded-md border ${tone.bg} ${tone.border} ${tone.text} px-1.5 py-1.5 transition-transform hover:scale-105 hover:shadow-sm text-right`}
+              title={`${session.teacher_name ?? '—'} • ${present}/${session.total_count}`}
+            >
+              {session.teacher_name && (
+                <div className="text-[10px] truncate opacity-90 mb-0.5 font-medium">
+                  <User className="w-2.5 h-2.5 inline" /> {session.teacher_name}
+                </div>
+              )}
+              <div className="text-sm font-bold leading-tight">
+                {present}<span className="opacity-60">/{session.total_count}</span>
+              </div>
+              {(session.absent_count + session.late_count + session.excused_count) > 0 && (
+                <div className="text-[10px] flex justify-center gap-1 mt-0.5">
+                  {session.absent_count > 0 && <span>غ {session.absent_count}</span>}
+                  {session.late_count > 0 && <span>ت {session.late_count}</span>}
+                  {session.excused_count > 0 && <span>س {session.excused_count}</span>}
+                </div>
+              )}
+            </button>
+          </td>
+        );
+      })}
+    </tr>
+  );
+});
+
 export default function PeriodAttendancePage() {
   const [date, setDate] = useState(todayStr());
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [openSessionId, setOpenSessionId] = useState<number | null>(null);
-  const [missingTarget, setMissingTarget] = useState<{
-    section: SectionRow;
-    period: PeriodRow;
-    date: string;
-    // When the smart schedule has an entry for this slot, pre-select the
-    // teacher in the modal so the admin doesn't have to scroll a 40-name
-    // dropdown for each missing cell.
-    initialTeacherId?: string | null;
-  } | null>(null);
+  // Smart-schedule matches pre-select the expected teacher in the modal.
+  const [missingTarget, setMissingTarget] = useState<MissingTarget | null>(null);
   // When set, the bulk-period reminder modal opens listing every missing
   // cell for that single period across all sections.
   const [bulkPeriodTarget, setBulkPeriodTarget] = useState<PeriodRow | null>(null);
@@ -189,6 +277,19 @@ export default function PeriodAttendancePage() {
     monitor.sections.forEach((x) => s.add(x.grade_name));
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'ar'));
   }, [monitor]);
+
+  const missingCountsByPeriod = useMemo(() => {
+    const counts = new Map<number, number>();
+    if (!monitor) return counts;
+    for (const period of monitor.periods) {
+      let missing = 0;
+      for (const section of visibleSections) {
+        if (!monitor.recorded[`${section.id}:${period.id}`]) missing++;
+      }
+      counts.set(period.id, missing);
+    }
+    return counts;
+  }, [monitor, visibleSections]);
 
   // Aggregate counts across recorded cells (visible scope respects filters).
   const totals = useMemo(() => {
@@ -357,9 +458,7 @@ export default function PeriodAttendancePage() {
                     {monitor.periods.map((p) => {
                       // How many cells in this period column are still
                       // missing? Drives the bulk-remind button state.
-                      const missingCount = visibleSections.reduce((acc, s) => {
-                        return monitor.recorded[`${s.id}:${p.id}`] ? acc : acc + 1;
-                      }, 0);
+                      const missingCount = missingCountsByPeriod.get(p.id) ?? 0;
                       return (
                         <th key={p.id} className="px-2 py-2 font-medium text-center">
                           <div>حصة {p.number}</div>
@@ -378,77 +477,17 @@ export default function PeriodAttendancePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {visibleSections.map((sec) => (
-                    <tr key={sec.id} className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
-                      <td className="px-3 py-2 font-medium whitespace-nowrap sticky right-0 bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800">
-                        {sec.grade_name} / {sec.section_name}
-                      </td>
-                      {monitor.periods.map((p) => {
-                        const s = monitor.recorded[`${sec.id}:${p.id}`];
-                        const exp = monitor.expected?.[`${sec.id}:${p.id}`];
-                        if (!s) {
-                          // Missing cell — clickable, opens reminder modal.
-                          // When the smart schedule knows who's expected to
-                          // be teaching this slot, show their name and
-                          // subject so the principal can call/whatsapp the
-                          // right person directly.
-                          return (
-                            <td key={p.id} className="px-1 py-1 text-center">
-                              <button
-                                onClick={() => setMissingTarget({
-                                  section: sec,
-                                  period: p,
-                                  date,
-                                  initialTeacherId: exp?.teacher_user_id ?? null,
-                                })}
-                                className="w-full rounded-md border-2 border-dashed border-red-300 dark:border-red-500/40 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 py-1.5 px-1 text-xs transition-colors group"
-                                title={
-                                  exp
-                                    ? `جلسة ناقصة • المعلم المتوقَّع: ${exp.teacher_name}${exp.subject ? ` (${exp.subject})` : ''} — اضغط للتذكير`
-                                    : 'جلسة ناقصة — اضغط للتذكير'
-                                }
-                              >
-                                <Bell className="w-3.5 h-3.5 mx-auto mb-0.5 group-hover:animate-pulse" />
-                                <div className="text-[10px] font-medium">لم تُسجَّل</div>
-                                {exp && (
-                                  <div className="text-[9px] text-gray-600 dark:text-gray-400 mt-0.5 leading-tight truncate font-normal">
-                                    {exp.teacher_name}
-                                    {exp.subject && (
-                                      <span className="block opacity-70">{exp.subject}</span>
-                                    )}
-                                  </div>
-                                )}
-                              </button>
-                            </td>
-                          );
-                        }
-                        const tone = cellTone(s.absent_count, s.late_count, s.excused_count, s.total_count);
-                        const present = s.total_count - s.absent_count - s.late_count - s.excused_count;
-                        return (
-                          <td key={p.id} className="px-1 py-1 text-center">
-                            <button
-                              onClick={() => setOpenSessionId(s.session_id)}
-                              className={`w-full rounded-md border ${tone.bg} ${tone.border} ${tone.text} px-1.5 py-1.5 transition-transform hover:scale-105 hover:shadow-sm text-right`}
-                              title={`${s.teacher_name ?? '—'} • ${present}/${s.total_count}`}
-                            >
-                              {s.teacher_name && (
-                                <div className="text-[10px] truncate opacity-90 mb-0.5 font-medium">
-                                  <User className="w-2.5 h-2.5 inline" /> {s.teacher_name}
-                                </div>
-                              )}
-                              <div className="text-sm font-bold leading-tight">{present}<span className="opacity-60">/{s.total_count}</span></div>
-                              {(s.absent_count + s.late_count + s.excused_count) > 0 && (
-                                <div className="text-[10px] flex justify-center gap-1 mt-0.5">
-                                  {s.absent_count > 0 && <span>غ {s.absent_count}</span>}
-                                  {s.late_count > 0 && <span>ت {s.late_count}</span>}
-                                  {s.excused_count > 0 && <span>س {s.excused_count}</span>}
-                                </div>
-                              )}
-                            </button>
-                          </td>
-                        );
-                      })}
-                    </tr>
+                  {visibleSections.map((section) => (
+                    <HeatmapRow
+                      key={section.id}
+                      section={section}
+                      periods={monitor.periods}
+                      recorded={monitor.recorded}
+                      expected={monitor.expected}
+                      date={date}
+                      onOpenSession={setOpenSessionId}
+                      onMissingTarget={setMissingTarget}
+                    />
                   ))}
                 </tbody>
               </table>

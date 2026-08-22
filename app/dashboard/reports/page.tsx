@@ -2,11 +2,19 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import { STAGE_LABELS } from '@/lib/utils/helpers';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import EmptyState from '@/components/ui/EmptyState';
+
+const AttendanceBarChart = dynamic(
+  () => import('@/components/reports/AttendanceBarChart'),
+  {
+    ssr: false,
+    loading: () => <div className="h-[300px] animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800" />,
+  },
+);
 
 export default function ReportsPage() {
   const [tab, setTab] = useState<'daily' | 'section'>('daily');
@@ -99,14 +107,7 @@ export default function ReportsPage() {
               {dailyReport?.length > 0 && (
                 <div className="card">
                   <div className="overflow-x-auto">
-                    <ResponsiveContainer width="100%" height={300} minWidth={320}>
-                      <BarChart data={dailyReport} layout="vertical">
-                        <XAxis type="number" /><YAxis dataKey="grade_name" type="category" width={100} /><Tooltip /><Legend />
-                        <Bar dataKey="present" name="حاضر" fill="#22c55e" stackId="a" />
-                        <Bar dataKey="late" name="متأخر" fill="#eab308" stackId="a" />
-                        <Bar dataKey="absent" name="غائب" fill="#ef4444" stackId="a" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <AttendanceBarChart data={dailyReport} />
                   </div>
                 </div>
               )}

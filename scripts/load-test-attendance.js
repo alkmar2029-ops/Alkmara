@@ -12,6 +12,8 @@
  *   ADMIN_PASSWORD          — password for that account
  *   CONCURRENCY             — how many parallel saves (default 28)
  *   DRY_RUN                 — "true" → don't actually POST, just print the plan
+ *   ALLOW_WRITES             — must be "true" before any attendance is changed
+ *   ALLOW_PRODUCTION_WRITES  — additionally required for alkmara.vercel.app
  *
  * What it does:
  *   1. Signs in once → gets a JWT cookie
@@ -50,6 +52,8 @@ const ADMIN_EMAIL = process.env.LOAD_TEST_EMAIL || process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.LOAD_TEST_PASSWORD || process.env.ADMIN_PASSWORD;
 const CONCURRENCY = parseInt(process.env.CONCURRENCY || '28', 10);
 const DRY_RUN = process.env.DRY_RUN === 'true';
+const ALLOW_WRITES = process.env.ALLOW_WRITES === 'true';
+const ALLOW_PRODUCTION_WRITES = process.env.ALLOW_PRODUCTION_WRITES === 'true';
 
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -60,6 +64,14 @@ if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
 }
 if (!SUPABASE_URL || !SUPABASE_ANON) {
   console.error('❌ NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY required');
+  process.exit(1);
+}
+if (!DRY_RUN && !ALLOW_WRITES) {
+  console.error('❌ This test writes attendance. Set ALLOW_WRITES=true explicitly, or use DRY_RUN=true.');
+  process.exit(1);
+}
+if (!DRY_RUN && new URL(BASE_URL).hostname === 'alkmara.vercel.app' && !ALLOW_PRODUCTION_WRITES) {
+  console.error('❌ Production writes are blocked. Set ALLOW_PRODUCTION_WRITES=true only for an approved test window.');
   process.exit(1);
 }
 

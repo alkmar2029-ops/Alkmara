@@ -290,13 +290,19 @@ export async function GET(request: NextRequest) {
 
   // Risk landscape
   const studentsScored = risks.length;
-  const staleCount     = risks.filter((r) => r.is_stale).length;
-  const sumScore       = risks.reduce((acc, r) => acc + r.total_score, 0);
+  let staleCount = 0;
+  let sumScore = 0;
+  let above50 = 0;
+  let above70 = 0;
+  for (const risk of risks) {
+    if (risk.is_stale) staleCount += 1;
+    sumScore += risk.total_score;
+    if (risk.total_score >= 50) above50 += 1;
+    if (risk.total_score >= 70) above70 += 1;
+  }
   const averageScore   = studentsScored >= AVERAGE_MIN_SCORED
     ? Math.round(sumScore / studentsScored)
     : null;
-  const above50        = risks.filter((r) => r.total_score >= 50).length;
-  const above70        = risks.filter((r) => r.total_score >= 70).length;
 
   // Top-N highest scores. Sort + slice + enrich with names (user-bound).
   const topRows = [...risks]

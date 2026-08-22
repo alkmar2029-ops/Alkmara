@@ -1,15 +1,23 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import {
   Calendar, AlertTriangle, AlertCircle, BadgeCheck,
   Send, Loader2, RefreshCw, BarChart3, X,
   CheckCircle2, XCircle, Printer, TrendingUp, Users, Rocket,
 } from 'lucide-react';
-import CampaignProgressPanel from '@/components/daily-attendance/CampaignProgressPanel';
-import StudentDayDrawer from '@/components/daily-attendance/StudentDayDrawer';
+
+const CampaignProgressPanel = dynamic(
+  () => import('@/components/daily-attendance/CampaignProgressPanel'),
+  { ssr: false },
+);
+const StudentDayDrawer = dynamic(
+  () => import('@/components/daily-attendance/StudentDayDrawer'),
+  { ssr: false },
+);
 
 interface DetectionRow {
   student_id: number;
@@ -203,7 +211,7 @@ export default function DailyAttendancePage() {
 
   // When data lands, auto-select all rows that have a phone — that's the
   // common "send to everyone" intent. Admin can untick individuals.
-  useMemo(() => {
+  useEffect(() => {
     if (!data) return;
     const withPhone = (rows: DetectionRow[]) =>
       new Set(rows.filter((r) => !!r.phone).map((r) => r.student_id));
@@ -785,13 +793,15 @@ export default function DailyAttendancePage() {
 
       {/* Per-student day-attendance drawer — opens when a name is
           clicked in any bucket. */}
-      <StudentDayDrawer
-        studentId={drawerStudentId}
-        date={date}
-        fromPeriod={fromPeriod}
-        toPeriod={toPeriod}
-        onClose={() => setDrawerStudentId(null)}
-      />
+      {drawerStudentId !== null && (
+        <StudentDayDrawer
+          studentId={drawerStudentId}
+          date={date}
+          fromPeriod={fromPeriod}
+          toPeriod={toPeriod}
+          onClose={() => setDrawerStudentId(null)}
+        />
+      )}
 
       {/* Print stylesheet — scoped to .report-print-area. */}
       <style jsx global>{`

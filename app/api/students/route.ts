@@ -3,12 +3,13 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateBody, createStudentSchema } from '@/lib/validations/schemas';
 import { MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '@/lib/utils/helpers';
 import { requireRole } from '@/lib/supabase/auth';
+import { normalizeSearch } from '@/lib/search/normalize';
 
 export const dynamic = 'force-dynamic';
 
-/** Escape special PostgREST filter characters from a search term. */
+/** Escape wildcard/filter characters before interpolating an ILIKE pattern. */
 function sanitizeSearch(raw: string): string {
-  return raw.replace(/[,.*()\\%_]/g, '');
+  return normalizeSearch(raw).replace(/[,.*()\\%_]/g, '');
 }
 
 export async function GET(request: NextRequest) {
@@ -41,52 +42,72 @@ export async function GET(request: NextRequest) {
   // text ordering is alphabetical for Arabic letters; the three-key sort
   // gives stable, predictable order when first names match (very common
   // for "محمد", "أحمد", etc.).
-  let query = supabase
-    .from('students')
-    .select('*, grades(name, stage), sections(name)', { count: 'exact' })
-    .eq('is_active', true)
-    .order('first_name', { ascending: true })
-    .order('father_name', { ascending: true, nullsFirst: false })
-    .order('last_name', { ascending: true })
-    .range(offset, offset + limit - 1);
+  const buildQuery = (useGeneratedBlockedPickup: boolean) => {
+    let query = supabase
+      .from('students')
+      .select('*, grades(name, stage), sections(name)', { count: 'exact' })
+      .eq('is_active', true)
+      .order('first_name', { ascending: true })
+      .order('father_name', { ascending: true, nullsFirst: false })
+      .order('last_name', { ascending: true })
+      // Names are not unique. The PK makes offset pagination deterministic
+      // when two students have the same full name.
+      .order('id', { ascending: true })
+      .range(offset, offset + limit - 1);
 
-  if (rawSearch) {
-    const search = sanitizeSearch(rawSearch);
-    if (search.length > 0) {
-      query = query.or(
-        `student_id.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,father_name.ilike.%${search}%`,
-      );
+    if (rawSearch) {
+      const search = sanitizeSearch(rawSearch);
+      if (search.length > 0) {
+        // search_text is normalized and maintained by a trigger. Its trigram
+        // GIN index avoids scanning every name column on large schools.
+        query = query.ilike('search_text', `%${search}%`);
+      }
     }
-  }
-  if (grade_id) query = query.eq('grade_id', grade_id);
-  if (section_id) query = query.eq('section_id', section_id);
+    if (grade_id) query = query.eq('grade_id', grade_id);
+    if (section_id) query = query.eq('section_id', section_id);
 
-  // Special-conditions filters. Push to SQL where possible; the partial
-  // indexes from 2026_05_05/06 migrations make the JSON-key filters fast.
-  if (hasHealth === '1') query = query.not('health_info', 'is', null);
-  if (healthCondition) {
-    query = query.contains('health_info', { conditions: [healthCondition] });
-  }
-  if (hasSocial === '1') query = query.not('social_info', 'is', null);
-  if (custodyType) query = query.eq('social_info->>custody_type', custodyType);
-  if (docsStatus)  query = query.eq('social_info->>documentation_status', docsStatus);
+    // Special-conditions filters. Push to SQL where possible; the partial
+    // indexes from 2026_05_05/06 migrations make the JSON-key filters fast.
+    if (hasHealth === '1') query = query.not('health_info', 'is', null);
+    if (healthCondition) {
+      query = query.contains('health_info', { conditions: [healthCondition] });
+    }
+    if (hasSocial === '1') query = query.not('social_info', 'is', null);
+    if (custodyType) query = query.eq('social_info->>custody_type', custodyType);
+    if (docsStatus)  query = query.eq('social_info->>documentation_status', docsStatus);
+    if (hasBlockedPickup === '1') {
+      query = useGeneratedBlockedPickup
+        ? query.eq('has_blocked_pickup', true)
+        // Deployment-safe fallback while the migration is pending. This is
+        // still filtered/countable before pagination in PostgreSQL, but does
+        // not receive the new partial-index speedup.
+        : query.not('social_info->blocked_pickup', 'eq', '[]');
+    }
 
-  const { data, count, error } = await query;
+    return query;
+  };
+
+  let result = await buildQuery(true);
+  // The application may reach Vercel before the independently-managed
+  // Supabase migration. Keep production working and totals exact during that
+  // window; after migration, the first query succeeds and uses the index.
+  if (
+    hasBlockedPickup === '1'
+    && result.error
+    && ['42703', 'PGRST204'].includes(result.error.code || '')
+    && result.error.message.includes('has_blocked_pickup')
+  ) {
+    result = await buildQuery(false);
+  }
+
+  const { data, count, error } = result;
   if (error) return NextResponse.json({ error: 'حدث خطأ أثناء جلب بيانات الطلاب' }, { status: 400 });
-
-  // has_blocked_pickup runs as a JS post-filter — PostgREST has no
-  // jsonb_array_length operator and the relevant subset is tiny
-  // (kids with active legal restrictions). count is approximate when
-  // this filter is applied.
-  const blockedFiltered = hasBlockedPickup === '1'
-    ? (data || []).filter((s: any) => (s.social_info?.blocked_pickup?.length || 0) > 0)
-    : (data || []);
 
   // Keep grades + sections nested objects on the response so callers
   // that read s.grades?.name / s.sections?.name (notes page, dismissal
   // form, etc.) display correctly. Also expose flat grade_name/
   // section_name for callers that prefer those.
-  const students = blockedFiltered.map((s: any) => ({
+  const students = (data || []).map((s: any) => ({
     ...s,
     grade_name: s.grades?.name,
     grade_stage: s.grades?.stage,
@@ -95,10 +116,10 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     data: students,
-    total: hasBlockedPickup === '1' ? students.length : (count || 0),
+    total: count || 0,
     page,
     limit,
-    totalPages: Math.ceil((hasBlockedPickup === '1' ? students.length : (count || 0)) / limit),
+    totalPages: Math.ceil((count || 0) / limit),
   });
 }
 

@@ -91,7 +91,7 @@ type Mode = 'principal' | 'super_admin';
 interface CaseRow      { student_id: number; case_type: string; severity: string; created_at: string; }
 interface HistoryRow   { case_id: number; from_status: string | null; to_status: string; }
 interface PlanRow      { student_id: number; created_at: string; completed_at: string | null; cancelled_at: string | null; target_date: string | null; status: string; }
-interface SessionRow   { case_id: number; session_type: string; duration_minutes: number | null; }
+interface SessionRow   { student_id: number; session_type: string; duration_minutes: number | null; }
 interface NoteRow      { student_id: number; is_confidential: boolean; }
 interface RiskRow      { student_id: number; total_score: number; is_stale: boolean; }
 
@@ -174,20 +174,51 @@ export async function GET(request: NextRequest) {
   // ----- Service-role client (flag check IS the security boundary) -----
   const admin = createAdminSupabaseClient();
 
-  // ----- Step 1: active students per grade (3 queries: students,
-  //                                          sections, grades) -----
+  // ----- Step 1: load independent thin projections concurrently -----
   // Active = `is_active` IS NOT FALSE (treats NULL as active, matches
   // the м5.3 backfill semantics).
-  const [studentsRes, sectionsRes, gradesRes] = await Promise.all([
+  // Case mapping and report events do not depend on the grade maps. Starting
+  // everything together removes two network round trips from this endpoint.
+  const [
+    studentsRes, sectionsRes, gradesRes, caseMapRes,
+    casesRes, historyRes, plansRes, sessionsRes, notesRes, risksRes,
+  ] = await Promise.all([
     admin.from('students').select('id, section_id').neq('is_active', false),
     admin.from('sections').select('id, grade_id'),
     admin.from('grades').select('id, name'),
+    // ALL cases are required because range events can belong to older cases.
+    admin.from('student_cases').select('id, student_id'),
+    admin
+      .from('student_cases')
+      .select('student_id, case_type, severity, created_at')
+      .gte('created_at', fromTs).lte('created_at', toTs),
+    admin
+      .from('case_history')
+      .select('case_id, from_status, to_status')
+      .gte('changed_at', fromTs).lte('changed_at', toTs),
+    admin
+      .from('student_followup_plans')
+      .select('student_id, created_at, completed_at, cancelled_at, target_date, status'),
+    admin
+      .from('counseling_sessions')
+      .select('student_id, session_type, duration_minutes')
+      .gte('session_date', from).lte('session_date', to),
+    admin
+      .from('student_notes')
+      .select('student_id, is_confidential')
+      .gte('recorded_at', fromTs).lte('recorded_at', toTs),
+    admin
+      .from('student_risk_scores')
+      .select('student_id, total_score, is_stale'),
   ]);
 
-  if (studentsRes.error || sectionsRes.error || gradesRes.error) {
-    const e = studentsRes.error ?? sectionsRes.error ?? gradesRes.error;
+  const firstErr =
+    studentsRes.error ?? sectionsRes.error ?? gradesRes.error ?? caseMapRes.error ??
+    casesRes.error ?? historyRes.error ?? plansRes.error ??
+    sessionsRes.error ?? notesRes.error ?? risksRes.error;
+  if (firstErr) {
     return NextResponse.json(
-      { error: 'فشل تحميل البيانات الأساسية: ' + e!.message },
+      { error: 'فشل تحميل التقرير: ' + firstErr.message },
       { status: 500 },
     );
   }
@@ -220,64 +251,12 @@ export async function GET(request: NextRequest) {
   // ----- Step 2: case_id → student_id map (ALL cases, not range-
   // filtered — needed for case_history and sessions which reference
   // case_id but events may belong to cases created outside the range)
-  const caseMapRes = await admin
-    .from('student_cases')
-    .select('id, student_id');
-
-  if (caseMapRes.error) {
-    return NextResponse.json(
-      { error: 'فشل تحميل خريطة الحالات: ' + caseMapRes.error.message },
-      { status: 500 },
-    );
-  }
   const caseToStudent = new Map<number, number>();
   for (const c of (caseMapRes.data ?? []) as Array<{ id: number; student_id: number }>) {
     caseToStudent.set(c.id, c.student_id);
   }
 
-  // ----- Step 3: 6 parallel event queries -----
-  const [
-    casesRes,
-    historyRes,
-    plansRes,
-    sessionsRes,
-    notesRes,
-    risksRes,
-  ] = await Promise.all([
-    admin
-      .from('student_cases')
-      .select('student_id, case_type, severity, created_at')
-      .gte('created_at', fromTs).lte('created_at', toTs),
-    admin
-      .from('case_history')
-      .select('case_id, from_status, to_status')
-      .gte('changed_at', fromTs).lte('changed_at', toTs),
-    admin
-      .from('student_followup_plans')
-      .select('student_id, created_at, completed_at, cancelled_at, target_date, status'),
-    admin
-      .from('counseling_sessions')
-      .select('case_id, session_type, duration_minutes')
-      .gte('session_date', from).lte('session_date', to),
-    admin
-      .from('student_notes')
-      .select('student_id, is_confidential')
-      .gte('recorded_at', fromTs).lte('recorded_at', toTs),
-    admin
-      .from('student_risk_scores')
-      .select('student_id, total_score, is_stale'),
-  ]);
-
-  const firstErr =
-    casesRes.error ?? historyRes.error ?? plansRes.error ??
-    sessionsRes.error ?? notesRes.error ?? risksRes.error;
-  if (firstErr) {
-    return NextResponse.json(
-      { error: 'فشل تحميل التقرير: ' + firstErr.message },
-      { status: 500 },
-    );
-  }
-
+  // ----- Step 3: aggregate the already-loaded event projections -----
   const cases    = (casesRes.data    ?? []) as CaseRow[];
   const history  = (historyRes.data  ?? []) as HistoryRow[];
   const plans    = (plansRes.data    ?? []) as PlanRow[];
@@ -415,9 +394,7 @@ export async function GET(request: NextRequest) {
     if (p.status === 'active' && p.target_date && p.target_date < today)     b.plans_overdue   += 1;
   }
   for (const s of sessions) {
-    const studentId = caseToStudent.get(s.case_id);
-    if (studentId === undefined) continue;
-    const g = studentToGrade.get(studentId);
+    const g = studentToGrade.get(s.student_id);
     if (g === undefined) continue;
     const b = gradeBuckets(g);
     b.sessions_held += 1;

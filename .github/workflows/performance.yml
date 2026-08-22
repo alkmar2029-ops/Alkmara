@@ -1,0 +1,45 @@
+name: Read-only performance smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Deployment URL to benchmark
+        required: true
+        default: https://alkmara.vercel.app
+      requests:
+        description: Requests per target
+        required: true
+        default: '20'
+      concurrency:
+        description: Concurrent requests
+        required: true
+        default: '5'
+      p95_limit_ms:
+        description: Maximum allowed p95 latency
+        required: true
+        default: '1000'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Run read-only benchmark
+        env:
+          PERF_BASE_URL: ${{ inputs.base_url }}
+          PERF_REQUESTS: ${{ inputs.requests }}
+          PERF_CONCURRENCY: ${{ inputs.concurrency }}
+          PERF_P95_LIMIT_MS: ${{ inputs.p95_limit_ms }}
+        run: node scripts/performance-smoke.mjs

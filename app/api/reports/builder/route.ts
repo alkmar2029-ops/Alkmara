@@ -34,6 +34,17 @@ const schema = z.object({
   // For period_compare: two period numbers to put side-by-side in the report.
   compare_period_a: z.number().int().min(1).max(20).optional(),
   compare_period_b: z.number().int().min(1).max(20).optional(),
+}).superRefine((value, ctx) => {
+  if (value.from > value.to) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['from'], message: 'تاريخ البداية يجب ألا يتجاوز تاريخ النهاية' });
+  }
+  if (value.scope !== 'school' && value.scope_id === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['scope_id'], message: 'معرف النطاق مطلوب' });
+  }
+  if (value.types.includes('period_compare') &&
+      (value.compare_period_a === undefined || value.compare_period_b === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['compare_period_a'], message: 'يجب تحديد الحصتين للمقارنة' });
+  }
 });
 
 export async function POST(request: NextRequest) {
@@ -52,18 +63,20 @@ export async function POST(request: NextRequest) {
 
   // Resolve the student-id set the report applies to.
   let studentIds: number[] | null = null;
+  let studentSectionId: number | null = null;
   let scopeLabel = 'المدرسة كاملة';
 
   if (scope === 'student' && scope_id) {
     const { data: s } = await supabase
       .from('students')
       .select(`id, student_id, first_name, father_name, last_name,
-        sections ( name, grades ( name ) )
+        sections ( id, name, grades ( name ) )
       `)
       .eq('id', scope_id)
       .maybeSingle();
     if (!s) return NextResponse.json({ error: 'الطالب غير موجود' }, { status: 404 });
     studentIds = [s.id];
+    studentSectionId = (s as any).sections?.id ?? null;
     scopeLabel = `${[s.first_name, s.father_name, s.last_name].filter(Boolean).join(' ')} • ${(s as any).sections?.grades?.name} / ${(s as any).sections?.name}`;
   } else if (scope === 'section' && scope_id) {
     const { data: sec } = await supabase
@@ -85,6 +98,9 @@ export async function POST(request: NextRequest) {
     scopeLabel = `صف ${(g as any).name}`;
   }
   // 'school' → studentIds stays null (means "all students")
+  // An explicitly scoped grade/section with no active students must stay
+  // empty. Treating [] like null would silently widen the report to school.
+  const emptyScopedPopulation = studentIds !== null && studentIds.length === 0;
 
   // School metadata for report header.
   const { data: settingsRow } = await supabase
@@ -106,22 +122,75 @@ export async function POST(request: NextRequest) {
   const wantAll = types.includes('comprehensive');
   const want = (t: string) => wantAll || (types as string[]).includes(t);
 
-  // ============= 1. Daily attendance (fingerprint records) =============
-  if (want('attendance_daily')) {
+  // The three report families are independent at this stage. Start their
+  // database work together; period absence/profile enrichment remains a
+  // second stage because it depends on the returned session ids.
+  const loadDaily = async () => {
+    if (!want('attendance_daily') || emptyScopedPopulation) return { data: [], error: null };
     let q = supabase
       .from('attendance_records')
       .select(`
-        id, student_id, attendance_date, punch_time, status, minutes_late,
+        student_id, attendance_date, punch_time, status, minutes_late,
         students!inner ( student_id, first_name, father_name, last_name,
           sections ( name, grades ( name ) )
         )
       `)
       .gte('attendance_date', from)
       .lte('attendance_date', to);
-    if (studentIds && studentIds.length > 0) q = q.in('student_id', studentIds);
+    if (studentIds) q = q.in('student_id', studentIds);
+    return q;
+  };
+  const loadSessions = async () => {
+    if (!(want('attendance_period') || want('late') || want('excused') || want('period_compare'))) {
+      return { data: [], error: null };
+    }
+    if (emptyScopedPopulation || (scope === 'student' && studentSectionId === null)) {
+      return { data: [], error: null };
+    }
+    let q = supabase
+      .from('period_sessions')
+      .select(`id, attendance_date, section_id, total_count,
+        absent_count, late_count, excused_count, recorded_by,
+        sections!inner ( id, name, grade_id, grades ( name ) ),
+        periods!inner ( number, name )
+      `)
+      .gte('attendance_date', from)
+      .lte('attendance_date', to);
+    if (scope === 'section' && scope_id) q = q.eq('section_id', scope_id);
+    else if (scope === 'grade' && scope_id) q = q.eq('sections.grade_id', scope_id);
+    else if (scope === 'student' && studentSectionId) q = q.eq('section_id', studentSectionId);
+    if (period_number) q = q.eq('periods.number', period_number);
+    else if (types.length === 1 && types[0] === 'period_compare' && compare_period_a && compare_period_b) {
+      q = q.in('periods.number', [compare_period_a, compare_period_b]);
+    }
+    return q;
+  };
+  const loadNotes = async () => {
+    if (!want('notes') || emptyScopedPopulation) return { data: [], error: null };
+    let q = supabase
+      .from('student_notes')
+      .select(`
+        id, student_id, text, type, category, recorded_at,
+        students ( student_id, first_name, father_name, last_name,
+          sections ( name, grades ( name ) )
+        )
+      `)
+      .gte('recorded_at', `${from}T00:00:00.000Z`)
+      .lte('recorded_at', `${to}T23:59:59.999Z`);
+    if (studentIds) q = q.in('student_id', studentIds);
+    return q;
+  };
 
-    const { data } = await q;
+  const [dailyRes, sessionsRes, notesRes] = await Promise.all([
+    loadDaily(), loadSessions(), loadNotes(),
+  ]);
+
+  // ============= 1. Daily attendance (fingerprint records) =============
+  if (want('attendance_daily')) {
+    const { data, error } = dailyRes;
+    if (error) return NextResponse.json({ error: 'فشل تحميل الحضور اليومي: ' + error.message }, { status: 500 });
     const rows = (data || []).map((r: any) => ({
+      student_id: r.student_id,
       attendance_date: r.attendance_date,
       punch_time: r.punch_time,
       status: r.status,
@@ -131,33 +200,28 @@ export async function POST(request: NextRequest) {
       grade_name: r.students?.sections?.grades?.name,
       section_name: r.students?.sections?.name,
     }));
+    const dailyCounts = { total: rows.length, late: 0, absent: 0, present: 0 };
+    for (const row of rows) {
+      if (row.status === 'late') dailyCounts.late += 1;
+      else if (row.status === 'absent') dailyCounts.absent += 1;
+      else if (row.status === 'present') dailyCounts.present += 1;
+    }
     result.sections.attendance_daily = {
       rows,
-      counts: {
-        total: rows.length,
-        late: rows.filter((r) => r.status === 'late').length,
-        absent: rows.filter((r) => r.status === 'absent').length,
-        present: rows.filter((r) => r.status === 'present').length,
-      },
+      counts: dailyCounts,
     };
   }
 
   // ============= 2. Period attendance (per-period absences) =============
-  if (want('attendance_period') || want('late') || want('excused')) {
+  if (want('attendance_period') || want('late') || want('excused') || want('period_compare')) {
     // sessions in range
-    const { data: sessions } = await supabase
-      .from('period_sessions')
-      .select(`id, attendance_date, period_id, section_id, total_count,
-        absent_count, late_count, excused_count, recorded_by,
-        sections ( id, name, grade_id, grades ( name ) ),
-        periods ( number, name )
-      `)
-      .gte('attendance_date', from)
-      .lte('attendance_date', to);
+    if (sessionsRes.error) return NextResponse.json({ error: 'فشل تحميل جلسات الحصص: ' + sessionsRes.error.message }, { status: 500 });
+    const sessions = sessionsRes.data;
 
     let filteredSessions = (sessions || []);
     if (scope === 'section' && scope_id) filteredSessions = filteredSessions.filter((s: any) => s.section_id === scope_id);
     if (scope === 'grade' && scope_id) filteredSessions = filteredSessions.filter((s: any) => s.sections?.grade_id === scope_id);
+    if (scope === 'student') filteredSessions = filteredSessions.filter((s: any) => s.section_id === studentSectionId);
     // Single-period filter: keep only sessions whose period.number matches.
     if (period_number) {
       filteredSessions = filteredSessions.filter((s: any) => s.periods?.number === period_number);
@@ -188,7 +252,10 @@ export async function POST(request: NextRequest) {
       `);
     if (sessionIds.length > 0) absencesQuery = absencesQuery.in('session_id', sessionIds);
     if (studentIds && studentIds.length > 0) absencesQuery = absencesQuery.in('student_id', studentIds);
-    const { data: absences } = sessionIds.length > 0 ? await absencesQuery : { data: [] };
+    const { data: absences, error: absencesError } = sessionIds.length > 0 && !emptyScopedPopulation
+      ? await absencesQuery
+      : { data: [], error: null };
+    if (absencesError) return NextResponse.json({ error: 'فشل تحميل غياب الحصص: ' + absencesError.message }, { status: 500 });
 
     const sessionsById = new Map<number, any>();
     for (const s of filteredSessions) sessionsById.set((s as any).id, s);
@@ -196,6 +263,7 @@ export async function POST(request: NextRequest) {
     const absenceRows = (absences || []).map((a: any) => {
       const s = sessionsById.get(a.session_id);
       return {
+        student_id: a.student_id,
         attendance_date: s?.attendance_date,
         period_number: s?.periods?.number,
         period_name: s?.periods?.name,
@@ -208,6 +276,12 @@ export async function POST(request: NextRequest) {
         notes: a.notes,
       };
     });
+    const rowsByStatus = { absent: [] as any[], late: [] as any[], excused: [] as any[] };
+    for (const row of absenceRows) {
+      if (row.status === 'absent') rowsByStatus.absent.push(row);
+      else if (row.status === 'late') rowsByStatus.late.push(row);
+      else if (row.status === 'excused') rowsByStatus.excused.push(row);
+    }
 
     if (want('attendance_period')) {
       result.sections.attendance_period = {
@@ -224,23 +298,23 @@ export async function POST(request: NextRequest) {
           excused: s.excused_count,
           present: s.total_count - s.absent_count - s.late_count - s.excused_count,
         })),
-        absences: absenceRows.filter((r) => r.status === 'absent'),
+        absences: rowsByStatus.absent,
         counts: {
           sessions: filteredSessions.length,
-          absent: absenceRows.filter((r) => r.status === 'absent').length,
+          absent: rowsByStatus.absent.length,
         },
       };
     }
     if (want('late')) {
       result.sections.late = {
-        rows: absenceRows.filter((r) => r.status === 'late'),
-        count: absenceRows.filter((r) => r.status === 'late').length,
+        rows: rowsByStatus.late,
+        count: rowsByStatus.late.length,
       };
     }
     if (want('excused')) {
       result.sections.excused = {
-        rows: absenceRows.filter((r) => r.status === 'excused'),
-        count: absenceRows.filter((r) => r.status === 'excused').length,
+        rows: rowsByStatus.excused,
+        count: rowsByStatus.excused.length,
       };
     }
 
@@ -346,21 +420,11 @@ export async function POST(request: NextRequest) {
 
   // ============= 3. Student notes =============
   if (want('notes')) {
-    let q = supabase
-      .from('student_notes')
-      .select(`
-        id, student_id, text, type, category, recorded_at,
-        students ( student_id, first_name, father_name, last_name,
-          sections ( name, grades ( name ) )
-        )
-      `)
-      .gte('recorded_at', `${from}T00:00:00.000Z`)
-      .lte('recorded_at', `${to}T23:59:59.999Z`);
-    if (studentIds && studentIds.length > 0) q = q.in('student_id', studentIds);
-
-    const { data } = await q;
+    const { data, error } = notesRes;
+    if (error) return NextResponse.json({ error: 'فشل تحميل الملاحظات: ' + error.message }, { status: 500 });
     const rows = (data || []).map((r: any) => ({
       id: r.id,
+      student_id: r.student_id,
       recorded_at: r.recorded_at,
       type: r.type,
       category: r.category,
@@ -370,12 +434,18 @@ export async function POST(request: NextRequest) {
       grade_name: r.students?.sections?.grades?.name,
       section_name: r.students?.sections?.name,
     }));
+    let positive = 0;
+    let negative = 0;
+    for (const row of rows) {
+      if (row.type === 'positive') positive += 1;
+      else if (row.type === 'negative') negative += 1;
+    }
     result.sections.notes = {
       rows,
       counts: {
         total: rows.length,
-        positive: rows.filter((r) => r.type === 'positive').length,
-        negative: rows.filter((r) => r.type === 'negative').length,
+        positive,
+        negative,
       },
     };
   }
