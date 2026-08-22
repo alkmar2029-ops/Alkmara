@@ -48,7 +48,7 @@ export async function proxy(request: NextRequest) {
     // we want them invisible to the internet. Allowlist what teachers DO need.
     if (path.startsWith('/api/')) {
       const teacherApiAllowlist = [
-        '/api/me/',                   // change password
+        '/api/me',                    // change password
         '/api/period-attendance',     // save + history
         '/api/periods',               // GET only — already RLS-restricted for writes
         '/api/grades',
@@ -56,7 +56,7 @@ export async function proxy(request: NextRequest) {
         '/api/students',
         '/api/settings',              // GET only — already RLS-restricted for writes
         '/api/teacher-registrations', // public submission
-        '/api/public/',               // public info (school name, etc.)
+        '/api/public',                // public info (school name, etc.)
         '/api/whatsapp/teacher-policy', // tiny boolean flags for teacher UI
         '/api/whatsapp/send-notes',   // teacher may send when admin toggle is ON
         '/api/student-notes',         // teachers record their own notes
@@ -64,7 +64,7 @@ export async function proxy(request: NextRequest) {
         '/api/teacher-assignments/me', // teacher's own assigned sections
         '/api/teacher-schedule/me',    // teacher's own weekly schedule
       ];
-      const allowed = teacherApiAllowlist.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'));
+      const allowed = teacherApiAllowlist.some((p) => path === p || path.startsWith(p + '/'));
       if (!allowed) {
         return NextResponse.json({ error: 'Endpoint غير متاح في هذه النسخة' }, { status: 404 });
       }
@@ -77,7 +77,7 @@ export async function proxy(request: NextRequest) {
   // the route. WORKER_SECRET is server-only and must be independently random.
   const publicApis = [
     '/api/teacher-registrations',
-    '/api/public/',
+    '/api/public',
     // Bulk-send worker is invoked internally without a session cookie. We
     // still gate it on a shared secret inside the route, so routing it past
     // the middleware auth check is safe. Each handler under this prefix
