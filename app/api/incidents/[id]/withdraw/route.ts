@@ -52,10 +52,8 @@ export const dynamic = 'force-dynamic';
 // 30-minute grace window for the submitter. Super bypasses.
 const WITHDRAW_WINDOW_MS = 30 * 60 * 1000;
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   // Gate: any role that could have submitted (per м3.4's
   // requireRole). The ownership / status / age checks below
   // narrow the actual permission to "submitter, fresh row" —

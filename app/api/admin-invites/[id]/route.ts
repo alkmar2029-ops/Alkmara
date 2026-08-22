@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 // DELETE — revoke an invite code (soft revoke). Used codes are kept for
 // audit; only their `revoked_at` flag is set. The validate endpoint
 // rejects any code with revoked_at set.
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await getAuthContext();
   if (!ctx) return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
   if (ctx.role !== 'super_admin') {

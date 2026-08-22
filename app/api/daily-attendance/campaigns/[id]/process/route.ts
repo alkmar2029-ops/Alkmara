@@ -20,7 +20,8 @@ const PACE_MS = 5_500;         // wasender 1-msg-per-5s + safety margin
 // internally via WORKER_SECRET so it can be called from create/resume without a
 // session cookie. Re-entrant: claims one recipient at a time via a
 // status update, so two concurrent workers never double-send.
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   // 1. Auth — internal-only.
   const expectedSecret = getWorkerSecret();
   if (!isWorkerRequest(request)) {

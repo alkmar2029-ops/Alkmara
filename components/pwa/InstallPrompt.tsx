@@ -102,8 +102,8 @@ export default function InstallPrompt() {
             </div>
             <ol className="mt-3 text-sm space-y-1.5 text-gray-700 dark:text-gray-200">
               <li>1. اضغط على زر <Share className="w-3.5 h-3.5 inline mx-1 text-blue-600" /> <strong>مشاركة</strong> في Safari (أسفل الشاشة)</li>
-              <li>2. اختر <strong>"إضافة إلى الشاشة الرئيسية"</strong></li>
-              <li>3. اضغط <strong>"إضافة"</strong></li>
+                    <li>2. اختر <strong>&quot;إضافة إلى الشاشة الرئيسية&quot;</strong></li>
+                    <li>3. اضغط <strong>&quot;إضافة&quot;</strong></li>
             </ol>
           </div>
         </div>

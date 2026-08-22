@@ -42,7 +42,8 @@ const STATUS_CONFIG = {
   skipped:  { label: 'تخطّي',        icon: AlertCircle,  cls: 'text-amber-600 dark:text-amber-400' },
 } as const;
 
-export default function BulkJobProgressPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+export default function BulkJobProgressPage(props: { params: Promise<Promise<{ id: string }> | { id: string }> }) {
+  const params = use(props.params);
   // Next 14 sometimes provides params as a plain object (server component)
   // and sometimes as a Promise (when 'use' hook is needed). Handle both.
   const resolvedParams = (params as any).then ? use(params as Promise<{ id: string }>) : params as { id: string };

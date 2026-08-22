@@ -32,10 +32,8 @@ const patchSchema = z.object({
 // their own note; super_admin can edit any note. Editing does NOT
 // retract an already-delivered WhatsApp message — the UI warns, and
 // the audit entry records whatsapp_already_sent.
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff', 'teacher']);
   if (!auth.ok) return auth.res;
 
@@ -141,10 +139,8 @@ export async function PATCH(
 // handler IS the security boundary (same pattern as the incidents
 // withdraw endpoint). Deleting does NOT retract an already-delivered
 // WhatsApp message; the audit entry preserves what was deleted.
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff', 'teacher']);
   if (!auth.ok) return auth.res;
 

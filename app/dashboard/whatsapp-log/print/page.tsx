@@ -84,7 +84,7 @@ function PrintBody() {
     return () => { document.title = 'نظام الحضور'; };
   }, [from]);
 
-  const messages = data?.data || [];
+  const messages = useMemo(() => data?.data || [], [data?.data]);
 
   // Group counts for the summary header.
   const groups = useMemo(() => {

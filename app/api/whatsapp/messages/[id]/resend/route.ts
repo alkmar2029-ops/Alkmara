@@ -9,7 +9,8 @@ export const dynamic = 'force-dynamic';
 // We keep the old failed row as a history record and write a fresh row for
 // the new attempt — so the log shows both attempts and the audit trail stays
 // honest.
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
 

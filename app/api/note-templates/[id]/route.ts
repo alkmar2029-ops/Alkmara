@@ -6,10 +6,8 @@ import { updateNoteTemplateSchema, validateBody } from '@/lib/validations/schema
 export const dynamic = 'force-dynamic';
 
 // PATCH — partial update of a template. Admin only.
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin']);
   if (!auth.ok) return auth.res;
 
@@ -62,10 +60,8 @@ export async function PATCH(
 }
 
 // DELETE — hard delete (no soft-delete column). Admin only.
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin']);
   if (!auth.ok) return auth.res;
 

@@ -2,7 +2,6 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -30,8 +29,6 @@ interface TodayResponse {
 }
 
 interface MyContext { is_super_admin: boolean; role?: string }
-interface MyProfile { permissions?: Record<string, boolean> }
-
 export default function SupervisionTodayPage() {
   const qc = useQueryClient();
 

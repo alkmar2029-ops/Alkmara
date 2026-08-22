@@ -32,15 +32,16 @@ export function detectIntent(query: string): SearchIntent {
   const q = query.trim();
   if (!q) return { type: 'plain', value: '' };
 
-  // 10 consecutive digits = student_id (Saudi national ID format)
-  if (/^\d{10}$/.test(q.replace(/\D/g, '')) && q.replace(/\D/g, '').length === 10) {
-    return { type: 'student_id', value: q.replace(/\D/g, '') };
-  }
-
   // Phone pattern: +966xxxxxxxxx or 05xxxxxxxx
   const phoneClean = q.replace(/[^\d+]/g, '');
   if (/^(\+?966\d{9}|05\d{8})$/.test(phoneClean)) {
     return { type: 'phone', value: phoneClean };
+  }
+
+  // 10 consecutive digits = student_id (Saudi national ID format).
+  // Check phone first because the local 05XXXXXXXX format is also 10 digits.
+  if (/^\d{10}$/.test(q.replace(/\D/g, '')) && q.replace(/\D/g, '').length === 10) {
+    return { type: 'student_id', value: q.replace(/\D/g, '') };
   }
 
   // "1/3" or "الأول/3" → section reference

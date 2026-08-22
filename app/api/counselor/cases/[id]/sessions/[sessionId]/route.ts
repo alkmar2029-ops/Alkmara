@@ -42,8 +42,9 @@ const paramsSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string; sessionId: string } },
+  props: { params: Promise<{ id: string; sessionId: string }> }
 ) {
+  const params = await props.params;
   const auth = await requireCounselorWorkspace();
   if (!auth.ok) return auth.res;
 

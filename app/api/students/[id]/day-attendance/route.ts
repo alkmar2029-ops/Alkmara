@@ -29,10 +29,8 @@ export const dynamic = 'force-dynamic';
 //   - 'present'       → session was recorded for the section but no
 //                       absence row → student was present
 //   - 'not_recorded'  → no session exists for that section/period yet
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
 

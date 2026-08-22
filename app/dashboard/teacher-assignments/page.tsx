@@ -4,8 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  UserCog, Loader2, Save, Search, CheckSquare, Square, Users,
-  GraduationCap, AlertCircle, Filter,
+  UserCog, Loader2, Save, Search, CheckSquare,
+  AlertCircle, Filter,
 } from 'lucide-react';
 
 interface Teacher {
@@ -273,7 +273,7 @@ export default function TeacherAssignmentsPage() {
             <ul className="text-xs mt-1 space-y-0.5 list-disc ps-5 text-blue-800 dark:text-blue-100/90">
               <li>المعلم يرى فقط طلاب الشعب المُعيَّن لها</li>
               <li>لا يستطيع تسجيل حضور أو ملاحظات لشعبة غير معيَّنة</li>
-              <li>تعديلاتك على صف معلم تُحفَظ بضغط زر "حفظ" بجانبه</li>
+              <li>تعديلاتك على صف معلم تُحفَظ بضغط زر &quot;حفظ&quot; بجانبه</li>
             </ul>
           </div>
         </div>

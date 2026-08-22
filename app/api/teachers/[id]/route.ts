@@ -8,7 +8,8 @@ import { normalizePhone } from '@/lib/teachers/credentials';
 export const dynamic = 'force-dynamic';
 
 // PATCH — update name, phone, or active flag.
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 
@@ -57,7 +58,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 // DELETE — hard delete (cascades to attendance via FK ON DELETE SET NULL).
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 

@@ -6,7 +6,8 @@ import { updateMessageTemplateSchema, validateBody } from '@/lib/validations/sch
 export const dynamic = 'force-dynamic';
 
 // GET single template by name — used by the editor to load current body.
-export async function GET(_req: NextRequest, { params }: { params: { name: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ name: string }> }) {
+  const params = await props.params;
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from('message_templates')
@@ -19,7 +20,8 @@ export async function GET(_req: NextRequest, { params }: { params: { name: strin
 }
 
 // PATCH — update body / is_active / description. Admin only.
-export async function PATCH(request: NextRequest, { params }: { params: { name: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ name: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin']);
   if (!auth.ok) return auth.res;
 

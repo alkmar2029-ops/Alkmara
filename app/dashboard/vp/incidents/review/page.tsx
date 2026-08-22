@@ -20,13 +20,13 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  AlertCircle, AlertTriangle, ArrowUp, CheckCircle, ClipboardCheck,
-  ClipboardX, Clock, Eye, FileText, Filter, RefreshCw, ShieldAlert,
-  Users as UsersIcon, X,
+  AlertCircle, ArrowUp, CheckCircle, ClipboardCheck,
+  ClipboardX, Clock, Eye, Filter, RefreshCw, ShieldAlert,
+  Users as UsersIcon,
 } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 import { usePersona } from '@/lib/hooks/usePersona';
@@ -480,8 +480,8 @@ function DecisionModal({
   target: { incident: PendingIncident; mode: DecisionMode };
   isPending: boolean;
   onCancel: () => void;
-  onConfirmDismiss: (review_notes: string) => void;
-  onConfirmAction: (action_taken: string, parent_notified: boolean) => void;
+  onConfirmDismiss: (_review_notes: string) => void;
+  onConfirmAction: (_action_taken: string, _parent_notified: boolean) => void;
 }) {
   const isDismiss = target.mode === 'dismiss';
   const [note, setNote] = useState('');
@@ -629,7 +629,7 @@ function EscalateModal({
   incident: PendingIncident;
   isPending: boolean;
   onCancel: () => void;
-  onConfirm: (case_type: string | undefined, description: string | undefined) => void;
+  onConfirm: (_case_type: string | undefined, _description: string | undefined) => void;
 }) {
   const [caseType, setCaseType] = useState('');
   const [desc, setDesc] = useState('');

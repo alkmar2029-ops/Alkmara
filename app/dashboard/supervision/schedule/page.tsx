@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import {
-  Calendar, ArrowRight, Loader2, X, Save, MapPin, Users,
+  Calendar, ArrowRight, Loader2, X, MapPin, Users,
   Search, Trash2,
 } from 'lucide-react';
 

@@ -5,9 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   AlertTriangle, Phone, Loader2, RefreshCw, Search, Save, X,
-  Edit3, Send, ExternalLink, Printer,
+  Edit3,
 } from 'lucide-react';
-import Link from 'next/link';
 
 interface FailedNumberRow {
   phone: string;

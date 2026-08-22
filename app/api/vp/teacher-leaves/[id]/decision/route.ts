@@ -37,10 +37,8 @@ const bodySchema = z
   })
   .strict();
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireApproveTeacherLeave();
   if (!auth.ok) return auth.res;
 

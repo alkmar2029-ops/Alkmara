@@ -402,7 +402,7 @@ function DateField({
 }: {
   label: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (_v: string) => void;
 }) {
   return (
     <label className="flex items-center gap-1.5 text-xs">
@@ -451,7 +451,7 @@ function LeavesTable({
 }: {
   rows: LeaveRow[];
   canDecide: boolean;
-  onDecide: (leave: LeaveRow, mode: 'approved' | 'rejected') => void;
+  onDecide: (_leave: LeaveRow, _mode: 'approved' | 'rejected') => void;
 }) {
   return (
     <div className="card p-0 overflow-hidden">
@@ -490,7 +490,7 @@ function LeaveRow({
 }: {
   row: LeaveRow;
   canDecide: boolean;
-  onDecide: (leave: LeaveRow, mode: 'approved' | 'rejected') => void;
+  onDecide: (_leave: LeaveRow, _mode: 'approved' | 'rejected') => void;
 }) {
   const typeLabel = LEAVE_TYPE_LABELS[row.leave_type as LeaveType] ?? row.leave_type;
   const statusLabel = STATUS_LABELS[row.status as LeaveStatus] ?? row.status;
@@ -582,7 +582,7 @@ function DecisionModal({
 }: {
   target: { leave: LeaveRow; mode: 'approved' | 'rejected' };
   onCancel: () => void;
-  onConfirm: (decision_note: string) => void;
+  onConfirm: (_decision_note: string) => void;
   isPending: boolean;
 }) {
   const [note, setNote] = useState('');
@@ -718,7 +718,7 @@ function CreateLeaveModal({
   onCancel, onSubmit, isPending,
 }: {
   onCancel: () => void;
-  onSubmit: (vars: {
+  onSubmit: (_vars: {
     teacher_user_id: string;
     start_date: string;
     end_date: string;
@@ -795,7 +795,7 @@ function CreateLeaveModal({
             <h2 className="font-bold text-base">تسجيل طلب إجازة جديد</h2>
           </div>
           <p className="text-[11px] text-gray-600 dark:text-gray-400 mt-1">
-            الطلب يُحفظ بالحالة "قيد البتّ" — اعتماده لاحقًا يُنشئ غياب اليوم.
+                  الطلب يُحفظ بالحالة &quot;قيد البتّ&quot; — اعتماده لاحقًا يُنشئ غياب اليوم.
           </p>
         </div>
 

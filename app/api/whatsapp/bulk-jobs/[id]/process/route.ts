@@ -41,7 +41,8 @@ function classifyError(err: string | null | undefined): string {
 // cookie. Re-entrant: if it runs out
 // of time it triggers itself to resume; the `claim`-style update prevents
 // two concurrent workers from double-sending the same recipient.
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   // 1. Auth — internal-only via shared secret. The trigger in the bulk-
   // remind POST handler sets this header.
   const expectedSecret = getWorkerSecret();

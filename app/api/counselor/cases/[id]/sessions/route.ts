@@ -101,10 +101,8 @@ const bodySchema = z.object({
     .nullable(),
 });
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireCounselorWorkspace();
   if (!auth.ok) return auth.res;
 

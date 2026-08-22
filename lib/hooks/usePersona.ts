@@ -43,7 +43,7 @@ export interface UsePersonaResult {
    * somehow carries flags still returns false. Use this for ALL
    * flag-based UI gating; never read data.permissions[flag] directly.
    */
-  can: (flag: string) => boolean;
+  can: (_flag: string) => boolean;
 }
 
 /**

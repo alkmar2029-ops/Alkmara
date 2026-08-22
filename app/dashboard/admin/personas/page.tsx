@@ -220,7 +220,7 @@ function UsersTable({
   list, onEdit,
 }: {
   list: PersonaListItem[];
-  onEdit: (u: PersonaListItem) => void;
+  onEdit: (_u: PersonaListItem) => void;
 }) {
   return (
     <div className="card overflow-x-auto p-0">
@@ -490,7 +490,7 @@ function EditPersonaModal({
               </select>
               {vpScope === null && (
                 <p className="text-[11px] text-red-700 dark:text-red-400 mt-1">
-                  مطلوب: persona='vice_principal' يحتاج vp_scope.
+              مطلوب: persona=&apos;vice_principal&apos; يحتاج vp_scope.
                 </p>
               )}
             </Section>
@@ -614,7 +614,7 @@ function FlagSection({
   keys: readonly string[];
   labels: Record<string, { label: string; emoji: string }>;
   flags: Record<string, boolean>;
-  onChange: (key: string, value: boolean) => void;
+  onChange: (_key: string, _value: boolean) => void;
 }) {
   return (
     <Section title={title}>

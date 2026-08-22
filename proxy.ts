@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -74,8 +74,7 @@ export async function middleware(request: NextRequest) {
   // Public APIs (no auth required) — kept narrow for safety.
   // The bulk-send worker is "public" only in the sense that the middleware
   // doesn't block it — it enforces its own auth via x-worker-secret inside
-  // the route, and the secret is derived from SUPABASE_SERVICE_ROLE_KEY so
-  // only server-side code that already has DB-admin power can call it.
+  // the route. WORKER_SECRET is server-only and must be independently random.
   const publicApis = [
     '/api/teacher-registrations',
     '/api/public/',

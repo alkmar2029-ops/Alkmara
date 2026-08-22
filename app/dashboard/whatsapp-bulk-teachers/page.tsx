@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Send, Loader2, MessageCircle, Users, AlertCircle,
+  Send, Loader2, MessageCircle, Users,
   Eye, Mail, Sparkles, History,
 } from 'lucide-react';
 

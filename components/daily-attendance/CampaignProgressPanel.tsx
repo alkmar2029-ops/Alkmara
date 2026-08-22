@@ -86,7 +86,7 @@ export default function CampaignProgressPanel({
       const t = setTimeout(() => setAutoHide(true), 30_000);
       return () => clearTimeout(t);
     }
-  }, [campaign?.id, campaign?.status, soundEnabled, terminalSoundPlayed]);
+  }, [campaign, soundEnabled, terminalSoundPlayed]);
 
   // beforeunload guard while running.
   useEffect(() => {
@@ -100,7 +100,7 @@ export default function CampaignProgressPanel({
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [campaign?.status]);
+  }, [campaign]);
 
   const pauseMut = useMutation({
     mutationFn: async () => {

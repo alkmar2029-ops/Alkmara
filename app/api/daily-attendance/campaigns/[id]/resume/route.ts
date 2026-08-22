@@ -6,7 +6,8 @@ import { getWorkerSecret } from '@/lib/security/worker-secret';
 export const dynamic = 'force-dynamic';
 
 // POST — resume a paused campaign by retriggering the worker.
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
 

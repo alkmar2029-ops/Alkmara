@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   ArrowRight, User, Phone, Hash, BookOpen, MessageCircle,
   Loader2, AlertCircle, MessageSquarePlus, LogOut as ExitIcon,
-  ClipboardCheck, Send, BarChart3, Shield, ShieldAlert, FileText, UserCheck, UserX,
+  ClipboardCheck, BarChart3, Shield, ShieldAlert, FileText, UserCheck, UserX,
 } from 'lucide-react';
 
 interface StudentDetail {

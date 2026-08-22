@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState, Suspense } from 'react';
+import { useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Printer, Loader2, ArrowRight, X } from 'lucide-react';
+import { Printer, Loader2, ArrowRight } from 'lucide-react';
 
 interface Student {
   id: number;
@@ -265,7 +265,7 @@ function StudentsPrintInner() {
   );
 }
 
-function ColCheck({ label, v, on }: { label: string; v: boolean; on: (v: boolean) => void }) {
+function ColCheck({ label, v, on }: { label: string; v: boolean; on: (_v: boolean) => void }) {
   return (
     <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer">
       <input type="checkbox" checked={v} onChange={(e) => on(e.target.checked)} className="w-4 h-4" />

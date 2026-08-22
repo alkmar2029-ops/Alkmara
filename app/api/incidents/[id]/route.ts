@@ -46,10 +46,8 @@ const editIncidentSchema = z
   })
   .strict();
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['teacher', 'admin', 'super_admin']);
   if (!auth.ok) return auth.res;
 

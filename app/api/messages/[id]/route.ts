@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 
 // PATCH — change status (mark read / archive / close). Only the recipient can.
 // RLS enforces this; we additionally set read_at when status moves to 'read'.
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await getAuthContext();
   if (!ctx) return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
 

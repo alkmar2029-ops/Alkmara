@@ -8,7 +8,8 @@ export const dynamic = 'force-dynamic';
 // POST — re-queue every failed recipient and restart the campaign.
 // Useful after fixing the underlying cause (e.g., a wasender hiccup,
 // or a phone number was updated).
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
 

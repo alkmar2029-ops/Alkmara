@@ -4,7 +4,7 @@ import { useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Printer, ArrowRight, ThumbsUp, ThumbsDown, Loader2, Send, MessageCircle } from 'lucide-react';
+import { Printer, ArrowRight, ThumbsUp, ThumbsDown, Loader2, MessageCircle } from 'lucide-react';
 
 interface NoteRow {
   id: number;

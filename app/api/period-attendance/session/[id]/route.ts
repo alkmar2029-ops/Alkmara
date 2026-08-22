@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 //   • status notes if any
 //
 // Shaped so the UI can render lists by status without follow-up queries.
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await getAuthContext();
   if (!ctx) return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
 
@@ -162,7 +163,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 // Used to clear out test data, fix mistaken saves, or wipe a session a
 // teacher recorded against the wrong section. Restricted to admin so a
 // teacher can't quietly erase their own attendance history.
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin']);
   if (!auth.ok) return auth.res;
 

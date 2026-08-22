@@ -333,7 +333,7 @@ function AbsentColumn({
 }: {
   absences: AbsenceDetail[];
   selectedId: number | null;
-  onSelect: (id: number) => void;
+  onSelect: (_id: number) => void;
 }) {
   return (
     <div className="card">
@@ -402,7 +402,7 @@ function PeriodsColumn({
 }: {
   absence: AbsenceDetail | null;
   selectedPeriod: number | null;
-  onPickPeriod: (period: number) => void;
+  onPickPeriod: (_period: number) => void;
   canManage: boolean;
 }) {
   if (!absence) {
@@ -462,7 +462,7 @@ function PeriodsStatsPill({ stats }: { stats: AbsenceDetail['stats'] }) {
 }
 
 function PeriodRow({
-  period, isSelected, onPick, canManage,
+  period, isSelected, onPick, canManage: _canManage,
 }: {
   period: PeriodSlot;
   isSelected: boolean;
@@ -561,7 +561,7 @@ function SuggestionsColumn({
   absence: AbsenceDetail | null;
   canManage: boolean;
   isAssigning: boolean;
-  onPick: (substitute_user_id: string) => void;
+  onPick: (_substitute_user_id: string) => void;
 }) {
   if (!slot || periodNumber === null || !absence) {
     return (

@@ -5,8 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Inbox, Send as SendIcon, Archive, MailOpen, Mail, User,
-  GraduationCap, Loader2, Reply, ChevronLeft, X, Search, MessageCircle,
-  CheckCircle2, AlertCircle,
+  GraduationCap, Loader2, Reply, X, Search, MessageCircle,
 } from 'lucide-react';
 import type { InternalMessage } from '@/lib/types/database';
 
@@ -271,15 +270,14 @@ function MessageItem({ msg, box, onOpen, onArchive }: { msg: InternalMessage; bo
   );
 }
 
-function MessageDetailModal({ message, role, onClose, onReply }: { message: InternalMessage; role: string; onClose: () => void; onReply: () => void }) {
-  const [thread, setThread] = useState<InternalMessage[]>([]);
+function MessageDetailModal({ message, role: _role, onClose, onReply }: { message: InternalMessage; role: string; onClose: () => void; onReply: () => void }) {
   const { data: threadData } = useQuery<InternalMessage[]>({
     queryKey: ['thread', message.thread_id],
     queryFn: async () => (await (await fetch(`/api/messages?thread_id=${message.thread_id}&box=all&limit=50`)).json()).data,
   });
 
-  useMemo(() => {
-    if (threadData) setThread([...threadData].sort((a, b) => a.created_at.localeCompare(b.created_at)));
+  const thread = useMemo(() => {
+    return threadData ? [...threadData].sort((a, b) => a.created_at.localeCompare(b.created_at)) : [];
   }, [threadData]);
 
   const dateAr = (s: string) => new Date(s).toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' });
@@ -338,7 +336,7 @@ function ComposeModal({ role, context, onClose, onSent }: { role: string; contex
     context.defaultRecipientId ? 'specific' : 'role'
   );
   const [recipientId, setRecipientId] = useState<string>(context.defaultRecipientId || '');
-  const [recipientRole, setRecipientRole] = useState<'admin' | 'teacher'>(
+  const [recipientRole] = useState<'admin' | 'teacher'>(
     role === 'teacher' ? 'admin' : 'teacher'
   );
   const [subject, setSubject] = useState(context.defaultSubject || '');

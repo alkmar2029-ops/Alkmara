@@ -19,7 +19,8 @@ const updateSchema = z.object({
 });
 
 // PATCH — approve or reject. Super-admin only.
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await getAuthContext();
   if (!ctx) return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
   if (ctx.role !== 'super_admin') {
@@ -197,7 +198,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   });
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await getAuthContext();
   if (!ctx) return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
   if (ctx.role !== 'super_admin') {

@@ -537,7 +537,7 @@ export default function PeriodAttendancePage() {
 }
 
 // =================== Detail modal ===================
-function SessionDetailModal({ sessionId, onClose, onEdit }: { sessionId: number; onClose: () => void; onEdit?: (t: RecordTarget) => void }) {
+function SessionDetailModal({ sessionId, onClose, onEdit }: { sessionId: number; onClose: () => void; onEdit?: (_t: RecordTarget) => void }) {
   const qc = useQueryClient();
   const { can, isSuperAdmin } = usePersona();
   const canRecord = isSuperAdmin || can('take_attendance');

@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 
 // POST — cancel a campaign. Stops further sends; recipients already
 // processed stay marked sent/failed.
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
 

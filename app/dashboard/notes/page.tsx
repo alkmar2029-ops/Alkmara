@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   MessageSquarePlus, Search, Mic, MicOff, Save, X, ThumbsUp, ThumbsDown,
-  CheckSquare, Square, Loader2, Eraser, Sparkles, AlertCircle, Users, ChevronDown, ChevronUp, Trash2,
+  CheckSquare, Square, Loader2, Eraser, AlertCircle, Users, ChevronDown, ChevronUp, Trash2,
 } from 'lucide-react';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import { STAGE_LABELS } from '@/lib/utils/helpers';
@@ -121,7 +121,7 @@ function NotesPageInner() {
   const [sendWhatsapp, setSendWhatsapp] = useState(true);
 
   // ---- Data fetching ----
-  const { data: settings } = useQuery({
+  useQuery({
     queryKey: ['settings'],
     queryFn: async () => (await (await fetch('/api/settings')).json()).data,
   });
@@ -154,8 +154,6 @@ function NotesPageInner() {
   // right one → search "خالد" → pick → save for both at once.
   const trimmedSearch = search.trim();
   const searchActive = trimmedSearch.length >= 2;
-  const isCrossSchoolSearch = searchActive && !sectionId;
-
   const { data: studentsResp, isLoading: studentsLoading } = useQuery<{ data: Student[] }>({
     queryKey: ['students-for-notes', sectionId, trimmedSearch],
     queryFn: async () => {

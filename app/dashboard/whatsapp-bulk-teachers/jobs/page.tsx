@@ -63,7 +63,7 @@ export default function BulkJobsHistoryPage() {
           <div className="text-center py-12"><Loader2 className="w-6 h-6 animate-spin inline text-gray-400" /></div>
         ) : jobs.length === 0 ? (
           <div className="text-center py-12 text-sm text-gray-500 dark:text-gray-400">
-            لا توجد مهام سابقة بعد. أرسل أول تذكير جماعي من زر "تذكير جديد".
+        لا توجد مهام سابقة بعد. أرسل أول تذكير جماعي من زر &quot;تذكير جديد&quot;.
           </div>
         ) : (
           <ul className="divide-y divide-gray-200 dark:divide-gray-800">

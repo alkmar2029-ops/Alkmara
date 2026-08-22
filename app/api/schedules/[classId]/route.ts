@@ -5,7 +5,8 @@ import { requireRole } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_: NextRequest, { params }: { params: { classId: string } }) {
+export async function GET(_: NextRequest, props: { params: Promise<{ classId: string }> }) {
+  const params = await props.params;
   const supabase = await createServerSupabaseClient();
   const classId = parseInt(params.classId);
 
@@ -23,7 +24,8 @@ export async function GET(_: NextRequest, { params }: { params: { classId: strin
   return NextResponse.json({ data: data || [] });
 }
 
-export async function POST(request: NextRequest, { params }: { params: { classId: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ classId: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin']);
   if (!auth.ok) return auth.res;
 

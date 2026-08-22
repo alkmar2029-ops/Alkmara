@@ -24,7 +24,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, use } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -201,7 +201,8 @@ function mergeTimeline(data: CaseDetailResponse): TimelineEvent[] {
 // Page
 // =====================================================================
 
-export default function CounselorCaseDetail({ params }: { params: { id: string } }) {
+export default function CounselorCaseDetail(props: { params: Promise<{ id: string }> }) {
+  const params = use(props.params);
   const { isSuperAdmin, isCounselor, isLoading: personaLoading } = usePersona();
   const canView = isSuperAdmin || isCounselor;
   const caseId = params.id;

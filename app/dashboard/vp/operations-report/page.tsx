@@ -23,12 +23,12 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertCircle, AlertTriangle, BookOpen, Calendar, CheckCircle, Clock,
-  Eye, FileBarChart, FolderOpen, LogOut, Printer, RefreshCw,
-  Shield, UserCheck, Users as UsersIcon,
+  FileBarChart, FolderOpen, LogOut, Printer, RefreshCw,
+  Shield, UserCheck,
 } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 import { usePersona } from '@/lib/hooks/usePersona';
@@ -275,7 +275,7 @@ function QuickDate({
   label: string;
   current: string;
   target: string;
-  onClick: (date: string) => void;
+  onClick: (_date: string) => void;
 }) {
   const active = current === target;
   return (

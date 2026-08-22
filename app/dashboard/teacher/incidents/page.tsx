@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 import {
-  INCIDENT_STATUSES,
   INCIDENT_STATUS_LABELS,
   INCIDENT_TYPES,
   INCIDENT_TYPE_LABELS,

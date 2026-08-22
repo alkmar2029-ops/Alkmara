@@ -5,7 +5,8 @@ import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 export const dynamic = 'force-dynamic';
 
 // GET — single job + per-recipient list. Used by the live progress page.
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
 
@@ -37,7 +38,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 // DELETE — cancel a job. Marks the row as cancelled; the worker checks
 // this on each loop iteration and exits cleanly. Recipients already sent
 // are NOT recalled — WhatsApp doesn't support unsend.
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin']);
   if (!auth.ok) return auth.res;
 

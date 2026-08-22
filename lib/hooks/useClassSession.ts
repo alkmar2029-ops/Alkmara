@@ -27,8 +27,8 @@ interface StoredSession extends ClassSessionState {
  */
 export function useClassSession(): {
   session: ClassSessionState;
-  setSession: (next: ClassSessionState) => void;
-  patch: (next: Partial<ClassSessionState>) => void;
+  setSession: (_next: ClassSessionState) => void;
+  patch: (_next: Partial<ClassSessionState>) => void;
   clear: () => void;
   loaded: boolean;
 } {

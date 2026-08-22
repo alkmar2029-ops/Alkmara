@@ -13,7 +13,8 @@ const ADMIN_ACTIONS = new Set(['clear-logs', 'push-users', 'pull-logs']);
 // Staff or admin: connection / read-only operations.
 const STAFF_ACTIONS = new Set(['connect', 'disconnect', 'sync-time', 'info', 'users', 'compare']);
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const supabase = await createServerSupabaseClient();
   const deviceId = parseInt(params.id);
   if (isNaN(deviceId)) {

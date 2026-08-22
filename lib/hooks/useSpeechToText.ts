@@ -21,13 +21,15 @@ interface SpeechRecognitionInstance extends EventTarget {
   start(): void;
   stop(): void;
   abort(): void;
-  onresult: ((e: SpeechRecognitionEvent) => void) | null;
-  onerror: ((e: SpeechRecognitionErrorEvent) => void) | null;
+  onresult: ((_e: SpeechRecognitionEvent) => void) | null;
+  onerror: ((_e: SpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
 }
 
 declare global {
+  // ESLint cannot see that TypeScript consumes this global DOM augmentation.
+  // eslint-disable-next-line no-unused-vars
   interface Window {
     SpeechRecognition?: { new (): SpeechRecognitionInstance };
     webkitSpeechRecognition?: { new (): SpeechRecognitionInstance };

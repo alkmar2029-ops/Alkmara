@@ -25,7 +25,7 @@ export default function NoAssignmentsEmpty() {
             حتى تُعيّنك الإدارة على الشعب التي تُدرّسها.
           </p>
           <p className="text-xs text-amber-700 dark:text-amber-400 mt-3">
-            🌹 تواصل مع إدارة المدرسة لتفعيل حسابك. يمكنك إرسال رسالة داخلية من تبويب "الرسائل".
+          🌹 تواصل مع إدارة المدرسة لتفعيل حسابك. يمكنك إرسال رسالة داخلية من تبويب &quot;الرسائل&quot;.
           </p>
           <a
             href="/teacher/messages"

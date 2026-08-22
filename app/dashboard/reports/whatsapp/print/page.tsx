@@ -65,7 +65,7 @@ function PrintInner() {
     queryFn: async () => (await (await fetch('/api/settings')).json()).data || {},
   });
 
-  const messages = data?.data || [];
+  const messages = useMemo(() => data?.data || [], [data?.data]);
 
   // Auto-trigger the print dialog once data is loaded.
   useEffect(() => {

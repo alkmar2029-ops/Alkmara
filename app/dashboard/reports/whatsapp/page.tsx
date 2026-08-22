@@ -161,7 +161,7 @@ function ReportInner() {
     queryFn: async () => (await fetch(`/api/whatsapp/messages?${queryString}`)).json(),
   });
 
-  const messages = data?.data || [];
+  const messages = useMemo(() => data?.data || [], [data?.data]);
   const stats = data?.stats || { success: 0, failed: 0, today: 0, last_24h: 0 };
 
   // Selected student/teacher labels for the filter chip strip.
@@ -483,8 +483,8 @@ function MessagesTable({
 }: {
   messages: Msg[];
   expanded: number | null;
-  setExpanded: (id: number | null) => void;
-  onShowRelated: (contextId: string) => void;
+  setExpanded: (_id: number | null) => void;
+  onShowRelated: (_contextId: string) => void;
   compact?: boolean;
 }) {
   return (

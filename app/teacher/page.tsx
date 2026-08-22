@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -215,7 +215,7 @@ function TeacherEntryPage() {
     },
     enabled: !!sectionId,
   });
-  const students = studentsResp?.data || [];
+  const students = useMemo(() => studentsResp?.data || [], [studentsResp?.data]);
 
   // Auto-pick first period and the teacher's first ASSIGNED grade. If the
   // url-prefilled gradeId points to a grade that's no longer in the
@@ -234,11 +234,11 @@ function TeacherEntryPage() {
 
   // Reset section when grade changes — but skip the first run so URL-prefilled
   // section_id (edit mode) survives initial mount.
-  const gradeChangeCount = useMemo(() => ({ count: 0 }), []);
+  const gradeChangeCount = useRef(0);
   useEffect(() => {
-    gradeChangeCount.count++;
-    if (gradeChangeCount.count > 1) setSectionId(null);
-  }, [gradeId, gradeChangeCount]);
+    gradeChangeCount.current++;
+    if (gradeChangeCount.current > 1) setSectionId(null);
+  }, [gradeId]);
   useEffect(() => {
     setStatuses({});
     setCascadeApplied(new Set());

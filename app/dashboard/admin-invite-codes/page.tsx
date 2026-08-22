@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   KeyRound, Plus, Loader2, Copy, MessageCircle, Trash2, Clock,
-  CheckCircle2, XCircle, Search, X,
+  Search, X,
 } from 'lucide-react';
 
 interface InviteCode {

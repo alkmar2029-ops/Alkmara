@@ -19,7 +19,8 @@ export const maxDuration = 60;
 // On approve we do the *full* teacher-creation dance (auth user → profile →
 // WhatsApp). On reject we just flip the status. Either way, the row is left
 // in the table so admin can see history.
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 
@@ -206,7 +207,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 // DELETE — admin can hard-delete a row (cleanup of old/spam applications).
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 

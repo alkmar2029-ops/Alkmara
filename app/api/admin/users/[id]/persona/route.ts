@@ -80,10 +80,8 @@ type AuditDiff = {
   flags?: Record<string, ChangePair<boolean>>;
 };
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   // ============= Gate: super_admin OR manage_users =============
   // Centralised in lib/personas/auth-gate.ts. Refactored 2026-05-20 to
   // match م1.3 and م1.5 — was inline before.

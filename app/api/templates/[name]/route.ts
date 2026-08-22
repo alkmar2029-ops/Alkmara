@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 
 const NO_STORE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' };
 
-export async function GET(_req: NextRequest, { params }: { params: { name: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ name: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
 
@@ -22,7 +23,8 @@ export async function GET(_req: NextRequest, { params }: { params: { name: strin
   return NextResponse.json({ data }, { headers: NO_STORE });
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { name: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ name: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin']);
   if (!auth.ok) return auth.res;
 

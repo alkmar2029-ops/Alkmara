@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { Calendar, Loader2, Users, Eye, ClipboardCheck, Coffee } from 'lucide-react';
+import { Calendar, Loader2, Eye, ClipboardCheck, Coffee } from 'lucide-react';
 
 interface ScheduleSlot {
   id: number;

@@ -341,7 +341,7 @@ export default function StudentDayDrawer({
                   </table>
                 </div>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
-                  💡 الحصص الموسومة بـ"لم يُسجَّل" يعني المعلم لم يُسجِّل الحضور بعد لتلك الحصة.
+                    💡 الحصص الموسومة بـ&quot;لم يُسجَّل&quot; يعني المعلم لم يُسجِّل الحضور بعد لتلك الحصة.
                 </p>
               </div>
 

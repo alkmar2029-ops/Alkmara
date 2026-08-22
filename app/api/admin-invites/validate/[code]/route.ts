@@ -1,4 +1,5 @@
 import { createAdminSupabaseClient } from '@/lib/supabase/server';
+import { checkRateLimit, clientIp } from '@/lib/security/rate-limit';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,25 @@ export const dynamic = 'force-dynamic';
 // Not authenticated — middleware allowlists this path. Always returns the
 // same response shape for invalid/expired/used codes (with `valid: false`)
 // so a malicious caller can't probe for which codes exist.
-export async function GET(_req: NextRequest, { params }: { params: { code: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
+  // This endpoint necessarily reveals whether a possession-based invite is
+  // usable. Bound automated guessing before touching the service-role client.
+  const ip = clientIp(_req);
+  const rl = checkRateLimit(`validate-admin-invite:${ip}`, 30, 10 * 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { data: { valid: false, reason: 'rate_limited' } },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rl.resetIn),
+          'Cache-Control': 'no-store',
+        },
+      },
+    );
+  }
+
   const code = (params.code || '').toUpperCase().trim();
   if (!code || !/^[A-Z0-9-]{3,30}$/.test(code)) {
     return NextResponse.json({ data: { valid: false, reason: 'invalid_format' } });

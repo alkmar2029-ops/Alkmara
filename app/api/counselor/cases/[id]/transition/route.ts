@@ -69,10 +69,8 @@ const bodySchema = z.object({
   reopen_reason: z.string().trim().max(2000).optional().nullable(),
 });
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireCounselorWorkspace();
   if (!auth.ok) return auth.res;
 

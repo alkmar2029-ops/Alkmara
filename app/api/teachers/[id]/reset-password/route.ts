@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // POST — generate a new password for a teacher and resend via WhatsApp.
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 

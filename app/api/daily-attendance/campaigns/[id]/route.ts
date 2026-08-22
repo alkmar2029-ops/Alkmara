@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 // GET — campaign snapshot for polling. Returns the row + a small
 // `recent` array of the last few outcomes so the UI can show "last
 // recipients sent".
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff', 'viewer']);
   if (!auth.ok) return auth.res;
 

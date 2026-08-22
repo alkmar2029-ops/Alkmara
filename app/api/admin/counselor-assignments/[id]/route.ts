@@ -18,10 +18,8 @@ import { requireManageUsers } from '@/lib/personas/auth-gate';
 
 export const dynamic = 'force-dynamic';
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManageUsers();
   if (!auth.ok) return auth.res;
 

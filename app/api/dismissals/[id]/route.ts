@@ -5,7 +5,8 @@ import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 export const dynamic = 'force-dynamic';
 
 // GET — single dismissal record (used by the print exit-pass page).
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
 
@@ -60,7 +61,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 // DELETE — admin only. Auto-excused period_absences rows are NOT rolled
 // back automatically; teachers can correct them manually if needed. The
 // deleted row is logged in audit_logs for accountability.
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin']);
   if (!auth.ok) return auth.res;
 

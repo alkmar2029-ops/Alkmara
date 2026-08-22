@@ -56,8 +56,9 @@ const bodySchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string; planId: string } },
+  props: { params: Promise<{ id: string; planId: string }> }
 ) {
+  const params = await props.params;
   const auth = await requireCounselorWorkspace();
   if (!auth.ok) return auth.res;
 

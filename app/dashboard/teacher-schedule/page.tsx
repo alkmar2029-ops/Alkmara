@@ -4,10 +4,10 @@ import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Upload, Loader2, CheckCircle2, AlertTriangle, X, Save, FileSpreadsheet,
-  Calendar, Users, BookOpen, UserPlus,
+  Upload, Loader2, CheckCircle2, Save, FileSpreadsheet,
+  Calendar, Users, UserPlus,
 } from 'lucide-react';
-import type { ParseResult, NameMatch, SectionMatch, DayOfWeek } from '@/lib/schedule/types';
+import type { ParseResult, NameMatch, SectionMatch } from '@/lib/schedule/types';
 
 interface PreviewResponse {
   parsed: ParseResult;
@@ -23,8 +23,6 @@ interface PreviewResponse {
     cells_total: number;
   };
 }
-
-const DAY_NAMES = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 
 export default function TeacherSchedulePage() {
   const qc = useQueryClient();
@@ -254,7 +252,7 @@ export default function TeacherSchedulePage() {
               </p>
               <p className="text-xs text-amber-800 dark:text-amber-300">
                 خانات هذه الشعب ستُتجاهل في الاستيراد. أضف الشعب أولاً من
-                صفحة "الصفوف والشعب" ثم أعد الرفع.
+                صفحة &quot;الصفوف والشعب&quot; ثم أعد الرفع.
               </p>
               <ul className="text-xs mt-2 grid grid-cols-2 sm:grid-cols-4 gap-1 text-amber-900 dark:text-amber-200">
                 {preview.section_matches
@@ -443,7 +441,7 @@ function BulkCreateTeachersPanel({
             <UserPlus className="w-4 h-4" /> تسجيل المعلمين الناقصين ({unmatched.length})
           </h3>
           <p className="text-xs text-purple-800 dark:text-purple-300 mt-0.5">
-            هؤلاء أسماؤهم في Excel لكن لا يوجد لهم حسابات في النظام. أضِف رقم الجوال (اختياري) ثم اضغط "إنشاء كلهم".
+                          هؤلاء أسماؤهم في Excel لكن لا يوجد لهم حسابات في النظام. أضِف رقم الجوال (اختياري) ثم اضغط &quot;إنشاء كلهم&quot;.
           </p>
         </div>
       </div>

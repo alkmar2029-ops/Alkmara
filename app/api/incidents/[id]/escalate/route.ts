@@ -85,10 +85,8 @@ const escalateSchema = z
   })
   .strict();
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   // Gate: flag-only (same as dismiss/action). Counselor read access does
   // NOT extend to action endpoints.
   const auth = await requireAdminWithFlag(

@@ -1,4 +1,4 @@
-import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase/server';
+import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, getAuthContext } from '@/lib/supabase/auth';
 import { canManageSupervision } from '@/lib/supervision/permissions';

@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 // POST — pause a running campaign. The worker checks status before
 // each send; setting status='paused' makes it stop the loop and exit.
 // Resuming retriggers a fresh worker invocation.
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff']);
   if (!auth.ok) return auth.res;
 

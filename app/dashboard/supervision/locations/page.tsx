@@ -184,7 +184,7 @@ export default function SupervisionLocationsPage() {
   );
 }
 
-function EditRow({ loc, onSave, onCancel, saving }: { loc: Location; onSave: (data: Partial<Location>) => void; onCancel: () => void; saving: boolean }) {
+function EditRow({ loc, onSave, onCancel, saving }: { loc: Location; onSave: (_data: Partial<Location>) => void; onCancel: () => void; saving: boolean }) {
   const [name, setName] = useState(loc.name);
   const [sortOrder, setSortOrder] = useState(loc.sort_order);
   return (

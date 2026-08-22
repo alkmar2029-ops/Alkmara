@@ -151,9 +151,9 @@ export default function CounselorAssignmentsPage() {
       }));
   }, [personasQuery.data]);
 
-  const assignments = assignmentsQuery.data ?? [];
+  const assignments = useMemo(() => assignmentsQuery.data ?? [], [assignmentsQuery.data]);
   const grades = gradesQuery.data ?? [];
-  const sections = sectionsQuery.data ?? [];
+  const sections = useMemo(() => sectionsQuery.data ?? [], [sectionsQuery.data]);
 
   const sectionsByGrade = useMemo(() => {
     const m = new Map<number, Section[]>();
@@ -383,7 +383,7 @@ export default function CounselorAssignmentsPage() {
               تعديل هذه الصفحة يحتاج صلاحية <code className="font-mono text-xs px-1.5 py-0.5 bg-amber-100 dark:bg-amber-500/20 rounded">manage_users</code>
             </p>
             <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
-              "كل الصف" يمنح وصولًا لجميع الشعب في الصف. الإسناد الفردي للشعبة يقتصر عليها فقط. الـ schema يسمح بكليهما لنفس المرشد والصف؛ راجع التداخل قبل الحفظ.
+              &quot;كل الصف&quot; يمنح وصولًا لجميع الشعب في الصف. الإسناد الفردي للشعبة يقتصر عليها فقط. الـ schema يسمح بكليهما لنفس المرشد والصف؛ راجع التداخل قبل الحفظ.
             </p>
           </div>
         </div>
@@ -447,7 +447,7 @@ function MatrixTable({
   sectionsByGrade: Map<number, Section[]>;
   assignmentsMap: Map<string, Assignment>;
   unscopedCounselors: Set<string>;
-  onCellClick: (c: Counselor, grade_id: number | null, section_id: number | null) => void;
+  onCellClick: (_c: Counselor, _grade_id: number | null, _section_id: number | null) => void;
   isPending: boolean;
 }) {
   if (grades.length === 0) {

@@ -76,10 +76,8 @@ interface OperationsReport {
   cases_opened: number;
 }
 
-export async function GET(
-  _request: Request,
-  { params }: { params: { date: string } },
-) {
+export async function GET(_request: Request, props: { params: Promise<{ date: string }> }) {
+  const params = await props.params;
   const auth = await requireVpDashboard();
   if (!auth.ok) return auth.res;
 

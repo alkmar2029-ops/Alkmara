@@ -4,8 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Calendar, Search, AlertTriangle, AlertCircle, BadgeCheck, CheckSquare, Square,
-  Send, Loader2, RefreshCw, BarChart3, MapPin, Filter, MessageCircle, X,
+  Calendar, AlertTriangle, AlertCircle, BadgeCheck,
+  Send, Loader2, RefreshCw, BarChart3, X,
   CheckCircle2, XCircle, Printer, TrendingUp, Users, Rocket,
 } from 'lucide-react';
 import CampaignProgressPanel from '@/components/daily-attendance/CampaignProgressPanel';
@@ -912,7 +912,7 @@ function PrintCheck({
   label: string;
   count?: number;
   checked: boolean;
-  onChange: (v: boolean) => void;
+  onChange: (_v: boolean) => void;
 }) {
   return (
     <label className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
@@ -1168,7 +1168,7 @@ function BucketCard({
   tone: 'red' | 'orange' | 'cyan' | 'yellow';
   rows: DetectionRow[];
   selected: Set<number>;
-  setSelected: (s: Set<number>) => void;
+  setSelected: (_s: Set<number>) => void;
   onSend: () => void;
   sending: boolean;
   sendLabel: string;
@@ -1309,7 +1309,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: 'gra
   );
 }
 
-function SendResultModal({ result, type, onClose }: { result: SendResult; type: 'absence' | 'escape'; onClose: () => void }) {
+function SendResultModal({ result, type: _type, onClose }: { result: SendResult; type: 'absence' | 'escape'; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div

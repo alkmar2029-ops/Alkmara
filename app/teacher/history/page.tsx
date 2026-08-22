@@ -4,9 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
-  History, Loader2, Calendar, Clock, BookOpen, Filter, Search, Pencil,
-  Printer, BarChart3, User, FileDown, ChevronDown, X, AlertCircle,
-  CheckCircle2, XCircle, Award,
+  History, Loader2, Calendar, Clock, BookOpen, Search, Pencil,
+  Printer, BarChart3, User, FileDown, X, Award,
 } from 'lucide-react';
 
 interface SessionRow {

@@ -14,8 +14,6 @@ interface Assignment {
   day_of_week: number; user_id: string; full_name: string | null;
 }
 
-interface MyContext { user_id: string }
-
 export default function TeacherSupervisionPage() {
   const qc = useQueryClient();
 

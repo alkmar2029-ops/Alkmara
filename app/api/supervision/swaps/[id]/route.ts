@@ -14,7 +14,8 @@ export const dynamic = 'force-dynamic';
 // exchanged in a single transaction-via-RPC. If the RPC isn't deployed,
 // we fall back to a 2-step update (acceptable since UNIQUE constraint
 // is on (location_id, day_of_week), not user_id, so order doesn't matter).
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireRole(['admin', 'staff', 'teacher']);
   if (!auth.ok) return auth.res;
 

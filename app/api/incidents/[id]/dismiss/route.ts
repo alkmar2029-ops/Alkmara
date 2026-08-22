@@ -50,10 +50,8 @@ const dismissSchema = z
   })
   .strict();
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   // Gate: flag-only. Counselor read access (via requireIncidentsQueue)
   // does NOT extend to action endpoints.
   const auth = await requireAdminWithFlag(

@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Shield, Loader2, Save, Search, Filter, AlertCircle, Users, Crown,
+  Shield, Loader2, Save, Search, Filter, AlertCircle, Crown,
 } from 'lucide-react';
 
 interface AdminUser { user_id: string; full_name: string; role: string; }
@@ -127,7 +127,7 @@ export default function AdminAssignmentsPage() {
             <ul className="text-xs mt-1 space-y-0.5 list-disc ps-5 text-purple-800 dark:text-purple-100/90">
               <li>الإداري يرى فقط طلاب وحضور وملاحظات الشعب المُعيَّنة له</li>
               <li>المدير العام (Super Admin) يرى كل شيء — لا يحتاج تعيينات</li>
-              <li>كل تعديل يُحفَظ بضغط زر "حفظ" بجانب الإداري</li>
+              <li>كل تعديل يُحفَظ بضغط زر &quot;حفظ&quot; بجانب الإداري</li>
             </ul>
           </div>
         </div>

@@ -149,14 +149,14 @@ function TeacherNotesContent() {
   });
   const templatesOnly = policy?.teachers_notes_templates_only !== false;
 
-  const gradeChangeSeen = useMemo(() => ({ count: 0 }), []);
+  const gradeChangeSeen = useRef(0);
   useEffect(() => {
-    gradeChangeSeen.count++;
-    if (gradeChangeSeen.count > 1) {
+    gradeChangeSeen.current++;
+    if (gradeChangeSeen.current > 1) {
       setSectionId('');
       setSelected(new Set());
     }
-  }, [gradeId, gradeChangeSeen]);
+  }, [gradeId]);
   useEffect(() => { setSelected(new Set()); }, [sectionId]);
 
   // Voice

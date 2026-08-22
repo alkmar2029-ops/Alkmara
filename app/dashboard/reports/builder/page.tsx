@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
-  FileText, Calendar, Users, Search, Printer, Loader2,
+  FileText, Calendar, Users, Search, Printer,
   CheckCircle2, ClipboardList, Clock, BadgeCheck, MessageSquarePlus, Layers,
 } from 'lucide-react';
 
@@ -107,7 +107,7 @@ function ReportBuilderInner() {
     if (types.has('period_compare') && periodMode !== 'compare') {
       setPeriodMode('compare');
     }
-  }, [types]);
+  }, [types, periodMode]);
 
   const { data: grades = [] } = useQuery<any[]>({
     queryKey: ['grades-all'],

@@ -1,6 +1,6 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
+import { requireRole } from '@/lib/supabase/auth';
 import { parseScheduleWorkbook } from '@/lib/schedule/excel-parser';
 import { matchAllTeachers } from '@/lib/schedule/name-matcher';
 import type { SectionMatch } from '@/lib/schedule/types';

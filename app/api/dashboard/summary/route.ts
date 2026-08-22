@@ -97,10 +97,8 @@ export async function GET() {
     // didn't appear in the absences list. We compute presence as
     // (total - absent - late - excused).
     const todaySessions = todaySessionsRes.data || [];
-    const todayAbsent = todaySessions.reduce((s, r) => s + (r.absent_count || 0), 0);
     const todayLate = todaySessions.reduce((s, r) => s + (r.late_count || 0), 0);
     const todayExcused = todaySessions.reduce((s, r) => s + (r.excused_count || 0), 0);
-    const todayTotalCount = todaySessions.reduce((s, r) => s + (r.total_count || 0), 0);
     // For attendance % we need student-level (not session-level) figures.
     // Approximation: count distinct absent students from period_absences.
     const sessionIds = todaySessions.map((s) => s.id);
@@ -112,7 +110,6 @@ export async function GET() {
         .select('student_id, status')
         .in('session_id', sessionIds);
       const studentAbsenceCount = new Map<number, number>();
-      const studentSessionCount = new Map<number, number>();
       for (const a of absRows || []) {
         if (a.status === 'absent') {
           studentAbsenceCount.set(a.student_id, (studentAbsenceCount.get(a.student_id) || 0) + 1);
