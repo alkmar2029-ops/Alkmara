@@ -136,6 +136,11 @@ export const updateSectionsBatchSchema = z.object({
   }
 });
 
+export const sidebarOrderSchema = z.object({
+  group_order: z.array(z.string().min(1).max(100)).max(30),
+  item_order: z.record(z.array(z.string().min(1).max(300)).max(30)),
+});
+
 // Schedule schemas
 export const createScheduleSchema = z.object({
   day_of_week: z.number().int().min(0).max(6),

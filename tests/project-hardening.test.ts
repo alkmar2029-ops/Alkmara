@@ -51,6 +51,18 @@ describe('project hardening contracts', () => {
     assert.match(page, /disabled=\{settings\?\.has_sections\}/);
   });
 
+  it('keeps sidebar ordering global, fixed, and super-admin controlled', () => {
+    const layout = read('app/dashboard/layout.tsx');
+    const route = read('app/api/settings/sidebar-order/route.ts');
+    const migration = read('supabase/migrations/20260828020000_sidebar_order.sql');
+    assert.match(layout, /DEFAULT_SIDEBAR_ORDER/);
+    assert.match(layout, /draggable=\{isReordering && sidebarOpen\}/);
+    assert.match(layout, /تم تثبيت ترتيب القائمة لجميع المستخدمين/);
+    assert.match(route, /auth\.ctx\.role !== 'super_admin'/);
+    assert.match(migration, /BEFORE UPDATE OF sidebar_order/);
+    assert.match(migration, /role = 'super_admin'/);
+  });
+
   it('uses a real offline fallback and a stricter production CSP', () => {
     const worker = read('public/sw.js');
     const config = read('next.config.mjs');

@@ -12,7 +12,7 @@ import {
   Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
   Sun, Moon, Bell, Download, MessageSquarePlus, UserCog, ClipboardCheck, Mail,
   AlertTriangle, UserPlus, LogOut as ExitIcon, Shield, ShieldAlert, ShieldCheck, KeyRound, Crown,
-  CalendarDays, UserCheck, FileText, FileBarChart,
+  CalendarDays, UserCheck, FileText, FileBarChart, GripVertical, Check,
 } from 'lucide-react';
 import UnreadBadge from '@/components/ui/UnreadBadge';
 import PendingRegistrationsBadge from '@/components/ui/PendingRegistrationsBadge';
@@ -54,6 +54,66 @@ interface NavItem {
 interface NavGroup {
   label: string | null;  // null = no header (used for the home item)
   items: NavItem[];
+}
+
+interface SidebarOrder {
+  group_order: string[];
+  item_order: Record<string, string[]>;
+}
+
+const HOME_GROUP_KEY = '__home__';
+const groupKey = (group: NavGroup) => group.label || HOME_GROUP_KEY;
+
+// Fixed school default: daily work first, then role specialties, supporting
+// workflows, reports, and finally low-frequency administration/system tools.
+const DEFAULT_SIDEBAR_ORDER: SidebarOrder = {
+  group_order: [
+    HOME_GROUP_KEY,
+    'الحضور اليومي',
+    'الوكيل',
+    'المرشد الطلابي',
+    'الطلاب والصفوف',
+    'المخالفات',
+    'الملاحظات والرسائل',
+    'الجدول الذكي',
+    'التقارير',
+    'تقارير المدرسة',
+    'واتساب',
+    'المستخدمون',
+    'النظام',
+    'العمليات اليومية',
+  ],
+  item_order: {
+    'الحضور اليومي': [
+      '/dashboard/daily-attendance',
+      '/dashboard/period-attendance',
+      '/dashboard/dismissals',
+      '/dashboard/late-notifications',
+    ],
+  },
+};
+
+function sortByPreferredOrder<T>(values: T[], preferred: string[], key: (_value: T) => string): T[] {
+  const ranks = new Map(preferred.map((value, index) => [value, index]));
+  return values
+    .map((value, index) => ({ value, index }))
+    .sort((a, b) => (ranks.get(key(a.value)) ?? 10_000 + a.index) - (ranks.get(key(b.value)) ?? 10_000 + b.index))
+    .map(({ value }) => value);
+}
+
+function applySidebarOrder(groups: NavGroup[], saved: SidebarOrder | null | undefined): NavGroup[] {
+  const order = saved || DEFAULT_SIDEBAR_ORDER;
+  return sortByPreferredOrder(groups, order.group_order, groupKey).map((group) => ({
+    ...group,
+    items: sortByPreferredOrder(group.items, order.item_order[groupKey(group)] || [], (item) => item.path),
+  }));
+}
+
+function serializeSidebarOrder(groups: NavGroup[]): SidebarOrder {
+  return {
+    group_order: groups.map(groupKey),
+    item_order: Object.fromEntries(groups.map((group) => [groupKey(group), group.items.map((item) => item.path)])),
+  };
 }
 
 const navGroups: NavGroup[] = [
@@ -265,6 +325,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [draftNavItems, setDraftNavItems] = useState<NavGroup[]>([]);
+  const [draggedNav, setDraggedNav] = useState<
+    | { kind: 'group'; group: string }
+    | { kind: 'item'; group: string; path: string }
+    | null
+  >(null);
   const pathname = usePathname();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -303,6 +371,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   } = usePersona();
 
   const stillLoading = personaLoading || policyQuery.isLoading;
+  const isSuper = policyFailed
+    ? isSuperAdmin
+    : policy?.is_super_admin === true;
+
+  const sidebarOrderQuery = useQuery<SidebarOrder | null>({
+    queryKey: ['sidebar-order'],
+    queryFn: async () => {
+      const response = await fetch('/api/settings/sidebar-order');
+      if (!response.ok) throw new Error('تعذر تحميل ترتيب القائمة');
+      return (await response.json()).data;
+    },
+    enabled: !stillLoading,
+    staleTime: 5 * 60_000,
+  });
 
   // Distinct grades with section counts for the scope banner.
   const scopeGrades = useMemo(() => {
@@ -334,7 +416,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   //      staff/viewer match neither persona branch (isCounselor /
   //      isVicePrincipal gate on admin role), so they fall through to
   //      this branch — preserving their pre-personas behaviour.
-  const visibleNavItems = useMemo(() => {
+  const baseVisibleNavItems = useMemo(() => {
     if (stillLoading) {
       return [{ label: null, items: navGroups[0].items.slice(0, 1) }];
     }
@@ -343,10 +425,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // transient API hiccup (Codex Sprint 1 review). Plain admins
     // degrade to "not super" — they lose super-only items until the
     // user reloads, but the rest of the menu remains usable.
-    const isSuper = policyFailed
-      ? isSuperAdmin
-      : policy?.is_super_admin === true;
-
     const filterGroups = (groups: NavGroup[]) => groups
       .map((g) => ({
         ...g,
@@ -373,7 +451,66 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (isVicePrincipal && !isSuper) return filterGroups(VP_NAV_GROUPS);
 
     return filterGroups(navGroups);
-  }, [stillLoading, policy, policyFailed, isVicePrincipal, isCounselor, isSuperAdmin, can]);
+  }, [stillLoading, isSuper, isVicePrincipal, isCounselor, can]);
+
+  const visibleNavItems = useMemo(
+    () => applySidebarOrder(baseVisibleNavItems, sidebarOrderQuery.data),
+    [baseVisibleNavItems, sidebarOrderQuery.data],
+  );
+
+  const renderedNavItems = isReordering ? draftNavItems : visibleNavItems;
+
+  const startReordering = () => {
+    setDraftNavItems(visibleNavItems.map((group) => ({ ...group, items: [...group.items] })));
+    setIsReordering(true);
+  };
+
+  const moveGroup = (targetGroup: string) => {
+    if (draggedNav?.kind !== 'group' || draggedNav.group === targetGroup) return;
+    setDraftNavItems((current) => {
+      const from = current.findIndex((group) => groupKey(group) === draggedNav.group);
+      const to = current.findIndex((group) => groupKey(group) === targetGroup);
+      if (from < 0 || to < 0) return current;
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
+  const moveItem = (targetGroup: string, targetPath: string) => {
+    if (draggedNav?.kind !== 'item' || draggedNav.group !== targetGroup || draggedNav.path === targetPath) return;
+    setDraftNavItems((current) => current.map((group) => {
+      if (groupKey(group) !== targetGroup) return group;
+      const from = group.items.findIndex((item) => item.path === draggedNav.path);
+      const to = group.items.findIndex((item) => item.path === targetPath);
+      if (from < 0 || to < 0) return group;
+      const items = [...group.items];
+      const [moved] = items.splice(from, 1);
+      items.splice(to, 0, moved);
+      return { ...group, items };
+    }));
+  };
+
+  const saveSidebarOrder = async () => {
+    setIsSavingOrder(true);
+    try {
+      const response = await fetch('/api/settings/sidebar-order', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serializeSidebarOrder(draftNavItems)),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'تعذر حفظ ترتيب القائمة');
+      await sidebarOrderQuery.refetch();
+      setIsReordering(false);
+      toast.success('تم تثبيت ترتيب القائمة لجميع المستخدمين');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر حفظ ترتيب القائمة');
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
 
   // Register the service worker and check for updates periodically. Without
   // this, admins who installed the dashboard PWA never see new versions
@@ -444,13 +581,73 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <nav aria-label="القائمة الرئيسية" className="flex-1 py-4 px-3 overflow-y-auto">
-          {visibleNavItems.map((group, gi) => (
+          {isSuper && sidebarOpen && (
+            <div className="mb-3 pb-3 border-b border-gray-200 dark:border-gray-800">
+              {!isReordering ? (
+                <button
+                  type="button"
+                  onClick={startReordering}
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-xs font-medium text-gray-600 dark:text-gray-300 hover:border-blue-400 hover:text-blue-600"
+                >
+                  <GripVertical className="w-4 h-4" />
+                  ترتيب القائمة بالسحب
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-blue-700 dark:text-blue-300 text-center">
+                    اسحب الأقسام أو العناصر، ثم احفظ الترتيب الثابت للجميع
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsReordering(false)}
+                      disabled={isSavingOrder}
+                      className="px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-xs"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveSidebarOrder}
+                      disabled={isSavingOrder}
+                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-blue-600 text-white text-xs disabled:opacity-60"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      {isSavingOrder ? 'جارٍ الحفظ...' : 'حفظ'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {renderedNavItems.map((group, gi) => {
+            const key = groupKey(group);
+            const isDraggedGroup = draggedNav?.kind === 'group' && draggedNav.group === key;
+            return (
             <div
-              key={group.label || `g-${gi}`}
-              className={gi > 0 ? (sidebarOpen ? 'mt-4' : 'mt-3 pt-3 border-t border-gray-200 dark:border-gray-800') : ''}
+              key={key}
+              draggable={isReordering && sidebarOpen}
+              onDragStart={(event) => {
+                if (!isReordering) return;
+                setDraggedNav({ kind: 'group', group: key });
+                event.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragOver={(event) => {
+                if (draggedNav?.kind === 'group') event.preventDefault();
+              }}
+              onDrop={(event) => {
+                if (draggedNav?.kind !== 'group') return;
+                event.preventDefault();
+                moveGroup(key);
+                setDraggedNav(null);
+              }}
+              onDragEnd={() => setDraggedNav(null)}
+              className={`${gi > 0 ? (sidebarOpen ? 'mt-4' : 'mt-3 pt-3 border-t border-gray-200 dark:border-gray-800') : ''} ${isDraggedGroup ? 'opacity-40' : ''}`}
             >
               {sidebarOpen && group.label && (
-                <h2 className="px-3 mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                <h2 className="px-3 mb-1 flex items-center gap-1 text-xs font-bold text-gray-500 dark:text-gray-400">
+                  {isReordering && <GripVertical className="w-3.5 h-3.5 cursor-grab" aria-hidden="true" />}
                   {group.label}
                 </h2>
               )}
@@ -463,14 +660,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <Link
                       key={item.path}
                       href={item.path}
-                      onClick={() => setMobileOpen(false)}
+                      draggable={isReordering && sidebarOpen}
+                      onDragStart={(event) => {
+                        if (!isReordering) return;
+                        event.stopPropagation();
+                        setDraggedNav({ kind: 'item', group: key, path: item.path });
+                        event.dataTransfer.effectAllowed = 'move';
+                      }}
+                      onDragOver={(event) => {
+                        if (draggedNav?.kind === 'item' && draggedNav.group === key) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }
+                      }}
+                      onDrop={(event) => {
+                        if (draggedNav?.kind !== 'item') return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        moveItem(key, item.path);
+                        setDraggedNav(null);
+                      }}
+                      onDragEnd={(event) => {
+                        event.stopPropagation();
+                        setDraggedNav(null);
+                      }}
+                      onClick={(event) => {
+                        if (isReordering) {
+                          event.preventDefault();
+                          return;
+                        }
+                        setMobileOpen(false);
+                      }}
                       title={!sidebarOpen ? item.label : undefined}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                         isActive
                           ? 'bg-blue-50 text-blue-700 font-medium dark:bg-blue-500/15 dark:text-blue-300'
                           : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
-                      } ${!sidebarOpen ? 'justify-center' : ''}`}
+                      } ${!sidebarOpen ? 'justify-center' : ''} ${isReordering ? 'cursor-grab ring-1 ring-transparent hover:ring-blue-300' : ''}`}
                     >
+                      {isReordering && sidebarOpen && <GripVertical className="w-4 h-4 text-gray-400" aria-hidden="true" />}
                       <Icon className="w-5 h-5 flex-shrink-0" />
                       {sidebarOpen && <span className="truncate flex-1">{item.label}</span>}
                       {item.path === '/dashboard/messages' && <UnreadBadge />}
@@ -480,7 +708,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 })}
               </div>
             </div>
-          ))}
+          );
+          })}
         </nav>
 
         <div className="border-t border-gray-200 dark:border-gray-800 p-3 space-y-1 shrink-0">
