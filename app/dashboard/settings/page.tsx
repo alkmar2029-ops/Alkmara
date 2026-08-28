@@ -152,6 +152,11 @@ export default function SettingsPage() {
       {/* المرحلة الدراسية */}
       <div className="card">
         <h3 className="font-semibold text-lg mb-4">المرحلة الدراسية</h3>
+        {settings?.has_sections && (
+          <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
+            تم تثبيت المرحلة وتصنيف الشعب بعد إنشاء الشعب؛ ويمكن تعديل أعدادها من صفحة الصفوف والشعب.
+          </p>
+        )}
         <div className="space-y-3">
           {STAGES.map(stage => (
             <label key={stage.value}
@@ -162,6 +167,7 @@ export default function SettingsPage() {
               }`}>
               <input type="radio" name="stage" value={stage.value} checked={form.stage === stage.value}
                 onChange={e => setForm({ ...form, stage: e.target.value })}
+                disabled={settings?.has_sections}
                 className="w-4 h-4 text-blue-600" />
               <div>
                 <p className="font-medium">{stage.label}</p>
@@ -232,7 +238,7 @@ export default function SettingsPage() {
               : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
           }`}>
             <input type="radio" name="section_type" value="letters" checked={form.section_type === 'letters'}
-              onChange={e => setForm({ ...form, section_type: e.target.value })} className="w-4 h-4 text-blue-600" />
+              onChange={e => setForm({ ...form, section_type: e.target.value })} disabled={settings?.has_sections} className="w-4 h-4 text-blue-600" />
             <div>
               <p className="font-medium">حروف</p>
               <p className="text-sm text-gray-500 dark:text-gray-400">أ ، ب ، ج ، د ...</p>
@@ -244,7 +250,7 @@ export default function SettingsPage() {
               : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
           }`}>
             <input type="radio" name="section_type" value="numbers" checked={form.section_type === 'numbers'}
-              onChange={e => setForm({ ...form, section_type: e.target.value })} className="w-4 h-4 text-blue-600" />
+              onChange={e => setForm({ ...form, section_type: e.target.value })} disabled={settings?.has_sections} className="w-4 h-4 text-blue-600" />
             <div>
               <p className="font-medium">أرقام</p>
               <p className="text-sm text-gray-500 dark:text-gray-400">1 ، 2 ، 3 ، 4 ...</p>

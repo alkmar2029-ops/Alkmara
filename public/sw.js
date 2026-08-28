@@ -12,7 +12,7 @@ const SHELL_CACHE = `attendance-shell-${CACHE_VERSION}`;
 const ASSETS_CACHE = `attendance-assets-${CACHE_VERSION}`;
 
 const SHELL_URLS = [
-  '/teacher/login',
+  '/login',
   '/manifest.webmanifest',
   '/icon-192.svg',
   '/icon-512.svg',
@@ -94,7 +94,7 @@ async function networkFirstNavigation(req) {
     const cache = await caches.open(SHELL_CACHE);
     const cached = await cache.match(req);
     if (cached) return cached;
-    const fallback = await cache.match('/teacher/login');
+    const fallback = await cache.match('/login');
     if (fallback) return fallback;
     return new Response(
       `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>غير متصل</title>

@@ -7,9 +7,12 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.from('school_settings').select('*').limit(1);
+  const [{ data, error }, { count: sectionsCount, error: sectionsError }] = await Promise.all([
+    supabase.from('school_settings').select('*').limit(1),
+    supabase.from('sections').select('id', { count: 'exact', head: true }),
+  ]);
 
-  if (error) return NextResponse.json({ error: 'حدث خطأ في جلب الإعدادات' }, { status: 400 });
+  if (error || sectionsError) return NextResponse.json({ error: 'حدث خطأ في جلب الإعدادات' }, { status: 400 });
 
   // If no settings row exists, return default settings
   if (!data || data.length === 0) {
@@ -19,11 +22,14 @@ export async function GET() {
         school_name: '',
         stage: 'elementary',
         academic_year: '',
+        has_sections: false,
       },
     }, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } });
   }
 
-  return NextResponse.json({ data: data[0] }, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } });
+  return NextResponse.json({
+    data: { ...data[0], has_sections: (sectionsCount || 0) > 0 },
+  }, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } });
 }
 
 export async function PUT(request: NextRequest) {
@@ -41,6 +47,25 @@ export async function PUT(request: NextRequest) {
   const validation = validateBody(updateSettingsSchema, body);
   if (!validation.success) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
+  }
+
+  if (validation.data.stage || validation.data.section_type) {
+    const [{ data: current, error: currentError }, { count, error: countError }] = await Promise.all([
+      supabase.from('school_settings').select('stage, section_type').eq('id', 1).single(),
+      supabase.from('sections').select('id', { count: 'exact', head: true }),
+    ]);
+    if (currentError || countError) {
+      return NextResponse.json({ error: 'تعذر التحقق من إعدادات الشعب الحالية' }, { status: 500 });
+    }
+    const changesStructure = (
+      (validation.data.stage && validation.data.stage !== current.stage)
+      || (validation.data.section_type && validation.data.section_type !== current.section_type)
+    );
+    if ((count || 0) > 0 && changesStructure) {
+      return NextResponse.json({
+        error: 'لا يمكن تغيير المرحلة أو تصنيف الشعب بعد إنشائها. عدّل عدد الشعب من صفحة الصفوف والشعب.',
+      }, { status: 409 });
+    }
   }
 
   // Always update row id=1 (single school)

@@ -26,6 +26,49 @@
 -- It enforces TWO conditions: caller IS a counselor AND has matching
 -- assignment. Calling code never needs to check both separately.
 
+-- These helpers are also defined by the following permissions migration,
+-- but the policies below need them now. Keeping compatible definitions here
+-- makes a clean chronological restore valid.
+CREATE OR REPLACE FUNCTION current_user_has_flag(flag TEXT)
+RETURNS BOOLEAN
+LANGUAGE SQL
+SECURITY DEFINER
+STABLE
+SET search_path = public, auth
+AS $$
+  SELECT COALESCE(
+    (
+      SELECT CASE
+        WHEN permissions ? flag
+          THEN COALESCE((permissions ->> flag)::boolean, FALSE)
+        ELSE FALSE
+      END
+      FROM public.user_profiles
+      WHERE user_id = auth.uid()
+      LIMIT 1
+    ),
+    FALSE
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION current_user_is_counselor()
+RETURNS BOOLEAN
+LANGUAGE SQL
+SECURITY DEFINER
+STABLE
+SET search_path = public, auth
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_profiles
+    WHERE user_id = auth.uid()
+      AND (permissions ->> 'persona') = 'counselor'
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION current_user_has_flag(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION current_user_is_counselor() TO authenticated;
+
 -- ============= 1. Table =============
 CREATE TABLE IF NOT EXISTS counselor_assignments (
   id                  BIGSERIAL PRIMARY KEY,

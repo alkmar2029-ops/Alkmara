@@ -380,10 +380,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // until they manually clear cache. Same SW used by the teacher portal.
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    let intervalId: ReturnType<typeof setInterval> | undefined;
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       // 30-min update polling — admins typically keep the dashboard tab
       // open all day so we don't want to force-refresh on every page nav.
-      setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+      intervalId = setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         if (!newWorker) return;
@@ -394,6 +395,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         });
       });
     }).catch(() => { /* ignore */ });
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
 
   const handleLogout = async () => {

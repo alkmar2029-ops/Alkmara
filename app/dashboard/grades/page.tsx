@@ -59,28 +59,51 @@ export default function GradesPage() {
     return { ...counts, ...editedCounts };
   }, [grades, allSections, editedCounts]);
 
+  const hasChanges = useMemo(() => {
+    if (!grades || !allSections) return false;
+    return grades.some((grade: any) => (
+      Object.prototype.hasOwnProperty.call(editedCounts, grade.id)
+      || !allSections.some((section: any) => section.grade_id === grade.id)
+    ));
+  }, [grades, allSections, editedCounts]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const promises = (grades || []).map((grade: any) => {
+      const changedGrades = (grades || []).filter((grade: any) => (
+        Object.prototype.hasOwnProperty.call(editedCounts, grade.id)
+        || !(allSections || []).some((section: any) => section.grade_id === grade.id)
+      ));
+      const updates = changedGrades.map((grade: any) => {
         const count = sectionCounts[grade.id] || 1;
         const names = getSectionNames(count, settings?.section_type || 'letters');
-        return fetch('/api/sections', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        return {
             grade_id: grade.id,
             sections: names.map((name, i) => ({ name, sort_order: i + 1 })),
-          }),
-        }).then(res => { if (!res.ok) throw new Error('Save failed'); return res; });
+        };
       });
-      await Promise.all(promises);
+
+      const res = await fetch('/api/sections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || 'تعذر حفظ الشعب');
+      return payload;
     },
-    onSuccess: () => {
+    onSuccess: (payload) => {
       qc.invalidateQueries({ queryKey: ['all-sections'] });
       setEditedCounts({});
-      toast.success('تم حفظ الشعب بنجاح');
+      const summaries = Array.isArray(payload.summary) ? payload.summary : [payload.summary];
+      const skipped = summaries.flatMap((summary: any) => summary?.skipped || []);
+      if (skipped.length > 0) {
+        toast.success('تم حفظ الإضافات والتعديلات الآمنة');
+        toast.error(`لم تُحذف الشعب المرتبطة ببيانات: ${skipped.join('، ')}`, { duration: 7000 });
+      } else {
+        toast.success('تم حفظ الشعب بنجاح');
+      }
     },
-    onError: () => toast.error('حدث خطأ أثناء الحفظ'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'حدث خطأ أثناء الحفظ'),
   });
 
   if (!settings?.school_name) {
@@ -176,10 +199,10 @@ export default function GradesPage() {
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-4 border-t border-gray-200 dark:border-gray-800">
           <span className="text-sm text-gray-500 dark:text-gray-400">الإجمالي: <strong>{totalSections}</strong> شعبة</span>
-          <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
+          <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !hasChanges}
             className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
             <Save className="w-4 h-4" />
-            {saveMutation.isPending ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+            {saveMutation.isPending ? 'جاري الحفظ...' : hasChanges ? 'حفظ التعديلات' : 'لا توجد تعديلات'}
           </button>
         </div>
       </div>

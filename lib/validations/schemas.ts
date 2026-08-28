@@ -122,7 +122,18 @@ export const updateSectionsSchema = z.object({
   sections: z.array(z.object({
     name: z.string().min(1, 'اسم الشعبة مطلوب').max(50),
     sort_order: z.number().int().min(0),
-  })).min(1, 'يجب إضافة شعبة واحدة على الأقل'),
+  })).min(1, 'يجب إضافة شعبة واحدة على الأقل').max(10, 'الحد الأقصى 10 شعب لكل صف'),
+});
+
+export const updateSectionsBatchSchema = z.object({
+  updates: z.array(updateSectionsSchema)
+    .min(1, 'لا توجد تعديلات للحفظ')
+    .max(20, 'عدد الصفوف في الطلب أكبر من المسموح'),
+}).superRefine(({ updates }, ctx) => {
+  const gradeIds = updates.map((update) => update.grade_id);
+  if (new Set(gradeIds).size !== gradeIds.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'لا يمكن تكرار الصف في طلب واحد' });
+  }
 });
 
 // Schedule schemas

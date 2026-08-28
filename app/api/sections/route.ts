@@ -1,7 +1,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { validateBody, updateSectionsSchema } from '@/lib/validations/schemas';
-import { requireRole } from '@/lib/supabase/auth';
+import { validateBody, updateSectionsBatchSchema, updateSectionsSchema } from '@/lib/validations/schemas';
+import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,30 +30,62 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'صيغة البيانات المرسلة غير صالحة' }, { status: 400 });
   }
 
-  const validation = validateBody(updateSectionsSchema, body);
-  if (!validation.success) {
-    return NextResponse.json({ error: validation.error }, { status: 400 });
+  type SectionUpdate = {
+    grade_id: number;
+    sections: Array<{ name: string; sort_order: number }>;
+  };
+  const isBatch = typeof body === 'object' && body !== null && 'updates' in body;
+  let updates: SectionUpdate[];
+  if (isBatch) {
+    const validation = validateBody(updateSectionsBatchSchema, body);
+    if (!validation.success) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+    updates = validation.data.updates;
+  } else {
+    const validation = validateBody(updateSectionsSchema, body);
+    if (!validation.success) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+    updates = [validation.data];
   }
 
-  const { grade_id, sections } = validation.data;
-
-  // Atomic via RPC: deletes unused absent sections, upserts the new list,
-  // and returns names of sections it had to keep because they are in use.
-  const { data: result, error } = await supabase.rpc('update_grade_sections', {
-    p_grade_id: grade_id,
-    p_sections: sections,
-  });
+  // The batch RPC applies every grade update in one database transaction.
+  // The legacy single-grade request remains supported for existing callers.
+  const rpc = isBatch
+    ? supabase.rpc('update_school_sections', { p_updates: updates })
+    : supabase.rpc('update_grade_sections', {
+        p_grade_id: updates[0].grade_id,
+        p_sections: updates[0].sections,
+      });
+  const { data: result, error } = await rpc;
 
   if (error) {
-    return NextResponse.json({ error: `حدث خطأ في حفظ الشُعب: ${error.message}` }, { status: 400 });
+    return NextResponse.json({ error: 'حدث خطأ في حفظ الشُعب. لم تُطبّق أي تعديلات.' }, { status: 400 });
   }
 
-  // Return the up-to-date sections for this grade so the client can refresh.
-  const { data: updated } = await supabase
+  const gradeIds = updates.map((update) => update.grade_id);
+  const { data: updated, error: updatedError } = await supabase
     .from('sections')
     .select('*')
-    .eq('grade_id', grade_id)
+    .in('grade_id', gradeIds)
     .order('sort_order');
+
+  if (updatedError) {
+    return NextResponse.json({ error: 'تم الحفظ، لكن تعذر تحديث قائمة الشعب' }, { status: 500 });
+  }
+
+  await writeAuditLog({
+    ctx: auth.ctx,
+    action: 'sections.update',
+    targetType: 'grades',
+    details: {
+      grade_ids: gradeIds,
+      requested_counts: Object.fromEntries(updates.map((update) => [update.grade_id, update.sections.length])),
+      result,
+    },
+    request,
+  });
 
   return NextResponse.json({ data: updated || [], summary: result });
 }

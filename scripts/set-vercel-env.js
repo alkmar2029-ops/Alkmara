@@ -1,19 +1,30 @@
-// One-shot script: pipe values into `vercel env add` without trailing newlines.
-// Usage: node scripts/set-vercel-env.js
+// One-shot script: pipe values from the current process environment into
+// `vercel env add` without trailing newlines.
+// Usage: node --env-file=.env.local scripts/set-vercel-env.js
 const { spawn } = require('child_process');
 
-const VARS = [
-  ['NEXT_PUBLIC_SUPABASE_URL', 'https://yufpttbzfucrznbftnnv.supabase.co'],
-  ['NEXT_PUBLIC_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1ZnB0dGJ6ZnVjcnpuYmZ0bm52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjgyMTAsImV4cCI6MjA5MjcwNDIxMH0.qJfZqo0W4i5BR2Yeyz_Vj4S6dqZSID6x57XoK1sIKDQ'],
-  ['SUPABASE_SERVICE_ROLE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1ZnB0dGJ6ZnVjcnpuYmZ0bm52Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzEyODIxMCwiZXhwIjoyMDkyNzA0MjEwfQ.jhhSZvQIKEMFMnDZvLqMEjh7gAMwYOHdTEw2Oe3vXZ0'],
-  ['NEXT_PUBLIC_TEACHER_ONLY', 'true'],
+const NAMES = [
+  'NEXT_PUBLIC_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'NEXT_PUBLIC_TEACHER_ONLY',
 ];
+
+const missing = NAMES.filter((name) => !process.env[name]?.trim());
+if (missing.length > 0) {
+  console.error(`Missing required environment variables: ${missing.join(', ')}`);
+  console.error('Load them locally, for example with: node --env-file=.env.local scripts/set-vercel-env.js');
+  process.exit(1);
+}
+
+const VARS = NAMES.map((name) => [name, process.env[name].trim()]);
 
 function addEnv(name, value) {
   return new Promise((resolve, reject) => {
-    const p = spawn('npx', ['vercel', 'env', 'add', name, 'production'], {
+    const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const p = spawn(command, ['vercel', 'env', 'add', name, 'production'], {
       stdio: ['pipe', 'inherit', 'inherit'],
-      shell: true,  // Windows
+      shell: false,
     });
     // Write the raw value with no trailing newline.
     p.stdin.write(value);

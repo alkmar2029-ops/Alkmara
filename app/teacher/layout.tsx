@@ -66,9 +66,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
+    let intervalId: ReturnType<typeof setInterval> | undefined;
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       // Check for updates every 30 minutes
-      setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+      intervalId = setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
 
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
@@ -83,6 +84,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         });
       });
     }).catch(() => { /* ignore */ });
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
 
   const logout = async () => {

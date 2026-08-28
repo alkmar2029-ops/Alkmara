@@ -1,11 +1,9 @@
 // READ-ONLY diagnostic — migration ordering / forward-reference check.
 //
 // Does NOT touch any database. It only reads supabase/migrations/*.sql and
-// reports cases where a function is USED in a migration that sorts BEFORE
-// the migration that first DEFINES it. Supabase CLI applies migrations in
-// ascending filename order, and a fresh (clean-deploy-from-scratch) restore
-// runs with check_function_bodies=on — so a CREATE FUNCTION whose body (or
-// a CREATE POLICY ... USING) references a not-yet-created function FAILS.
+// reports cases where a function is USED before it is available. This
+// repository has an explicit supabase/schema.sql baseline; functions defined
+// there are treated as available before the first chronological migration.
 // That is the DB-02 class.
 //
 // Usage:  node scripts/migration-order-check.mjs
@@ -23,6 +21,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DIR = join(process.cwd(), 'supabase', 'migrations');
+const BASELINE = join(process.cwd(), 'supabase', 'schema.sql');
 
 const files = readdirSync(DIR)
   .filter((f) => f.endsWith('.sql'))
@@ -38,10 +37,16 @@ function stripComments(sql) {
 const text = files.map((f) =>
   stripComments(readFileSync(join(DIR, f), 'utf8')).toLowerCase(),
 );
+const baselineText = stripComments(readFileSync(BASELINE, 'utf8')).toLowerCase();
 
 // 1) First-definition index per function name.
 const firstDef = new Map(); // name -> { idx, file }
 const defRe = /create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?["']?([a-z_][a-z0-9_]*)["']?\s*\(/g;
+
+let baselineMatch;
+while ((baselineMatch = defRe.exec(baselineText))) {
+  firstDef.set(baselineMatch[1], { idx: -1, file: 'supabase/schema.sql (baseline)' });
+}
 
 text.forEach((sql, i) => {
   defRe.lastIndex = 0;
@@ -77,7 +82,8 @@ for (const [name, def] of firstDef) {
 }
 
 // 3) Report.
-console.log('=== Apply order (ascending filename = supabase CLI order) ===');
+console.log('=== Baseline + apply order (ascending filename = migration order) ===');
+console.log('  base supabase/schema.sql');
 files.forEach((f, i) => console.log(`  ${String(i).padStart(3, '0')}  ${f}`));
 console.log(
   `\n${files.length} migrations · ${firstDef.size} function definitions.\n`,
@@ -86,7 +92,7 @@ console.log(
 if (findings.length === 0) {
   console.log(
     'OK — no forward function references found.\n' +
-      'A clean restore should pass check_function_bodies=on (no DB-02 ordering break detected).',
+      'A baseline + migrations restore should pass check_function_bodies=on (no DB-02 ordering break detected).',
   );
 } else {
   console.log(
