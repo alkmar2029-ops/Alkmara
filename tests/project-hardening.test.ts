@@ -15,10 +15,15 @@ describe('project hardening contracts', () => {
   });
 
   it('validates section count and duplicate grade updates', () => {
-    const tooMany = Array.from({ length: 11 }, (_, index) => ({
+    const elevenSections = Array.from({ length: 11 }, (_, index) => ({
       name: String(index + 1),
       sort_order: index + 1,
     }));
+    const tooMany = Array.from({ length: 31 }, (_, index) => ({
+      name: String(index + 1),
+      sort_order: index + 1,
+    }));
+    assert.equal(updateSectionsSchema.safeParse({ grade_id: 1, sections: elevenSections }).success, true);
     assert.equal(updateSectionsSchema.safeParse({ grade_id: 1, sections: tooMany }).success, false);
     assert.equal(updateSectionsBatchSchema.safeParse({
       updates: [
@@ -30,6 +35,7 @@ describe('project hardening contracts', () => {
 
   it('updates sections atomically and protects every foreign-key dependency', () => {
     const migration = read('supabase/migrations/20260828010000_harden_section_updates.sql');
+    const expandedLimitMigration = read('supabase/migrations/20260828030000_expand_section_limit.sql');
     const route = read('app/api/sections/route.ts');
     const page = read('app/dashboard/grades/page.tsx');
 
@@ -37,6 +43,7 @@ describe('project hardening contracts', () => {
     assert.match(migration, /pg_catalog\.pg_constraint/);
     assert.match(migration, /c\.confrelid = 'public\.sections'::regclass/);
     assert.match(migration, /REVOKE ALL ON FUNCTION public\.update_school_sections\(JSONB\) FROM PUBLIC/);
+    assert.match(expandedLimitMigration, /BETWEEN 1 AND 30/);
     assert.match(route, /supabase\.rpc\('update_school_sections'/);
     assert.match(route, /action: 'sections\.update'/);
     assert.match(page, /JSON\.stringify\(\{ updates \}\)/);

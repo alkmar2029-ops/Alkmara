@@ -8,12 +8,18 @@ import { BookOpen, Save, Info } from 'lucide-react';
 import { STAGE_LABELS } from '@/lib/utils/helpers';
 import { SkeletonPage } from '@/components/ui/Skeleton';
 
-const LETTERS = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح', 'ط', 'ي'];
-const NUMBERS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+const MAX_SECTIONS_PER_GRADE = 30;
+const LETTERS = [
+  'أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح', 'ط', 'ي',
+  'ك', 'ل', 'م', 'ن', 'س', 'ع', 'ف', 'ص', 'ق', 'ر',
+  'ش', 'ت', 'ث', 'خ', 'ذ', 'ض', 'ظ', 'غ',
+];
 
 function getSectionNames(count: number, type: string): string[] {
-  const source = type === 'letters' ? LETTERS : NUMBERS;
-  return source.slice(0, count);
+  return Array.from({ length: count }, (_, index) => {
+    if (type !== 'letters') return String(index + 1);
+    return LETTERS[index] || `شعبة ${index + 1}`;
+  });
 }
 
 export default function GradesPage() {
@@ -172,10 +178,13 @@ export default function GradesPage() {
                       <input
                         type="number"
                         min={1}
-                        max={10}
+                        max={MAX_SECTIONS_PER_GRADE}
                         value={count}
                         onChange={e => {
-                          const val = Math.min(10, Math.max(1, parseInt(e.target.value) || 1));
+                          const val = Math.min(
+                            MAX_SECTIONS_PER_GRADE,
+                            Math.max(1, parseInt(e.target.value) || 1),
+                          );
                           setEditedCounts({ ...editedCounts, [grade.id]: val });
                         }}
                         className="input w-20 text-center"

@@ -122,7 +122,7 @@ export const updateSectionsSchema = z.object({
   sections: z.array(z.object({
     name: z.string().min(1, 'اسم الشعبة مطلوب').max(50),
     sort_order: z.number().int().min(0),
-  })).min(1, 'يجب إضافة شعبة واحدة على الأقل').max(10, 'الحد الأقصى 10 شعب لكل صف'),
+  })).min(1, 'يجب إضافة شعبة واحدة على الأقل').max(30, 'الحد الأقصى 30 شعبة لكل صف'),
 });
 
 export const updateSectionsBatchSchema = z.object({
