@@ -57,6 +57,9 @@ describe('project hardening contracts', () => {
     const migration = read('supabase/migrations/20260828020000_sidebar_order.sql');
     assert.match(layout, /DEFAULT_SIDEBAR_ORDER/);
     assert.match(layout, /draggable=\{isReordering && sidebarOpen\}/);
+    assert.match(layout, /aria-expanded=\{!isCollapsed\}/);
+    assert.match(layout, /SIDEBAR_COLLAPSED_GROUPS_KEY/);
+    assert.match(layout, /grid-rows-\[0fr\]/);
     assert.match(layout, /تم تثبيت ترتيب القائمة لجميع المستخدمين/);
     assert.match(route, /auth\.ctx\.role !== 'super_admin'/);
     assert.match(migration, /BEFORE UPDATE OF sidebar_order/);

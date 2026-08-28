@@ -9,7 +9,7 @@ import InstallPrompt from '@/components/pwa/InstallPrompt';
 import GlobalSearch from '@/components/search/GlobalSearch';
 import {
   LayoutDashboard, Users, BookOpen, Fingerprint, BarChart3,
-  Menu, X, LogOut, ChevronLeft, Settings, GraduationCap, MessageCircle,
+  Menu, X, LogOut, ChevronLeft, ChevronDown, Settings, GraduationCap, MessageCircle,
   Sun, Moon, Bell, Download, MessageSquarePlus, UserCog, ClipboardCheck, Mail,
   AlertTriangle, UserPlus, LogOut as ExitIcon, Shield, ShieldAlert, ShieldCheck, KeyRound, Crown,
   CalendarDays, UserCheck, FileText, FileBarChart, GripVertical, Check,
@@ -62,6 +62,7 @@ interface SidebarOrder {
 }
 
 const HOME_GROUP_KEY = '__home__';
+const SIDEBAR_COLLAPSED_GROUPS_KEY = 'dashboard-sidebar-collapsed-groups-v1';
 const groupKey = (group: NavGroup) => group.label || HOME_GROUP_KEY;
 
 // Fixed school default: daily work first, then role specialties, supporting
@@ -328,6 +329,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isReordering, setIsReordering] = useState(false);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [draftNavItems, setDraftNavItems] = useState<NavGroup[]>([]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [draggedNav, setDraggedNav] = useState<
     | { kind: 'group'; group: string }
     | { kind: 'item'; group: string; path: string }
@@ -337,6 +339,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const { theme, toggle, mounted } = useTheme();
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(SIDEBAR_COLLAPSED_GROUPS_KEY);
+      const parsed = saved ? JSON.parse(saved) : [];
+      if (Array.isArray(parsed) && parsed.every((value) => typeof value === 'string')) {
+        setCollapsedGroups(new Set(parsed));
+      }
+    } catch {
+      // A corrupt or unavailable local preference must not block navigation.
+    }
+  }, []);
 
   // Fetch the current admin's scope. Drives:
   //   • Scope banner under the header for non-super admins.
@@ -459,6 +473,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   const renderedNavItems = isReordering ? draftNavItems : visibleNavItems;
+
+  const toggleGroupCollapsed = (key: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_GROUPS_KEY, JSON.stringify([...next]));
+      } catch {
+        // Keep the current-session behavior when browser storage is unavailable.
+      }
+
+      return next;
+    });
+  };
 
   const startReordering = () => {
     setDraftNavItems(visibleNavItems.map((group) => ({ ...group, items: [...group.items] })));
@@ -624,6 +654,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {renderedNavItems.map((group, gi) => {
             const key = groupKey(group);
             const isDraggedGroup = draggedNav?.kind === 'group' && draggedNav.group === key;
+            // The compact icon rail and reorder mode always expose every item.
+            const isCollapsed = sidebarOpen
+              && !isReordering
+              && collapsedGroups.has(key);
             return (
             <div
               key={key}
@@ -646,18 +680,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className={`${gi > 0 ? (sidebarOpen ? 'mt-4' : 'mt-3 pt-3 border-t border-gray-200 dark:border-gray-800') : ''} ${isDraggedGroup ? 'opacity-40' : ''}`}
             >
               {sidebarOpen && group.label && (
-                <h2 className="px-3 mb-1 flex items-center gap-1 text-xs font-bold text-gray-500 dark:text-gray-400">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isReordering) toggleGroupCollapsed(key);
+                  }}
+                  aria-expanded={!isCollapsed}
+                  aria-controls={`sidebar-group-${gi}`}
+                  className={`w-full px-3 mb-1 py-1 flex items-center gap-1 rounded-md text-xs font-bold text-gray-500 dark:text-gray-400 ${
+                    isReordering
+                      ? 'cursor-grab'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                >
                   {isReordering && <GripVertical className="w-3.5 h-3.5 cursor-grab" aria-hidden="true" />}
-                  {group.label}
-                </h2>
+                  <span className="truncate">{group.label}</span>
+                  {!isReordering && (
+                    <ChevronDown
+                      className={`w-4 h-4 ms-auto shrink-0 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}
+                      aria-hidden="true"
+                    />
+                  )}
+                </button>
               )}
-              <div className="space-y-1">
-                {group.items.map((item) => {
-                  const isActive = pathname === item.path
-                    || (item.path !== '/dashboard' && pathname.startsWith(item.path));
-                  const Icon = item.icon;
-                  return (
-                    <Link
+              <div
+                id={`sidebar-group-${gi}`}
+                aria-hidden={isCollapsed}
+                className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out ${
+                  isCollapsed
+                    ? 'grid-rows-[0fr] opacity-0 invisible pointer-events-none'
+                    : 'grid-rows-[1fr] opacity-100 visible'
+                }`}
+              >
+                <div className="overflow-hidden space-y-1">
+                  {group.items.map((item) => {
+                    const isActive = pathname === item.path
+                      || (item.path !== '/dashboard' && pathname.startsWith(item.path));
+                    const Icon = item.icon;
+                    return (
+                      <Link
                       key={item.path}
                       href={item.path}
                       draggable={isReordering && sidebarOpen}
@@ -703,9 +764,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       {sidebarOpen && <span className="truncate flex-1">{item.label}</span>}
                       {item.path === '/dashboard/messages' && <UnreadBadge />}
                       {item.path === '/dashboard/teacher-registrations' && <PendingRegistrationsBadge />}
-                    </Link>
-                  );
-                })}
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
