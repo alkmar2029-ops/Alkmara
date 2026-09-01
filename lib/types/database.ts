@@ -93,11 +93,42 @@ export interface SchoolSettings {
   phone: string | null;
   stage: SchoolStage;
   academic_year: string;
+  academic_year_id?: number | null;
   section_type: 'letters' | 'numbers';
   late_threshold: number;
   absent_threshold: number;
   /** School-wide work start time as 'HH:MM' (24h). Default '06:45'. */
   school_start_time: string | null;
+  updated_at: string;
+}
+
+export type AcademicYearStatus = 'planned' | 'open' | 'closed' | 'cancelled';
+
+export interface AcademicYear {
+  id: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+  status: AcademicYearStatus;
+  opened_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudentAcademicYearEnrollment {
+  id: number;
+  academic_year_id: number;
+  student_id: number;
+  grade_id: number | null;
+  section_id: number | null;
+  grade_name: string | null;
+  section_name: string | null;
+  status: 'active' | 'completed' | 'graduated' | 'inactive' | 'transferred';
+  source: 'backfill' | 'rollover' | 'automatic' | 'manual' | 'import';
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
   updated_at: string;
 }
 

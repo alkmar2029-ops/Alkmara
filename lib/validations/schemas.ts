@@ -467,6 +467,36 @@ export const promoteSchema = z.object({
   confirm: z.boolean(),
 });
 
+const academicYearNameSchema = z.string()
+  .trim()
+  .regex(/^\d{4}-\d{4}$/, 'صيغة العام الدراسي يجب أن تكون YYYY-YYYY')
+  .refine((value) => Number(value.slice(5)) === Number(value.slice(0, 4)) + 1, {
+    message: 'يجب أن يكون العامان متتاليين',
+  });
+
+export const academicYearRolloverSchema = z.union([
+  z.object({
+    action: z.literal('rollover'),
+    new_year_name: academicYearNameSchema,
+    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ البداية غير صالح'),
+    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ النهاية غير صالح'),
+    confirmation: z.string().max(40),
+    idempotency_key: z.string().uuid('معرّف العملية غير صالح'),
+  }).superRefine((value, ctx) => {
+    if (value.end_date <= value.start_date) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['end_date'], message: 'تاريخ النهاية يجب أن يلي تاريخ البداية' });
+    }
+    if (value.confirmation !== `فتح ${value.new_year_name}`) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['confirmation'], message: `اكتب: فتح ${value.new_year_name}` });
+    }
+  }),
+  z.object({
+    action: z.literal('rollback'),
+    rollover_id: z.string().uuid('معرّف العملية غير صالح'),
+    confirmation: z.literal('تراجع'),
+  }),
+]);
+
 // Message template schema
 export const updateTemplateSchema = z.object({
   body: z.string().min(5, 'نص الرسالة قصير جداً').max(4000, 'نص الرسالة طويل جداً'),

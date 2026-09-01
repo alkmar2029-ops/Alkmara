@@ -145,7 +145,7 @@ const navGroups: NavGroup[] = [
     items: [
       { path: '/dashboard/students', label: 'الطلاب', icon: Users },
       { path: '/dashboard/grades', label: 'الصفوف والشعب', icon: BookOpen, superAdminOnly: true },
-      { path: '/dashboard/promote', label: 'ترقية الطلاب', icon: GraduationCap, superAdminOnly: true },
+      { path: '/dashboard/promote', label: 'فتح عام دراسي', icon: GraduationCap, superAdminOnly: true },
     ],
   },
   {

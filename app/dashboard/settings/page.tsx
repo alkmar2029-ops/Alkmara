@@ -140,11 +140,11 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="label">العام الدراسي</label>
-            <select value={form.academic_year} onChange={e => setForm({ ...form, academic_year: e.target.value })} className="input">
-              <option value="2024-2025">2024-2025</option>
-              <option value="2025-2026">2025-2026</option>
-              <option value="2026-2027">2026-2027</option>
-            </select>
+            <input value={form.academic_year} readOnly dir="ltr" className="input bg-gray-50 dark:bg-gray-900" />
+            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+              لتغيير العام مع حفظ الأرشيف وترقية الطلاب استخدم صفحة{' '}
+              <a href="/dashboard/promote" className="font-medium text-blue-600 hover:underline dark:text-blue-400">فتح عام دراسي</a>.
+            </p>
           </div>
         </div>
       </div>

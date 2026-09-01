@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { validateBody, promoteSchema } from '@/lib/validations/schemas';
-import { requireRole, writeAuditLog } from '@/lib/supabase/auth';
+import { requireRole } from '@/lib/supabase/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,30 +85,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Atomic execution via RPC: all-or-nothing.
-  const { data: result, error } = await supabase.rpc('promote_students');
-  if (error) {
-    return NextResponse.json(
-      { error: `فشلت عملية الترقية: ${error.message}` },
-      { status: 500 },
-    );
-  }
-
-  const promoted = (result as { promoted?: number })?.promoted ?? 0;
-  const deleted = (result as { deleted?: number })?.deleted ?? 0;
-
-  await writeAuditLog({
-    ctx: auth.ctx,
-    action: 'students.promote',
-    details: { promoted, deleted },
-    request,
-  });
-
   return NextResponse.json({
-    data: {
-      promoted,
-      deleted,
-      message: `تم ترقية ${promoted} طالب وحذف ${deleted} متخرج. يجب إعادة إرسال الطلاب للأجهزة.`,
-    },
-  });
+    error: 'تم استبدال الترقية المنفردة بعملية فتح العام الدراسي الآمنة. استخدم صفحة «فتح عام دراسي».',
+  }, { status: 410 });
 }

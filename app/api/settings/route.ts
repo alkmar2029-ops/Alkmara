@@ -68,6 +68,22 @@ export async function PUT(request: NextRequest) {
     }
   }
 
+  if (validation.data.academic_year) {
+    const { data: currentYear, error: currentYearError } = await supabase
+      .from('school_settings')
+      .select('academic_year, academic_year_id')
+      .eq('id', 1)
+      .single();
+    if (currentYearError) {
+      return NextResponse.json({ error: 'تعذر التحقق من العام الدراسي الحالي' }, { status: 500 });
+    }
+    if (currentYear.academic_year_id && validation.data.academic_year !== currentYear.academic_year) {
+      return NextResponse.json({
+        error: 'يتم تغيير العام الدراسي من صفحة «فتح عام دراسي» لضمان الأرشفة والترقية الآمنة.',
+      }, { status: 409 });
+    }
+  }
+
   // Always update row id=1 (single school)
   const { data, error } = await supabase
     .from('school_settings')
